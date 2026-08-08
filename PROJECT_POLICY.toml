@@ -1,0 +1,81 @@
+version = 1
+
+[structure]
+max_source_lines = 800
+
+source_extensions = [
+    ".gml",
+    ".vsh",
+    ".fsh",
+    ".py",
+    ".sh",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".cs",
+]
+
+forbidden_generic_stems = [
+    "helper",
+    "helpers",
+    "util",
+    "utils",
+    "misc",
+    "common",
+]
+
+large_file_exceptions = []
+
+[assets]
+source_root = "assets/source"
+runtime_root = "assets/runtime"
+manifest = "assets/exports.json"
+content_root = "content"
+plain_runtime_svg = true
+
+[assets.pipelines.vector]
+source_extensions = [".svg"]
+runtime_extensions = [".svg"]
+
+[assets.pipelines.raster]
+source_extensions = [".kra"]
+runtime_extensions = [".png"]
+
+[assets.pipelines.music]
+source_extensions = [".mid", ".logicx"]
+runtime_extensions = [".flac"]
+sample_rate = 48000
+channels = 2
+
+[assets.pipelines.sound_effect]
+source_extensions = [".logicx"]
+runtime_extensions = [".wav"]
+sample_rate = 48000
+channels = 2
+
+[assets.pipelines.model_3d]
+source_extensions = [".blend", ".obj", ".mtl"]
+runtime_extensions = [".vbuff"]
+
+[risk]
+max_changed_files = 20
+max_changed_lines = 1200
+
+high_risk_paths = [
+    ".github/**",
+    "AGENTS.md",
+    "GOVERNANCE.md",
+    "PROJECT_POLICY.toml",
+    "skills/**",
+    "tools/ci/**",
+    "tools/assets/**",
+    "game/*.yyp",
+    "game/options/**",
+    "game/extensions/**",
+    "game/scripts/core/**",
+    "game/scripts/save/**",
+    "game/scripts/persistence/**",
+    "game/scripts/migrations/**",
+    "content/save/**",
+]

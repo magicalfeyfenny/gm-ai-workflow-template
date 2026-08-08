@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-policy:
+    name: PR policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect changed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api \
+            --paginate \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[].filename' \
+            > /tmp/pr-files.txt
+
+      - name: Check PR policy
+        env:
+          PR_BASE: ${{ github.base_ref }}
+          PR_HEAD: ${{ github.head_ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_ADDITIONS: ${{ github.event.pull_request.additions }}
+          PR_DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR_FILES_PATH: /tmp/pr-files.txt
+        run: |
+          python3 tools/ci/pr_policy.py
+
+  repository-policy:
+    name: Repository policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python3 tools/ci/check_repo.py
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: |
+          python3 -m unittest discover \
+            -s tools/tests \
+            -p 'test_*.py'
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Check whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git diff --check "$BASE_SHA" "$HEAD_SHA"

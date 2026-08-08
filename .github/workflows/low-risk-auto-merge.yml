@@ -1,0 +1,93 @@
+name: Low-risk auto-merge
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions: {}
+
+jobs:
+  merge:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Revalidate and configure auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          CI_HEAD: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -z "$PR_NUMBER" ]; then
+            exit 0
+          fi
+
+          gh pr view "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json \
+            baseRefName,headRefName,headRefOid,body,labels,additions,deletions,isDraft,state \
+            > /tmp/pr.json
+
+          CURRENT_HEAD="$(jq -r '.headRefOid' /tmp/pr.json)"
+
+          if [ "$CURRENT_HEAD" != "$CI_HEAD" ]; then
+            echo "PR changed after this CI run."
+            exit 0
+          fi
+
+          if [ "$(jq -r '.state' /tmp/pr.json)" != "OPEN" ]; then
+            exit 0
+          fi
+
+          gh api \
+            --paginate \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[].filename' \
+            > /tmp/pr-files.txt
+
+          export PR_BASE="$(jq -r '.baseRefName' /tmp/pr.json)"
+          export PR_HEAD="$(jq -r '.headRefName' /tmp/pr.json)"
+          export PR_BODY="$(jq -r '.body // ""' /tmp/pr.json)"
+          export PR_LABELS="$(jq -r '[.labels[].name] | join(",")' /tmp/pr.json)"
+          export PR_ADDITIONS="$(jq -r '.additions' /tmp/pr.json)"
+          export PR_DELETIONS="$(jq -r '.deletions' /tmp/pr.json)"
+          export PR_FILES_PATH="/tmp/pr-files.txt"
+
+          ELIGIBLE="$(
+            python3 tools/ci/pr_policy.py --auto-eligible
+          )"
+
+          if [ "$ELIGIBLE" != "true" ]; then
+            echo "PR requires manual handling."
+            exit 0
+          fi
+
+          if [ "$(jq -r '.isDraft' /tmp/pr.json)" = "true" ]; then
+            gh pr ready \
+              "$PR_NUMBER" \
+              --repo "$GITHUB_REPOSITORY"
+          fi
+
+          gh pr merge \
+            "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --auto \
+            --squash

@@ -1,0 +1,1 @@
+# GameMaker project directory goes here

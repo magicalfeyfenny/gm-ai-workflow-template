@@ -1,0 +1,14 @@
+as a .json:
+
+{
+  "kind": "music",
+  "sources": [
+    "assets/source/music/example.mid",
+    "assets/source/music/example.logicx"
+  ],
+  "runtime": [
+    "assets/runtime/music/example.flac"
+  ]
+}
+
+"kind" may be "vector", "raster", "music", "sound_effect", or "model_3d"
