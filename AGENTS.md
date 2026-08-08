@@ -24,6 +24,9 @@ Release work uses:
 
 release/<issue>-v<semver>
 
+The `human/` branch namespace is reserved for humans. Agents must never create,
+switch to, push to, or modify a `human/*` branch.
+
 Do not force-push.
 
 Do not merge into `main`.
@@ -93,7 +96,7 @@ Do not duplicate it into assets/source or assets/runtime.
 
 Before publishing a change, run:
 
-python3.12 tools/ci/check_repo.py
+python3.12 tools/ci/check_repo.py --baseline-ref origin/dev
 python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
 git diff --check
 
@@ -112,3 +115,15 @@ Low-risk PRs may continue through repository automation.
 
 High-risk PRs stop after validation and publication until a human explicitly
 authorizes readiness and merge.
+
+If a PR uses a `human/*` branch or has the `human-created` label, stop. Do not
+modify its branch, commits, body, labels, checks, reviews, draft state,
+readiness, or merge state. Do not perform review or validation work on it.
+Agents must never invoke a ruleset bypass.
+
+After a human-created PR merges, do not presume that nonconformance with
+current repository standards is wrong. It may inform desired patterns or
+algorithms. Existing violations are treated as the repository baseline and do
+not block unrelated agent changes. A bounded repository-standardizing issue
+may be created from concrete merged evidence after duplicate search; classify
+any resulting change by its actual paths and scope.

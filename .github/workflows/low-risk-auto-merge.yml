@@ -90,7 +90,7 @@ jobs:
             gh pr view "$PR_NUMBER" \
               --repo "$GITHUB_REPOSITORY" \
               --json \
-              baseRefName,headRefName,headRefOid,body,labels,additions,deletions,isDraft,state,autoMergeRequest \
+              baseRefName,headRefName,headRefOid,headRepository,body,labels,additions,deletions,isDraft,state,autoMergeRequest \
               > /tmp/pr.json
           }
 
@@ -123,6 +123,11 @@ jobs:
 
             PR_BASE="$(jq -r '.baseRefName' /tmp/pr.json)"
             PR_HEAD="$(jq -r '.headRefName' /tmp/pr.json)"
+            PR_HEAD_REPOSITORY="$(
+              jq -r '.headRepository.nameWithOwner // ""' \
+                /tmp/pr.json
+            )"
+            PR_REPOSITORY="$GITHUB_REPOSITORY"
             PR_BODY="$(jq -r '.body // ""' /tmp/pr.json)"
             PR_LABELS="$(
               jq -r '[.labels[].name] | join(",")' \
@@ -135,6 +140,8 @@ jobs:
             export \
               PR_BASE \
               PR_HEAD \
+              PR_HEAD_REPOSITORY \
+              PR_REPOSITORY \
               PR_BODY \
               PR_LABELS \
               PR_ADDITIONS \

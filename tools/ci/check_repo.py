@@ -2,23 +2,30 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
+import tempfile
 import tomllib
+from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
 
-POLICY = tomllib.loads(
-    (ROOT / "PROJECT_POLICY.toml").read_text(encoding="utf-8")
-)
+
+def load_policy(root: Path) -> dict:
+    return tomllib.loads(
+        (root / "PROJECT_POLICY.toml").read_text(encoding="utf-8")
+    )
 
 
-def tracked_files() -> list[Path]:
+def tracked_files(root: Path) -> list[Path]:
     result = subprocess.run(
         ["git", "ls-files", "-z"],
-        cwd=ROOT,
+        cwd=root,
         check=True,
         capture_output=True,
     )
@@ -56,10 +63,12 @@ def source_is_tracked(
 
 
 def validate_structure(
+    root: Path,
+    policy: dict,
     files: list[Path],
     errors: list[str],
 ) -> None:
-    rules = POLICY["structure"]
+    rules = policy["structure"]
 
     extensions = set(rules["source_extensions"])
     forbidden = set(rules["forbidden_generic_stems"])
@@ -81,7 +90,7 @@ def validate_structure(
             )
 
         try:
-            text = (ROOT / path).read_text(encoding="utf-8")
+            text = (root / path).read_text(encoding="utf-8")
         except UnicodeDecodeError:
             errors.append(
                 f"{path}: source must be UTF-8"
@@ -97,6 +106,7 @@ def validate_structure(
 
 
 def validate_json(
+    root: Path,
     files: list[Path],
     errors: list[str],
 ) -> None:
@@ -106,7 +116,7 @@ def validate_json(
 
         try:
             json.loads(
-                (ROOT / path).read_text(encoding="utf-8")
+                (root / path).read_text(encoding="utf-8")
             )
         except (
             UnicodeDecodeError,
@@ -118,10 +128,12 @@ def validate_json(
 
 
 def validate_assets(
+    root: Path,
+    policy: dict,
     files: list[Path],
     errors: list[str],
 ) -> None:
-    assets = POLICY["assets"]
+    assets = policy["assets"]
 
     source_root = Path(assets["source_root"])
     runtime_root = Path(assets["runtime_root"])
@@ -134,7 +146,7 @@ def validate_assets(
 
     try:
         manifest = json.loads(
-            (ROOT / manifest_path).read_text(encoding="utf-8")
+            (root / manifest_path).read_text(encoding="utf-8")
         )
     except (
         OSError,
@@ -251,7 +263,7 @@ def validate_assets(
                 )
                 continue
 
-            full_path = ROOT / path
+            full_path = root / path
 
             if not full_path.exists():
                 errors.append(
@@ -284,7 +296,7 @@ def validate_assets(
 
             mapped_runtime.add(key)
 
-            full_path = ROOT / path
+            full_path = root / path
 
             if not full_path.exists():
                 errors.append(
@@ -333,13 +345,93 @@ def validate_assets(
             )
 
 
-def main() -> int:
-    files = tracked_files()
+def collect_errors(root: Path) -> list[str]:
+    policy = load_policy(root)
+    files = tracked_files(root)
     errors: list[str] = []
 
-    validate_structure(files, errors)
-    validate_json(files, errors)
-    validate_assets(files, errors)
+    validate_structure(root, policy, files, errors)
+    validate_json(root, files, errors)
+    validate_assets(root, policy, files, errors)
+
+    return errors
+
+
+def new_policy_errors(
+    errors: list[str],
+    baseline_errors: list[str],
+) -> list[str]:
+    inherited = Counter(baseline_errors)
+    introduced: list[str] = []
+
+    for error in errors:
+        if inherited[error]:
+            inherited[error] -= 1
+        else:
+            introduced.append(error)
+
+    return introduced
+
+
+@contextmanager
+def detached_worktree(ref: str) -> Iterator[Path]:
+    with tempfile.TemporaryDirectory(
+        prefix="repository-policy-",
+    ) as temporary:
+        worktree = Path(temporary) / "baseline"
+
+        subprocess.run(
+            [
+                "git",
+                "worktree",
+                "add",
+                "--detach",
+                str(worktree),
+                ref,
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
+
+        try:
+            yield worktree
+        finally:
+            subprocess.run(
+                [
+                    "git",
+                    "worktree",
+                    "remove",
+                    "--force",
+                    str(worktree),
+                ],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+            )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--baseline-ref",
+        help=(
+            "allow repository-policy violations already present "
+            "at this Git ref"
+        ),
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    errors = collect_errors(ROOT)
+
+    if errors and args.baseline_ref:
+        with detached_worktree(args.baseline_ref) as baseline:
+            baseline_errors = collect_errors(baseline)
+
+        errors = new_policy_errors(errors, baseline_errors)
 
     if errors:
         for error in errors:
@@ -350,7 +442,10 @@ def main() -> int:
 
         return 1
 
-    print("repository policy passed")
+    if args.baseline_ref:
+        print("repository policy passed: no new violations")
+    else:
+        print("repository policy passed")
     return 0
 
 

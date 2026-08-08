@@ -47,6 +47,8 @@ jobs:
         env:
           PR_BASE: ${{ github.base_ref }}
           PR_HEAD: ${{ github.head_ref }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_REPOSITORY: ${{ github.repository }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           PR_ADDITIONS: ${{ github.event.pull_request.additions }}
@@ -78,12 +80,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - run: python3 tools/ci/check_repo.py
+      - name: Check newly introduced repository-policy violations
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 tools/ci/check_repo.py \
+            --baseline-ref "$BASE_SHA"
 
   tests:
     name: Tests

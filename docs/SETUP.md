@@ -43,8 +43,12 @@ labels.
 The tool requires an explicit repository name. It creates `main` from the
 current `dev` commit only when `main` is absent, makes `dev` the default,
 enables squash merging and auto-merge, disables merge commits, rebase merges,
-and automatic branch deletion, ensures the four governance labels, and
+and automatic branch deletion, ensures the five governance labels, and
 installs the active `dev-protection` and `main-release` rulesets.
+
+Both rulesets grant repository administrators pull-request-only bypass. The
+bypass is reserved for manually merging PRs labeled `human-created`; it does
+not permit direct pushes to protected branches.
 
 The tool is safe to rerun: it never moves an existing `main`, and it updates
 the named labels and rulesets in place. Review its output if it reports that

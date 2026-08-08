@@ -98,7 +98,16 @@ class RulesetRecipeTests(unittest.TestCase):
             )
             self.assertEqual(recipe["target"], "branch")
             self.assertEqual(recipe["enforcement"], "active")
-            self.assertEqual(recipe["bypass_actors"], [])
+            self.assertEqual(
+                recipe["bypass_actors"],
+                [
+                    {
+                        "actor_id": 5,
+                        "actor_type": "RepositoryRole",
+                        "bypass_mode": "pull_request",
+                    }
+                ],
+            )
             self.assertEqual(
                 recipe["conditions"],
                 {
@@ -276,7 +285,7 @@ class ConfigureRepositoryTests(unittest.TestCase):
                 and "/labels/" in endpoint
                 for method, endpoint, _ in api.calls
             ),
-            4,
+            5,
         )
         self.assertTrue(
             any(

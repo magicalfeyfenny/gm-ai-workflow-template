@@ -45,6 +45,11 @@ REQUIRED_LABELS: tuple[dict[str, str], ...] = (
         "description": "Must be merged by a human, regardless of risk level.",
     },
     {
+        "name": "human-created",
+        "color": "d4c5f9",
+        "description": "Human-owned PR; agent work prohibited; manual bypass.",
+    },
+    {
         "name": "release",
         "color": "cb2f2a",
         "description": "Release version",

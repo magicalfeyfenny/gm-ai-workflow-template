@@ -18,13 +18,19 @@ Release branches:
 
 release/<issue>-v<semver>
 
-Every work or release branch starts from current `origin/dev`.
+Human-created branches:
+
+human/<slug>
+
+The `human/` namespace is reserved for work created and controlled by a human.
+
+Every agent-governed work or release branch starts from current `origin/dev`.
 
 Never branch from a local `dev`.
 
 ## Unit of work
 
-Every repository change uses:
+Every agent-governed repository change uses:
 
 1. one GitHub issue;
 2. one issue-numbered branch;
@@ -32,15 +38,47 @@ Every repository change uses:
 4. required CI;
 5. merge according to the risk policy.
 
-A work PR contains exactly one line:
+An agent-governed work PR contains exactly one line:
 
 Closes #<issue>
 
 The issue number must match the branch name.
 
+## Human-created changes
+
+A same-repository PR from `human/<slug>` is automatically labeled:
+
+- `human-created`;
+- `manual-merge`.
+
+A human may also apply `human-created` to identify human work that did not use
+the reserved branch prefix.
+
+Human-created PRs are exempt from the agent-governed issue, branch, closure,
+draft, risk-label, and passing-check procedures. Checks may still run, but
+their results are informational. A repository administrator manually merges
+the PR by selecting GitHub's pull-request ruleset bypass.
+
+Ruleset bypass is actor-based rather than label-based. It may be used only for
+a `human-created` PR. It does not permit direct pushes to protected branches.
+
+Agents must not create, modify, review, validate, label, mark ready, merge, or
+otherwise work a human-created branch or PR.
+
+After a human-created change merges, divergence from current repository
+standards is not automatically a defect. The result may inform desired patterns
+or algorithms. Existing policy violations are treated as the repository
+baseline and do not block unrelated agent changes. An agent may create a
+bounded repository-standardizing issue from concrete merged evidence after
+checking for duplicates; the issue and any eventual change receive their
+ordinary risk classification.
+
+This exception does not automate release builds, tags, releases, or
+publication.
+
 ## Risk
 
-Every PR has exactly one label:
+Every agent-governed PR has exactly one label:
 
 - `risk:low`
 - `risk:high`
