@@ -39,9 +39,9 @@ jobs:
         run: |
           gh api \
             --paginate \
+            --slurp \
             "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
-            --jq '.[].filename' \
-            > /tmp/pr-files.txt
+            > /tmp/pr-files.json
 
       - name: Check PR policy
         env:
@@ -51,9 +51,26 @@ jobs:
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           PR_ADDITIONS: ${{ github.event.pull_request.additions }}
           PR_DELETIONS: ${{ github.event.pull_request.deletions }}
-          PR_FILES_PATH: /tmp/pr-files.txt
+          PR_FILES_PATH: /tmp/pr-files.json
         run: |
           python3 tools/ci/pr_policy.py
+
+      - name: Check no stale auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr view "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json autoMergeRequest \
+            > /tmp/pr-auto-merge.json
+
+          if ! jq -e '.autoMergeRequest == null' \
+            /tmp/pr-auto-merge.json \
+            > /dev/null; then
+            echo "pr-policy: stale auto-merge request remains" >&2
+            exit 1
+          fi
 
   repository-policy:
     name: Repository policy
