@@ -17,7 +17,7 @@ body:
     id: acceptance
     attributes:
       label: Acceptance
-      description: What must be true when complete?
+      description: What must be true when this is complete?
     validations:
       required: true
 
@@ -25,7 +25,7 @@ body:
     id: scope
     attributes:
       label: Scope
-      description: Important systems, files, and boundaries.
+      description: Important files, systems, or boundaries.
     validations:
       required: true
 
@@ -43,6 +43,6 @@ body:
     id: references
     attributes:
       label: References
-      description: Prior implementations, designs, or related issues.
+      description: Prior implementations, designs, related issues, or source evidence.
     validations:
       required: false
