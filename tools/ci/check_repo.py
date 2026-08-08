@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -148,10 +150,12 @@ def validate_assets(
         manifest = json.loads(
             (root / manifest_path).read_text(encoding="utf-8")
         )
-    except (
-        OSError,
-        json.JSONDecodeError,
-    ) as exc:
+    except OSError:
+        errors.append(
+            f"{manifest_path}: manifest is missing or unreadable"
+        )
+        return
+    except json.JSONDecodeError as exc:
         errors.append(
             f"{manifest_path}: invalid manifest: {exc}"
         )
@@ -361,54 +365,97 @@ def new_policy_errors(
     errors: list[str],
     baseline_errors: list[str],
 ) -> list[str]:
-    inherited = Counter(baseline_errors)
+    inherited = Counter(
+        policy_error_key(error)
+        for error in baseline_errors
+    )
     introduced: list[str] = []
 
     for error in errors:
-        if inherited[error]:
-            inherited[error] -= 1
+        key = policy_error_key(error)
+
+        if inherited[key]:
+            inherited[key] -= 1
         else:
             introduced.append(error)
 
     return introduced
 
 
+def policy_error_key(error: str) -> str:
+    normalized = re.sub(
+        r"(: export )\d+",
+        r"\1#",
+        error,
+    )
+    normalized = re.sub(
+        r": \d+ lines exceeds limit \d+$",
+        ": source line limit exceeded",
+        normalized,
+    )
+
+    for marker in (
+        ": invalid JSON:",
+        ": invalid manifest:",
+    ):
+        if marker in normalized:
+            return normalized.split(marker, 1)[0] + marker[:-1]
+
+    return normalized
+
+
 @contextmanager
-def detached_worktree(ref: str) -> Iterator[Path]:
+def detached_checkout(ref: str) -> Iterator[Path]:
     with tempfile.TemporaryDirectory(
         prefix="repository-policy-",
     ) as temporary:
-        worktree = Path(temporary) / "baseline"
+        checkout = Path(temporary) / "baseline"
+        resolved = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                f"{ref}^{{commit}}",
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        environment = os.environ.copy()
+        environment["GIT_LFS_SKIP_SMUDGE"] = "1"
 
         subprocess.run(
             [
                 "git",
-                "worktree",
-                "add",
-                "--detach",
-                str(worktree),
-                ref,
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                str(ROOT),
+                str(checkout),
             ],
             cwd=ROOT,
             check=True,
             capture_output=True,
         )
 
-        try:
-            yield worktree
-        finally:
-            subprocess.run(
-                [
-                    "git",
-                    "worktree",
-                    "remove",
-                    "--force",
-                    str(worktree),
-                ],
-                cwd=ROOT,
-                check=True,
-                capture_output=True,
-            )
+        subprocess.run(
+            [
+                "git",
+                "checkout",
+                "--quiet",
+                "--detach",
+                resolved,
+            ],
+            cwd=checkout,
+            check=True,
+            capture_output=True,
+            env=environment,
+        )
+
+        yield checkout
 
 
 def parse_args() -> argparse.Namespace:
@@ -427,11 +474,20 @@ def main() -> int:
     args = parse_args()
     errors = collect_errors(ROOT)
 
-    if errors and args.baseline_ref:
-        with detached_worktree(args.baseline_ref) as baseline:
-            baseline_errors = collect_errors(baseline)
+    if args.baseline_ref:
+        try:
+            with detached_checkout(args.baseline_ref) as baseline:
+                baseline_errors = collect_errors(baseline)
+        except subprocess.CalledProcessError:
+            print(
+                "repository-policy: baseline ref is unavailable: "
+                f"{args.baseline_ref}",
+                file=sys.stderr,
+            )
+            return 2
 
-        errors = new_policy_errors(errors, baseline_errors)
+        if errors:
+            errors = new_policy_errors(errors, baseline_errors)
 
     if errors:
         for error in errors:
