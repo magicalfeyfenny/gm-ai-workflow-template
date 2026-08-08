@@ -1,10 +1,16 @@
+import io
+import os
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.ci.pr_policy import (
     branch_issue,
     changed_file_paths,
     forced_high_risk,
+    is_human_created,
+    validate,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -97,6 +103,59 @@ class PrPolicyTests(unittest.TestCase):
             reasons,
         )
 
+    def test_human_branch_requires_same_repository(self):
+        self.assertTrue(
+            is_human_created(
+                "human/combat-prototype",
+                set(),
+                "owner/game",
+                "owner/game",
+            )
+        )
+        self.assertFalse(
+            is_human_created(
+                "human/combat-prototype",
+                set(),
+                "fork/game",
+                "owner/game",
+            )
+        )
+
+    def test_human_label_is_authoritative(self):
+        self.assertTrue(
+            is_human_created(
+                "experiment/combat",
+                {"human-created"},
+                "fork/game",
+                "owner/game",
+            )
+        )
+
+    def test_human_created_bypasses_policy_but_not_manual_merge(self):
+        environment = {
+            "PR_HEAD": "human/combat-prototype",
+            "PR_HEAD_REPOSITORY": "owner/game",
+            "PR_REPOSITORY": "owner/game",
+        }
+
+        expectations = {
+            False: "PR policy bypassed: human-created",
+            True: "false",
+        }
+
+        for auto_eligible, expected in expectations.items():
+            with self.subTest(auto_eligible=auto_eligible):
+                output = io.StringIO()
+
+                with (
+                    patch.dict(os.environ, environment, clear=True),
+                    redirect_stdout(output),
+                ):
+                    result = validate(auto_eligible)
+
+                self.assertEqual(result, 0)
+                self.assertEqual(output.getvalue().strip(), expected)
+
     def test_rename_preserves_sensitive_source_path(self):
         paths, count = changed_file_paths(
             [[
@@ -181,6 +240,23 @@ class WorkflowPolicyTests(unittest.TestCase):
             '--match-head-commit "$CI_HEAD"',
             text,
         )
+        self.assertIn("PR_HEAD_REPOSITORY", text)
+
+    def test_human_created_labeler_is_trusted_and_bounded(self):
+        path = ROOT / ".github/workflows/human-created.yml"
+        text = path.read_text(encoding="utf-8")
+
+        self.assertIn("pull_request_target:", text)
+        self.assertIn("- labeled", text)
+        self.assertIn("startsWith", text)
+        self.assertIn(
+            "head.repo.full_name == github.repository",
+            text,
+        )
+        self.assertIn("human/", text)
+        self.assertIn("human-created", text)
+        self.assertIn("manual-merge", text)
+        self.assertNotIn("actions/checkout", text)
 
 if __name__ == "__main__":
     unittest.main()

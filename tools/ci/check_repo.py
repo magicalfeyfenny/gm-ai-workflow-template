@@ -2,23 +2,32 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
+import re
 import subprocess
 import sys
+import tempfile
 import tomllib
+from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
 
-POLICY = tomllib.loads(
-    (ROOT / "PROJECT_POLICY.toml").read_text(encoding="utf-8")
-)
+
+def load_policy(root: Path) -> dict:
+    return tomllib.loads(
+        (root / "PROJECT_POLICY.toml").read_text(encoding="utf-8")
+    )
 
 
-def tracked_files() -> list[Path]:
+def tracked_files(root: Path) -> list[Path]:
     result = subprocess.run(
         ["git", "ls-files", "-z"],
-        cwd=ROOT,
+        cwd=root,
         check=True,
         capture_output=True,
     )
@@ -56,10 +65,12 @@ def source_is_tracked(
 
 
 def validate_structure(
+    root: Path,
+    policy: dict,
     files: list[Path],
     errors: list[str],
 ) -> None:
-    rules = POLICY["structure"]
+    rules = policy["structure"]
 
     extensions = set(rules["source_extensions"])
     forbidden = set(rules["forbidden_generic_stems"])
@@ -81,7 +92,7 @@ def validate_structure(
             )
 
         try:
-            text = (ROOT / path).read_text(encoding="utf-8")
+            text = (root / path).read_text(encoding="utf-8")
         except UnicodeDecodeError:
             errors.append(
                 f"{path}: source must be UTF-8"
@@ -97,6 +108,7 @@ def validate_structure(
 
 
 def validate_json(
+    root: Path,
     files: list[Path],
     errors: list[str],
 ) -> None:
@@ -106,7 +118,7 @@ def validate_json(
 
         try:
             json.loads(
-                (ROOT / path).read_text(encoding="utf-8")
+                (root / path).read_text(encoding="utf-8")
             )
         except (
             UnicodeDecodeError,
@@ -118,10 +130,12 @@ def validate_json(
 
 
 def validate_assets(
+    root: Path,
+    policy: dict,
     files: list[Path],
     errors: list[str],
 ) -> None:
-    assets = POLICY["assets"]
+    assets = policy["assets"]
 
     source_root = Path(assets["source_root"])
     runtime_root = Path(assets["runtime_root"])
@@ -134,12 +148,14 @@ def validate_assets(
 
     try:
         manifest = json.loads(
-            (ROOT / manifest_path).read_text(encoding="utf-8")
+            (root / manifest_path).read_text(encoding="utf-8")
         )
-    except (
-        OSError,
-        json.JSONDecodeError,
-    ) as exc:
+    except OSError:
+        errors.append(
+            f"{manifest_path}: manifest is missing or unreadable"
+        )
+        return
+    except json.JSONDecodeError as exc:
         errors.append(
             f"{manifest_path}: invalid manifest: {exc}"
         )
@@ -251,7 +267,7 @@ def validate_assets(
                 )
                 continue
 
-            full_path = ROOT / path
+            full_path = root / path
 
             if not full_path.exists():
                 errors.append(
@@ -284,7 +300,7 @@ def validate_assets(
 
             mapped_runtime.add(key)
 
-            full_path = ROOT / path
+            full_path = root / path
 
             if not full_path.exists():
                 errors.append(
@@ -333,13 +349,195 @@ def validate_assets(
             )
 
 
-def main() -> int:
-    files = tracked_files()
+def collect_errors(root: Path) -> list[str]:
+    policy = load_policy(root)
+    files = tracked_files(root)
     errors: list[str] = []
 
-    validate_structure(files, errors)
-    validate_json(files, errors)
-    validate_assets(files, errors)
+    validate_structure(root, policy, files, errors)
+    validate_json(root, files, errors)
+    validate_assets(root, policy, files, errors)
+
+    return errors
+
+
+def new_policy_errors(
+    errors: list[str],
+    baseline_errors: list[str],
+    changed_paths: set[str] | None = None,
+    strict: bool = False,
+) -> list[str]:
+    changed = changed_paths or set()
+
+    def key(error: str) -> str:
+        subject = error.split(":", 1)[0]
+
+        if strict or subject in changed:
+            return error
+
+        return policy_error_key(error)
+
+    inherited = Counter(
+        key(error)
+        for error in baseline_errors
+    )
+    introduced: list[str] = []
+
+    for error in errors:
+        identity = key(error)
+
+        if inherited[identity]:
+            inherited[identity] -= 1
+        else:
+            introduced.append(error)
+
+    return introduced
+
+
+def policy_error_key(error: str) -> str:
+    normalized = re.sub(
+        r"(: export )\d+",
+        r"\1#",
+        error,
+    )
+    normalized = re.sub(
+        r": \d+ lines exceeds limit \d+$",
+        ": source line limit exceeded",
+        normalized,
+    )
+
+    for marker in (
+        ": invalid JSON:",
+        ": invalid manifest:",
+    ):
+        if marker in normalized:
+            return normalized.split(marker, 1)[0] + marker[:-1]
+
+    return normalized
+
+
+@contextmanager
+def detached_checkout(ref: str) -> Iterator[tuple[Path, str]]:
+    with tempfile.TemporaryDirectory(
+        prefix="repository-policy-",
+    ) as temporary:
+        checkout = Path(temporary) / "baseline"
+        resolved = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                f"{ref}^{{commit}}",
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        environment = os.environ.copy()
+        environment["GIT_LFS_SKIP_SMUDGE"] = "1"
+
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                str(ROOT),
+                str(checkout),
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
+
+        subprocess.run(
+            [
+                "git",
+                "checkout",
+                "--quiet",
+                "--detach",
+                resolved,
+            ],
+            cwd=checkout,
+            check=True,
+            capture_output=True,
+            env=environment,
+        )
+
+        yield checkout, resolved
+
+
+def changed_files(ref: str) -> set[str]:
+    result = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "-z",
+            ref,
+            "--",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+
+    return {
+        item.decode("utf-8")
+        for item in result.stdout.split(b"\0")
+        if item
+    }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--baseline-ref",
+        help=(
+            "allow repository-policy violations already present "
+            "at this Git ref"
+        ),
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    errors = collect_errors(ROOT)
+
+    if args.baseline_ref:
+        try:
+            with detached_checkout(args.baseline_ref) as (
+                baseline,
+                baseline_sha,
+            ):
+                baseline_errors = collect_errors(baseline)
+            changed = changed_files(baseline_sha)
+        except subprocess.CalledProcessError:
+            print(
+                "repository-policy: baseline ref is unavailable: "
+                f"{args.baseline_ref}",
+                file=sys.stderr,
+            )
+            return 2
+
+        if errors:
+            strict = bool(
+                changed
+                & {
+                    "PROJECT_POLICY.toml",
+                    "tools/ci/check_repo.py",
+                }
+            )
+            errors = new_policy_errors(
+                errors,
+                baseline_errors,
+                changed,
+                strict,
+            )
 
     if errors:
         for error in errors:
@@ -350,7 +548,10 @@ def main() -> int:
 
         return 1
 
-    print("repository policy passed")
+    if args.baseline_ref:
+        print("repository policy passed: no new violations")
+    else:
+        print("repository policy passed")
     return 0
 
 

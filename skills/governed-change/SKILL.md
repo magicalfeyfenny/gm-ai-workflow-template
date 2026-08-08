@@ -27,12 +27,14 @@ description: Execute one repository change through issue, branch, validation, dr
 
    from origin/dev.
 
+   Never create or use a `human/*` branch. That namespace is human-only.
+
 7. Implement only the issue scope.
 
 8. Apply repository structure, asset, and content rules.
 
 9. Run:
-   - python3.12 tools/ci/check_repo.py
+   - python3.12 tools/ci/check_repo.py --baseline-ref origin/dev
    - relevant tests
    - python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
    - git diff --check
@@ -64,4 +66,7 @@ Never:
 - automatically merge high-risk work;
 - merge into main;
 - create releases;
+- create, modify, review, validate, label, ready, or merge a `human-created`
+  PR;
+- invoke a ruleset bypass;
 - perform unrelated cleanup.

@@ -1,0 +1,40 @@
+name: Classify human-created PR
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - labeled
+
+permissions: {}
+
+jobs:
+  label:
+    if: >
+      (
+        (github.event.action == 'opened' || github.event.action == 'reopened') &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        startsWith(github.event.pull_request.head.ref, 'human/')
+      ) || (
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'human-created'
+      )
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Mark as human-created and manual
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" \
+            -f 'labels[]=human-created' \
+            -f 'labels[]=manual-merge'

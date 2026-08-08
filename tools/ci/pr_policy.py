@@ -25,6 +25,22 @@ def env(
     return os.environ.get(name, default).strip()
 
 
+def is_human_created(
+    head: str,
+    labels: set[str],
+    head_repository: str,
+    repository: str,
+) -> bool:
+    return (
+        "human-created" in labels
+        or (
+            head.startswith("human/")
+            and bool(head_repository)
+            and head_repository == repository
+        )
+    )
+
+
 def branch_issue(
     base: str,
     head: str,
@@ -164,6 +180,21 @@ def validate(
         for item in env("PR_LABELS").split(",")
         if item
     }
+
+    human_created = is_human_created(
+        head,
+        labels,
+        env("PR_HEAD_REPOSITORY"),
+        env("PR_REPOSITORY"),
+    )
+
+    if human_created:
+        print(
+            "false"
+            if auto_eligible
+            else "PR policy bypassed: human-created"
+        )
+        return 0
 
     additions = int(env("PR_ADDITIONS", "0"))
     deletions = int(env("PR_DELETIONS", "0"))
