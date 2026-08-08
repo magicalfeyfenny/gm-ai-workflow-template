@@ -364,18 +364,30 @@ def collect_errors(root: Path) -> list[str]:
 def new_policy_errors(
     errors: list[str],
     baseline_errors: list[str],
+    changed_paths: set[str] | None = None,
+    strict: bool = False,
 ) -> list[str]:
+    changed = changed_paths or set()
+
+    def key(error: str) -> str:
+        subject = error.split(":", 1)[0]
+
+        if strict or subject in changed:
+            return error
+
+        return policy_error_key(error)
+
     inherited = Counter(
-        policy_error_key(error)
+        key(error)
         for error in baseline_errors
     )
     introduced: list[str] = []
 
     for error in errors:
-        key = policy_error_key(error)
+        identity = key(error)
 
-        if inherited[key]:
-            inherited[key] -= 1
+        if inherited[identity]:
+            inherited[identity] -= 1
         else:
             introduced.append(error)
 
@@ -405,7 +417,7 @@ def policy_error_key(error: str) -> str:
 
 
 @contextmanager
-def detached_checkout(ref: str) -> Iterator[Path]:
+def detached_checkout(ref: str) -> Iterator[tuple[Path, str]]:
     with tempfile.TemporaryDirectory(
         prefix="repository-policy-",
     ) as temporary:
@@ -455,7 +467,29 @@ def detached_checkout(ref: str) -> Iterator[Path]:
             env=environment,
         )
 
-        yield checkout
+        yield checkout, resolved
+
+
+def changed_files(ref: str) -> set[str]:
+    result = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "-z",
+            ref,
+            "--",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+
+    return {
+        item.decode("utf-8")
+        for item in result.stdout.split(b"\0")
+        if item
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -476,8 +510,12 @@ def main() -> int:
 
     if args.baseline_ref:
         try:
-            with detached_checkout(args.baseline_ref) as baseline:
+            with detached_checkout(args.baseline_ref) as (
+                baseline,
+                baseline_sha,
+            ):
                 baseline_errors = collect_errors(baseline)
+            changed = changed_files(baseline_sha)
         except subprocess.CalledProcessError:
             print(
                 "repository-policy: baseline ref is unavailable: "
@@ -487,7 +525,19 @@ def main() -> int:
             return 2
 
         if errors:
-            errors = new_policy_errors(errors, baseline_errors)
+            strict = bool(
+                changed
+                & {
+                    "PROJECT_POLICY.toml",
+                    "tools/ci/check_repo.py",
+                }
+            )
+            errors = new_policy_errors(
+                errors,
+                baseline_errors,
+                changed,
+                strict,
+            )
 
     if errors:
         for error in errors:

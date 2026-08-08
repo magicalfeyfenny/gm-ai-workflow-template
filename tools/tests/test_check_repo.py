@@ -74,6 +74,19 @@ class RepositoryPolicyTests(unittest.TestCase):
                     [],
                 )
 
+    def test_changed_violating_file_must_not_worsen(self):
+        baseline = "source/legacy.gml: 801 lines exceeds limit 800"
+        current = "source/legacy.gml: 5000 lines exceeds limit 800"
+
+        self.assertEqual(
+            new_policy_errors(
+                [current],
+                [baseline],
+                {"source/legacy.gml"},
+            ),
+            [current],
+        )
+
     def test_asset_validation_reads_the_selected_root(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
