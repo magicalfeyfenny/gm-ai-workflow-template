@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import os
 import re
 import sys
@@ -62,19 +63,73 @@ def branch_issue(
     ]
 
 
+def changed_file_paths(
+    pages: object,
+) -> tuple[list[str], int]:
+    if not isinstance(pages, list):
+        raise ValueError(
+            "changed-files input must be a list of pages"
+        )
+
+    paths: list[str] = []
+    changed_file_count = 0
+
+    for page in pages:
+        if not isinstance(page, list):
+            raise ValueError(
+                "changed-files page must be a list"
+            )
+
+        for entry in page:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    "changed-file entry must be an object"
+                )
+
+            filename = entry.get("filename")
+
+            if not isinstance(filename, str) or not filename:
+                raise ValueError(
+                    "changed-file entry needs a filename"
+                )
+
+            paths.append(filename)
+            changed_file_count += 1
+
+            previous = entry.get("previous_filename")
+
+            if previous is None:
+                continue
+
+            if not isinstance(previous, str) or not previous:
+                raise ValueError(
+                    "previous filename must be a string"
+                )
+
+            paths.append(previous)
+
+    return paths, changed_file_count
+
+
 def forced_high_risk(
     base: str,
     paths: list[str],
     additions: int,
     deletions: int,
+    changed_file_count: int | None = None,
 ) -> tuple[bool, list[str]]:
     rules = POLICY["risk"]
     reasons: list[str] = []
+    file_count = (
+        len(paths)
+        if changed_file_count is None
+        else changed_file_count
+    )
 
     if base == "main":
         reasons.append("PR targets main")
 
-    if len(paths) > int(rules["max_changed_files"]):
+    if file_count > int(rules["max_changed_files"]):
         reasons.append(
             "changed file count exceeds low-risk limit"
         )
@@ -115,13 +170,19 @@ def validate(
 
     files_path = Path(env("PR_FILES_PATH"))
 
-    paths = [
-        line.strip()
-        for line in files_path.read_text(
-            encoding="utf-8"
-        ).splitlines()
-        if line.strip()
-    ]
+    try:
+        pages = json.loads(
+            files_path.read_text(encoding="utf-8")
+        )
+        paths, changed_file_count = changed_file_paths(
+            pages
+        )
+    except (OSError, ValueError) as exc:
+        print(
+            f"pr-policy: invalid changed-files input: {exc}",
+            file=sys.stderr,
+        )
+        return 1
 
     errors: list[str] = []
 
@@ -167,6 +228,7 @@ def validate(
         paths,
         additions,
         deletions,
+        changed_file_count,
     )
 
     if (
