@@ -32,9 +32,9 @@ description: Execute one repository change through issue, branch, validation, dr
 8. Apply repository structure, asset, and content rules.
 
 9. Run:
-   - python3 tools/ci/check_repo.py
+   - python3.12 tools/ci/check_repo.py
    - relevant tests
-   - python3 -m unittest discover -s tools/tests -p 'test_*.py'
+   - python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
    - git diff --check
 
 10. Push the work branch.

@@ -1,9 +1,15 @@
-# Selkie's Moon project instructions
+# GameMaker project instructions
 
 Before modifying the repository, read:
 
 - GOVERNANCE.md
 - PROJECT_POLICY.toml
+
+## Tooling
+
+Repository tooling requires Python 3.12 or later.
+
+Use `python3.12` for repository policy and test commands.
 
 ## Git
 
@@ -87,8 +93,8 @@ Do not duplicate it into assets/source or assets/runtime.
 
 Before publishing a change, run:
 
-python3 tools/ci/check_repo.py
-python3 -m unittest discover -s tools/tests -p 'test_*.py'
+python3.12 tools/ci/check_repo.py
+python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
 git diff --check
 
 Run relevant GameMaker tests when available.

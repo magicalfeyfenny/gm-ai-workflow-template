@@ -1,0 +1,17 @@
+Use the project-steward skill for this repository.
+
+Audit current GitHub issues and pull requests.
+
+Create issues only when the skill's concrete-evidence rules are satisfied.
+Assign created issues to me.
+
+Do not modify code, branches, PR state, readiness, merges, releases, or
+publication.
+
+Return only:
+
+- issues created;
+- duplicate or stale tracking;
+- blocked PRs;
+- persistent CI failures;
+- items requiring my decision.
