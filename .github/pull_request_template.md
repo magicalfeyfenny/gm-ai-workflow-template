@@ -1,21 +1,13 @@
-Closes #
+<Place the closing line here after work:complete or work:review-ready>
 
 ## Summary
 
-What changed?
-
-## Scope
-
-What was intentionally changed and not changed?
+Summarize changes to the project.
 
 ## Validation
 
-What checks were run?
+What checks were run, if any?
 
-## Asset impact
+## Scope
 
-List changed editable sources and runtime exports.
-
-For canonical JSON data, list the changed content files.
-
-Otherwise write: None.
+List all systems or assets that were directly touched or affected, if any.
