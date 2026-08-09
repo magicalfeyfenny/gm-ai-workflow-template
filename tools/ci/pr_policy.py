@@ -168,6 +168,81 @@ def forced_high_risk(
     return bool(reasons), reasons
 
 
+def auto_merge_eligible(
+    base: str,
+    effective_high: bool,
+    labels: set[str],
+) -> bool:
+    return (
+        base == "dev"
+        and not effective_high
+        and "risk:low" in labels
+        and "work:complete" in labels
+        and "work:review-ready" not in labels
+        and "work:blocked" not in labels
+        and "manual-merge" not in labels
+    )
+
+
+def completion_policy_errors(
+    issue: int | None,
+    labels: set[str],
+    closure_matches: list[str],
+    manual_handling: bool,
+) -> list[str]:
+    errors: list[str] = []
+    completion_labels = labels.intersection(
+        {
+            "work:complete",
+            "work:review-ready",
+        }
+    )
+
+    if len(completion_labels) > 1:
+        errors.append(
+            "PR must not have both work completion labels"
+        )
+
+    if "work:blocked" in labels and completion_labels:
+        errors.append(
+            "work:blocked PR cannot be marked complete or review-ready"
+        )
+
+    if not completion_labels:
+        if closure_matches:
+            errors.append(
+                "Closes #<issue> is allowed only when work is complete"
+            )
+
+        return errors
+
+    expected = (
+        "work:review-ready"
+        if manual_handling
+        else "work:complete"
+    )
+
+    if completion_labels != {expected}:
+        errors.append(
+            f"completion state requires {expected}"
+        )
+
+    if len(closure_matches) != 1:
+        errors.append(
+            "completed PR body must contain exactly one line: "
+            "Closes #<issue>"
+        )
+    elif (
+        issue is not None
+        and int(closure_matches[0]) != issue
+    ):
+        errors.append(
+            "PR issue must match branch issue"
+        )
+
+    return errors
+
+
 def validate(
     auto_eligible: bool,
 ) -> int:
@@ -229,19 +304,6 @@ def validate(
         body,
     )
 
-    if len(closure_matches) != 1:
-        errors.append(
-            "PR body must contain exactly one line: "
-            "Closes #<issue>"
-        )
-    elif (
-        issue is not None
-        and int(closure_matches[0]) != issue
-    ):
-        errors.append(
-            "PR issue must match branch issue"
-        )
-
     risk_labels = labels.intersection(
         {
             "risk:low",
@@ -281,6 +343,21 @@ def validate(
                 "main PR must be risk:high"
             )
 
+    effective_high = (
+        forced_high
+        or "risk:high" in labels
+    )
+
+    errors.extend(
+        completion_policy_errors(
+            issue,
+            labels,
+            closure_matches,
+            effective_high
+            or "manual-merge" in labels,
+        )
+    )
+
     if errors:
         for error in errors:
             print(
@@ -296,16 +373,11 @@ def validate(
 
         return 1
 
-    effective_high = (
-        forced_high
-        or "risk:high" in labels
-    )
-
     if auto_eligible:
-        eligible = (
-            base == "dev"
-            and not effective_high
-            and "manual-merge" not in labels
+        eligible = auto_merge_eligible(
+            base,
+            effective_high,
+            labels,
         )
 
         print(

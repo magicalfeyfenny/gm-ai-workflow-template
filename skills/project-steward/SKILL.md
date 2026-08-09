@@ -12,7 +12,7 @@ Report:
 - duplicates;
 - issues without actionable acceptance criteria;
 - PRs without linked issues;
-- blocked PRs;
+- PRs labeled `work:blocked`;
 - persistent CI failures;
 - clearly abandoned or superseded tracking.
 
@@ -22,7 +22,7 @@ Create an issue only from concrete evidence:
 - an explicit TODO(ISSUE) marker;
 - an explicit user-authored backlog item.
 - a merged `human-created` PR that provides concrete evidence for a bounded
-  repository-standardizing issue.
+  repository-compliance issue.
 
 Search for duplicates before creating anything.
 

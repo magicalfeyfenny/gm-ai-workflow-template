@@ -34,15 +34,36 @@ Every agent-governed repository change uses:
 
 1. one GitHub issue;
 2. one issue-numbered branch;
-3. one draft pull request;
-4. required CI;
-5. merge according to the risk policy.
+3. coherent milestone commits;
+4. one draft pull request opened with the first meaningful commit;
+5. required CI;
+6. merge according to the risk policy.
 
-An agent-governed work PR contains exactly one line:
+An in-progress draft PR does not contain a closing line. When the entire issue
+is ready for review or automatic merge, add exactly one line:
 
 Closes #<issue>
 
-The issue number must match the branch name.
+The issue number must match the branch name. The closing line appears together
+with the completion label required by the merge path below.
+
+## Milestone commits and draft publication
+
+Agents may commit to their current issue-scoped branch without separate human
+authorization. Create a commit as soon as a coherent milestone is complete and
+has received proportionate validation. Do not leave a completed milestone only
+in the working tree while waiting for the entire issue to finish.
+
+Push the first meaningful milestone commit and open its draft PR immediately.
+This permission applies to low- and high-risk work. Continue committing and
+pushing later coherent milestones to the same draft PR.
+
+A commit, push, or draft PR does not grant readiness or merge authority.
+High-risk and `manual-merge` PRs remain manual under the rules below.
+
+`work:blocked` retains the former `blocked` behavior: the PR cannot be worked
+until its blockers are resolved. While it is present, omit the closing line and
+both completion labels.
 
 ## Human-created changes
 
@@ -68,10 +89,11 @@ otherwise work a human-created branch or PR.
 After a human-created change merges, divergence from current repository
 standards is not automatically a defect. The result may inform desired patterns
 or algorithms. Existing policy violations are treated as the repository
-baseline and do not block unrelated agent changes. An agent may create a
-bounded repository-standardizing issue from concrete merged evidence after
-checking for duplicates; the issue and any eventual change receive their
-ordinary risk classification.
+baseline and do not block unrelated agent changes.
+
+Human-authored work may be followed by a bounded repository-compliance issue.
+That issue may normalize structure, validation, assets, tests, and repository
+conventions without changing intended behavior. It uses the normal risk policy.
 
 This exception does not automate release builds, tags, releases, or
 publication.
@@ -96,18 +118,31 @@ Automatically high-risk changes may not be downgraded.
 
 ## Low-risk changes
 
-A low-risk PR targeting `dev` may be automatically:
+After the entire issue scope is finished and the candidate has received the
+required validation, add the closing line and apply `work:complete`. This label
+marks issue completion, not the completion of an intermediate milestone.
 
-1. marked ready after required CI passes;
+After required CI passes, a low-risk PR targeting `dev` with `work:complete`
+and without `manual-merge` is automatically:
+
+1. marked ready;
 2. configured for squash auto-merge.
 
-The `manual-merge` label disables this automation.
+The `manual-merge` label disables both automatic readiness and auto-merge.
 
-## High-risk changes
+## Manual and high-risk changes
 
-High-risk PRs receive the same automatic CI verification.
+A PR uses the manual completion path when it is high risk or has
+`manual-merge`. It receives the same automatic CI verification.
 
-They are never automatically marked ready or merged.
+After the entire issue scope is finished and validated, add the closing line
+and apply `work:review-ready`. The label means that implementation is done and
+the PR is waiting for human review.
+
+Manual-path PRs are never automatically marked ready or merged.
+
+A high-risk PR is still committed, pushed, and published as a draft without
+separate authorization.
 
 A human must review the result, mark the PR ready, and merge it.
 

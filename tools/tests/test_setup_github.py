@@ -227,6 +227,18 @@ class ConfigureRepositoryTests(unittest.TestCase):
             created_labels,
             [dict(label) for label in REQUIRED_LABELS],
         )
+        self.assertIn(
+            "work:complete",
+            {label["name"] for label in created_labels},
+        )
+        self.assertIn(
+            "work:review-ready",
+            {label["name"] for label in created_labels},
+        )
+        self.assertIn(
+            "work:blocked",
+            {label["name"] for label in created_labels},
+        )
 
         created_rulesets = [
             payload["name"]
@@ -237,6 +249,50 @@ class ConfigureRepositoryTests(unittest.TestCase):
         self.assertEqual(
             created_rulesets,
             ["dev-protection", "main-release"],
+        )
+
+    def test_renames_legacy_blocked_label(self):
+        labels = [
+            label["name"]
+            for label in REQUIRED_LABELS
+            if label["name"] != "work:blocked"
+        ]
+        labels.append("blocked")
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=labels,
+        )
+
+        messages = configure_repository(
+            "owner/game",
+            api=api,
+        )
+
+        self.assertIn(
+            (
+                "PATCH",
+                "repos/owner/game/labels/blocked",
+                {
+                    "new_name": "work:blocked",
+                    "color": "9150b7",
+                    "description": (
+                        "Cannot be worked until blockers are resolved."
+                    ),
+                },
+            ),
+            api.calls,
+        )
+        self.assertIn(
+            "renamed label blocked to work:blocked",
+            messages,
+        )
+        self.assertFalse(
+            any(
+                method == "POST"
+                and endpoint == "repos/owner/game/labels"
+                and payload["name"] == "work:blocked"
+                for method, endpoint, payload in api.calls
+            )
         )
 
     def test_existing_resources_are_updated_without_moving_main(self):
@@ -285,7 +341,7 @@ class ConfigureRepositoryTests(unittest.TestCase):
                 and "/labels/" in endpoint
                 for method, endpoint, _ in api.calls
             ),
-            5,
+            len(REQUIRED_LABELS),
         )
         self.assertTrue(
             any(

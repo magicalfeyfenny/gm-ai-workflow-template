@@ -6,8 +6,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools.ci.pr_policy import (
+    auto_merge_eligible,
     branch_issue,
     changed_file_paths,
+    completion_policy_errors,
     forced_high_risk,
     is_human_created,
     validate,
@@ -155,6 +157,122 @@ class PrPolicyTests(unittest.TestCase):
 
                 self.assertEqual(result, 0)
                 self.assertEqual(output.getvalue().strip(), expected)
+
+    def test_auto_merge_requires_completed_low_risk_work(self):
+        complete = {
+            "risk:low",
+            "work:complete",
+        }
+
+        self.assertTrue(
+            auto_merge_eligible("dev", False, complete)
+        )
+        self.assertFalse(
+            auto_merge_eligible("dev", False, {"risk:low"})
+        )
+        self.assertFalse(
+            auto_merge_eligible(
+                "dev",
+                False,
+                complete | {"manual-merge"},
+            )
+        )
+        self.assertFalse(
+            auto_merge_eligible("dev", True, complete)
+        )
+        self.assertFalse(
+            auto_merge_eligible("main", False, complete)
+        )
+        self.assertFalse(
+            auto_merge_eligible(
+                "dev",
+                False,
+                complete | {"work:blocked"},
+            )
+        )
+
+    def test_closing_line_is_completion_only(self):
+        self.assertEqual(
+            completion_policy_errors(
+                12,
+                {"risk:low"},
+                [],
+                False,
+            ),
+            [],
+        )
+        self.assertIn(
+            "Closes #<issue> is allowed only when work is complete",
+            completion_policy_errors(
+                12,
+                {"risk:low"},
+                ["12"],
+                False,
+            ),
+        )
+
+    def test_completion_label_matches_merge_path(self):
+        self.assertEqual(
+            completion_policy_errors(
+                12,
+                {"risk:low", "work:complete"},
+                ["12"],
+                False,
+            ),
+            [],
+        )
+        self.assertEqual(
+            completion_policy_errors(
+                12,
+                {"risk:high", "work:review-ready"},
+                ["12"],
+                True,
+            ),
+            [],
+        )
+        self.assertIn(
+            "completion state requires work:review-ready",
+            completion_policy_errors(
+                12,
+                {"risk:high", "work:complete"},
+                ["12"],
+                True,
+            ),
+        )
+
+    def test_blocked_work_cannot_be_complete(self):
+        errors = completion_policy_errors(
+            12,
+            {
+                "risk:low",
+                "work:blocked",
+                "work:complete",
+            },
+            ["12"],
+            False,
+        )
+
+        self.assertIn(
+            "work:blocked PR cannot be marked complete or review-ready",
+            errors,
+        )
+
+    def test_completed_work_requires_one_matching_closure(self):
+        missing = completion_policy_errors(
+            12,
+            {"risk:low", "work:complete"},
+            [],
+            False,
+        )
+        wrong = completion_policy_errors(
+            12,
+            {"risk:low", "work:complete"},
+            ["13"],
+            False,
+        )
+
+        self.assertTrue(missing)
+        self.assertIn("PR issue must match branch issue", wrong)
 
     def test_rename_preserves_sensitive_source_path(self):
         paths, count = changed_file_paths(
