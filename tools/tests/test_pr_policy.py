@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools.ci.pr_policy import (
+    auto_merge_eligible,
     branch_issue,
     changed_file_paths,
     forced_high_risk,
@@ -155,6 +156,32 @@ class PrPolicyTests(unittest.TestCase):
 
                 self.assertEqual(result, 0)
                 self.assertEqual(output.getvalue().strip(), expected)
+
+    def test_auto_merge_requires_completed_low_risk_work(self):
+        complete = {
+            "risk:low",
+            "work:complete",
+        }
+
+        self.assertTrue(
+            auto_merge_eligible("dev", False, complete)
+        )
+        self.assertFalse(
+            auto_merge_eligible("dev", False, {"risk:low"})
+        )
+        self.assertFalse(
+            auto_merge_eligible(
+                "dev",
+                False,
+                complete | {"manual-merge"},
+            )
+        )
+        self.assertFalse(
+            auto_merge_eligible("dev", True, complete)
+        )
+        self.assertFalse(
+            auto_merge_eligible("main", False, complete)
+        )
 
     def test_rename_preserves_sensitive_source_path(self):
         paths, count = changed_file_paths(

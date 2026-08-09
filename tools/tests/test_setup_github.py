@@ -227,6 +227,10 @@ class ConfigureRepositoryTests(unittest.TestCase):
             created_labels,
             [dict(label) for label in REQUIRED_LABELS],
         )
+        self.assertIn(
+            "work:complete",
+            {label["name"] for label in created_labels},
+        )
 
         created_rulesets = [
             payload["name"]
@@ -285,7 +289,7 @@ class ConfigureRepositoryTests(unittest.TestCase):
                 and "/labels/" in endpoint
                 for method, endpoint, _ in api.calls
             ),
-            5,
+            6,
         )
         self.assertTrue(
             any(

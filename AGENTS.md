@@ -27,6 +27,12 @@ release/<issue>-v<semver>
 The `human/` branch namespace is reserved for humans. Agents must never create,
 switch to, push to, or modify a `human/*` branch.
 
+Agents may commit freely to their current issue-scoped branch. Commit each
+coherent milestone as soon as proportionate validation passes. Push the first
+meaningful commit and create its draft PR immediately, including for high-risk
+work. Continue pushing later milestone commits to that draft PR. Commit and
+draft publication do not grant readiness or merge authority.
+
 Do not force-push.
 
 Do not merge into `main`.
@@ -113,8 +119,14 @@ Apply exactly one:
 
 Low-risk PRs may continue through repository automation.
 
-High-risk PRs stop after validation and publication until a human explicitly
-authorizes readiness and merge.
+After the entire low-risk issue scope is finished and full validation passes,
+apply `work:complete`. Do not apply it to an intermediate milestone. For a
+low-risk PR without `manual-merge`, repository automation then marks it ready
+and configures squash auto-merge after required CI passes.
+
+High-risk PRs may be committed, pushed, and published as drafts without
+separate permission. They stop after validation and publication until a human
+explicitly authorizes readiness and merge.
 
 If a PR uses a `human/*` branch or has the `human-created` label, stop. Do not
 modify its branch, commits, body, labels, checks, reviews, draft state,
@@ -124,6 +136,7 @@ Agents must never invoke a ruleset bypass.
 After a human-created PR merges, do not presume that nonconformance with
 current repository standards is wrong. It may inform desired patterns or
 algorithms. Existing violations are treated as the repository baseline and do
-not block unrelated agent changes. A bounded repository-standardizing issue
-may be created from concrete merged evidence after duplicate search; classify
-any resulting change by its actual paths and scope.
+not block unrelated agent changes. Human-authored work may be followed by a
+bounded repository-compliance issue that normalizes structure, validation,
+assets, tests, and repository conventions without changing intended behavior.
+Use the normal risk policy.

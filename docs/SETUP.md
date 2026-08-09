@@ -43,8 +43,12 @@ labels.
 The tool requires an explicit repository name. It creates `main` from the
 current `dev` commit only when `main` is absent, makes `dev` the default,
 enables squash merging and auto-merge, disables merge commits, rebase merges,
-and automatic branch deletion, ensures the five governance labels, and
+and automatic branch deletion, ensures the six governance labels, and
 installs the active `dev-protection` and `main-release` rulesets.
+
+The `work:complete` label is the positive completion signal for low-risk
+automation. Milestone draft PRs remain drafts until the full issue scope is
+finished and this label is applied.
 
 Both rulesets grant repository administrators pull-request-only bypass. The
 bypass is reserved for manually merging PRs labeled `human-created`; it does

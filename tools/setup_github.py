@@ -32,7 +32,7 @@ REQUIRED_LABELS: tuple[dict[str, str], ...] = (
     {
         "name": "risk:low",
         "color": "5c881b",
-        "description": "May automatically be merged by agents.",
+        "description": "Auto-merges after work:complete and required CI.",
     },
     {
         "name": "risk:high",
@@ -43,6 +43,11 @@ REQUIRED_LABELS: tuple[dict[str, str], ...] = (
         "name": "manual-merge",
         "color": "f10186",
         "description": "Must be merged by a human, regardless of risk level.",
+    },
+    {
+        "name": "work:complete",
+        "color": "1d76db",
+        "description": "Full issue scope is ready for completion handling.",
     },
     {
         "name": "human-created",

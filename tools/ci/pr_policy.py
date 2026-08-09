@@ -168,6 +168,20 @@ def forced_high_risk(
     return bool(reasons), reasons
 
 
+def auto_merge_eligible(
+    base: str,
+    effective_high: bool,
+    labels: set[str],
+) -> bool:
+    return (
+        base == "dev"
+        and not effective_high
+        and "risk:low" in labels
+        and "work:complete" in labels
+        and "manual-merge" not in labels
+    )
+
+
 def validate(
     auto_eligible: bool,
 ) -> int:
@@ -302,10 +316,10 @@ def validate(
     )
 
     if auto_eligible:
-        eligible = (
-            base == "dev"
-            and not effective_high
-            and "manual-merge" not in labels
+        eligible = auto_merge_eligible(
+            base,
+            effective_high,
+            labels,
         )
 
         print(

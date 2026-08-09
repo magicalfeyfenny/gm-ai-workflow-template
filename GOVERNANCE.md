@@ -34,15 +34,30 @@ Every agent-governed repository change uses:
 
 1. one GitHub issue;
 2. one issue-numbered branch;
-3. one draft pull request;
-4. required CI;
-5. merge according to the risk policy.
+3. coherent milestone commits;
+4. one draft pull request opened with the first meaningful commit;
+5. required CI;
+6. merge according to the risk policy.
 
 An agent-governed work PR contains exactly one line:
 
 Closes #<issue>
 
 The issue number must match the branch name.
+
+## Milestone commits and draft publication
+
+Agents may commit to their current issue-scoped branch without separate human
+authorization. Create a commit as soon as a coherent milestone is complete and
+has received proportionate validation. Do not leave a completed milestone only
+in the working tree while waiting for the entire issue to finish.
+
+Push the first meaningful milestone commit and open its draft PR immediately.
+This permission applies to low- and high-risk work. Continue committing and
+pushing later coherent milestones to the same draft PR.
+
+A commit, push, or draft PR does not grant readiness or merge authority.
+High-risk and `manual-merge` PRs remain manual under the rules below.
 
 ## Human-created changes
 
@@ -97,18 +112,26 @@ Automatically high-risk changes may not be downgraded.
 
 ## Low-risk changes
 
-A low-risk PR targeting `dev` may be automatically:
+Apply `work:complete` only after the entire issue scope is finished and the
+candidate has received the required validation. It marks issue completion, not
+the completion of an intermediate milestone.
 
-1. marked ready after required CI passes;
+After required CI passes, a low-risk PR targeting `dev` with `work:complete`
+and without `manual-merge` is automatically:
+
+1. marked ready;
 2. configured for squash auto-merge.
 
-The `manual-merge` label disables this automation.
+The `manual-merge` label disables both automatic readiness and auto-merge.
 
 ## High-risk changes
 
 High-risk PRs receive the same automatic CI verification.
 
 They are never automatically marked ready or merged.
+
+A high-risk PR is still committed, pushed, and published as a draft without
+separate authorization.
 
 A human must review the result, mark the PR ready, and merge it.
 
