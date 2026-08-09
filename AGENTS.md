@@ -31,7 +31,8 @@ Agents may commit freely to their current issue-scoped branch. Commit each
 coherent milestone as soon as proportionate validation passes. Push the first
 meaningful commit and create its draft PR immediately, including for high-risk
 work. Continue pushing later milestone commits to that draft PR. Commit and
-draft publication do not grant readiness or merge authority.
+draft publication do not grant readiness or merge authority. An in-progress
+draft omits the `Closes #<issue>` line.
 
 Do not force-push.
 
@@ -120,13 +121,18 @@ Apply exactly one:
 Low-risk PRs may continue through repository automation.
 
 After the entire low-risk issue scope is finished and full validation passes,
-apply `work:complete`. Do not apply it to an intermediate milestone. For a
-low-risk PR without `manual-merge`, repository automation then marks it ready
-and configures squash auto-merge after required CI passes.
+add exactly one `Closes #<issue>` line and apply `work:complete`. Do not apply
+it to an intermediate milestone. For a low-risk PR without `manual-merge`,
+repository automation then marks it ready and configures squash auto-merge
+after required CI passes.
 
 High-risk PRs may be committed, pushed, and published as drafts without
-separate permission. They stop after validation and publication until a human
-explicitly authorizes readiness and merge.
+separate permission. When high-risk or `manual-merge` work is finished and
+validated, add exactly one `Closes #<issue>` line and apply
+`work:review-ready`. It then waits for human review, readiness, and merge.
+
+`work:blocked` retains the former `blocked` behavior. Do not work the PR or add
+a closing line or completion label until its blockers are resolved.
 
 If a PR uses a `human/*` branch or has the `human-created` label, stop. Do not
 modify its branch, commits, body, labels, checks, reviews, draft state,

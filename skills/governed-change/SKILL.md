@@ -40,7 +40,7 @@ description: Execute one repository change through issue, branch, validation, dr
 10. After the first meaningful commit:
    - push the work branch;
    - create a draft PR into dev;
-   - include exactly one `Closes #<issue>` line;
+   - omit the `Closes #<issue>` line while work remains;
    - apply exactly one of `risk:low` or `risk:high`.
 
    This publication permission applies to high-risk work. It does not grant
@@ -56,12 +56,18 @@ description: Execute one repository change through issue, branch, validation, dr
 
 13. Never downgrade automatically high-risk work.
 
-14. For low risk, apply `work:complete` only after the entire issue scope and
-    validation are complete. If `manual-merge` is absent, allow repository
-    automation to mark the PR ready and configure squash auto-merge.
+14. For low risk without `manual-merge`, only after the entire issue scope and
+    validation are complete:
+    - add exactly one `Closes #<issue>` line;
+    - apply `work:complete`;
+    - allow repository automation to mark the PR ready and configure squash
+      auto-merge.
 
-15. For high risk, stop after publication and validation. A human controls
-    readiness and merge.
+15. For high risk or `manual-merge`, only after the entire issue scope and
+    validation are complete:
+    - add exactly one `Closes #<issue>` line;
+    - apply `work:review-ready`;
+    - stop for human review, readiness, and merge.
 
 Never:
 
@@ -69,7 +75,10 @@ Never:
 - force-push;
 - leave a completed coherent milestone uncommitted while waiting for the whole
   issue to finish;
-- apply `work:complete` before the entire issue scope is finished;
+- add `Closes #<issue>`, `work:complete`, or `work:review-ready` before the
+  entire issue scope is finished;
+- work a PR labeled `work:blocked` until its blockers are resolved;
+- apply both completion labels;
 - automatically mark high-risk work ready;
 - automatically merge high-risk work;
 - merge into main;

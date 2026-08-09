@@ -45,9 +45,19 @@ REQUIRED_LABELS: tuple[dict[str, str], ...] = (
         "description": "Must be merged by a human, regardless of risk level.",
     },
     {
+        "name": "work:blocked",
+        "color": "9150b7",
+        "description": "Cannot be worked until blockers are resolved.",
+    },
+    {
         "name": "work:complete",
         "color": "1d76db",
         "description": "Full issue scope is ready for completion handling.",
+    },
+    {
+        "name": "work:review-ready",
+        "color": "5319e7",
+        "description": "Finished manual work is waiting for human review.",
     },
     {
         "name": "human-created",
@@ -60,6 +70,10 @@ REQUIRED_LABELS: tuple[dict[str, str], ...] = (
         "description": "Release version",
     },
 )
+
+RENAMED_LABELS: dict[str, str] = {
+    "blocked": "work:blocked",
+}
 
 JsonObject = dict[str, Any]
 ApiCall = Callable[[str, str, JsonObject | None], Any]
@@ -249,6 +263,31 @@ def ensure_labels(
     }
 
     messages: list[str] = []
+
+    labels_by_name = {
+        label["name"]: label
+        for label in REQUIRED_LABELS
+    }
+
+    for old_name, new_name in RENAMED_LABELS.items():
+        if old_name not in existing or new_name in existing:
+            continue
+
+        target = labels_by_name[new_name]
+        api(
+            "PATCH",
+            f"repos/{repo}/labels/{quote(old_name, safe='')}",
+            {
+                "new_name": new_name,
+                "color": target["color"],
+                "description": target["description"],
+            },
+        )
+        existing.remove(old_name)
+        existing.add(new_name)
+        messages.append(
+            f"renamed label {old_name} to {new_name}"
+        )
 
     for label in REQUIRED_LABELS:
         name = label["name"]

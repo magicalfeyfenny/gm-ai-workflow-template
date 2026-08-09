@@ -39,11 +39,13 @@ Every agent-governed repository change uses:
 5. required CI;
 6. merge according to the risk policy.
 
-An agent-governed work PR contains exactly one line:
+An in-progress draft PR does not contain a closing line. When the entire issue
+is ready for review or automatic merge, add exactly one line:
 
 Closes #<issue>
 
-The issue number must match the branch name.
+The issue number must match the branch name. The closing line appears together
+with the completion label required by the merge path below.
 
 ## Milestone commits and draft publication
 
@@ -58,6 +60,10 @@ pushing later coherent milestones to the same draft PR.
 
 A commit, push, or draft PR does not grant readiness or merge authority.
 High-risk and `manual-merge` PRs remain manual under the rules below.
+
+`work:blocked` retains the former `blocked` behavior: the PR cannot be worked
+until its blockers are resolved. While it is present, omit the closing line and
+both completion labels.
 
 ## Human-created changes
 
@@ -112,9 +118,9 @@ Automatically high-risk changes may not be downgraded.
 
 ## Low-risk changes
 
-Apply `work:complete` only after the entire issue scope is finished and the
-candidate has received the required validation. It marks issue completion, not
-the completion of an intermediate milestone.
+After the entire issue scope is finished and the candidate has received the
+required validation, add the closing line and apply `work:complete`. This label
+marks issue completion, not the completion of an intermediate milestone.
 
 After required CI passes, a low-risk PR targeting `dev` with `work:complete`
 and without `manual-merge` is automatically:
@@ -124,11 +130,16 @@ and without `manual-merge` is automatically:
 
 The `manual-merge` label disables both automatic readiness and auto-merge.
 
-## High-risk changes
+## Manual and high-risk changes
 
-High-risk PRs receive the same automatic CI verification.
+A PR uses the manual completion path when it is high risk or has
+`manual-merge`. It receives the same automatic CI verification.
 
-They are never automatically marked ready or merged.
+After the entire issue scope is finished and validated, add the closing line
+and apply `work:review-ready`. The label means that implementation is done and
+the PR is waiting for human review.
+
+Manual-path PRs are never automatically marked ready or merged.
 
 A high-risk PR is still committed, pushed, and published as a draft without
 separate authorization.

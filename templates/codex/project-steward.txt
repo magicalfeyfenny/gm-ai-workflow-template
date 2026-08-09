@@ -12,6 +12,6 @@ Return only:
 
 - issues created;
 - duplicate or stale tracking;
-- blocked PRs;
+- PRs labeled `work:blocked`;
 - persistent CI failures;
 - items requiring my decision.
