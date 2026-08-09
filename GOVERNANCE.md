@@ -68,10 +68,11 @@ otherwise work a human-created branch or PR.
 After a human-created change merges, divergence from current repository
 standards is not automatically a defect. The result may inform desired patterns
 or algorithms. Existing policy violations are treated as the repository
-baseline and do not block unrelated agent changes. An agent may create a
-bounded repository-standardizing issue from concrete merged evidence after
-checking for duplicates; the issue and any eventual change receive their
-ordinary risk classification.
+baseline and do not block unrelated agent changes.
+
+Human-authored work may be followed by a bounded repository-compliance issue.
+That issue may normalize structure, validation, assets, tests, and repository
+conventions without changing intended behavior. It uses the normal risk policy.
 
 This exception does not automate release builds, tags, releases, or
 publication.
