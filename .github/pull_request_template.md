@@ -10,4 +10,4 @@ What checks were run, if any?
 
 ## Scope
 
-List all systems or assets that were directly touched or affected, if any. 
+List all systems or assets that were directly touched or affected, if any.
