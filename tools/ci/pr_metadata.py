@@ -15,7 +15,7 @@ MAX_JSON_BYTES = 2 * 1024 * 1024
 
 MATCH = 0
 INVALID = 1
-STALE = 2
+STALE = 3
 
 
 class MetadataError(ValueError):
@@ -356,6 +356,7 @@ def compare_attestation(
     head_sha: str,
     run_id: int,
     run_attempt: int,
+    attestation_run_attempt: int | None = None,
 ) -> tuple[int, str]:
     try:
         repository = _string(repository, "repository")
@@ -369,6 +370,19 @@ def compare_attestation(
             run_attempt,
             "workflow run attempt",
         )
+        if attestation_run_attempt is None:
+            attestation_run_attempt = run_attempt
+        else:
+            attestation_run_attempt = _positive_integer(
+                attestation_run_attempt,
+                "attestation workflow run attempt",
+            )
+
+        if attestation_run_attempt > run_attempt:
+            raise MetadataError(
+                "attestation attempt is newer than completed attempt"
+            )
+
         (
             recorded_run_id,
             recorded_run_attempt,
@@ -389,7 +403,7 @@ def compare_attestation(
     )
     expected_envelope = (
         run_id,
-        run_attempt,
+        attestation_run_attempt,
         repository,
         pull_request_number,
         head_sha,
@@ -542,6 +556,10 @@ def parse_args(
         type=_positive_argument,
         required=True,
     )
+    compare.add_argument(
+        "--attestation-run-attempt",
+        type=_positive_argument,
+    )
 
     return parser.parse_args(argv)
 
@@ -580,6 +598,7 @@ def main(
         head_sha=args.head_sha,
         run_id=args.run_id,
         run_attempt=args.run_attempt,
+        attestation_run_attempt=args.attestation_run_attempt,
     )
     destination = sys.stdout if status == MATCH else sys.stderr
     print(f"pr-metadata: {message}", file=destination)

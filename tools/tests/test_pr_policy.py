@@ -360,6 +360,87 @@ class WorkflowPolicyTests(unittest.TestCase):
         )
         self.assertIn("PR_HEAD_REPOSITORY", text)
 
+    def test_auto_merge_is_bound_to_exact_ci_metadata(self):
+        ci_text = (ROOT / ".github/workflows/ci.yml").read_text(
+            encoding="utf-8"
+        )
+        merge_text = (
+            ROOT / ".github/workflows/low-risk-auto-merge.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("$GITHUB_EVENT_PATH", ci_text)
+        self.assertIn("actions/upload-artifact@v4", ci_text)
+        self.assertIn("retention-days: 30", ci_text)
+        self.assertIn(
+            "pr-metadata-${{ github.run_id }}-"
+            "${{ github.run_attempt }}",
+            ci_text,
+        )
+        self.assertLess(
+            ci_text.index("Upload CI PR metadata"),
+            ci_text.index("Check PR policy"),
+        )
+
+        self.assertIn("actions: read", merge_text)
+        self.assertIn(
+            'gh run download "$CI_RUN_ID"',
+            merge_text,
+        )
+        self.assertIn(
+            "github.event.workflow_run.run_attempt",
+            merge_text,
+        )
+        self.assertIn(
+            '--attestation-run-attempt "$CI_METADATA_ATTEMPT"',
+            merge_text,
+        )
+        self.assertIn('while [ "$attempt" -ge 1 ]', merge_text)
+        self.assertIn("attempt=$((attempt - 1))", merge_text)
+        self.assertIn(
+            "tools/ci/pr_metadata.py compare",
+            merge_text,
+        )
+
+        first_eligibility = merge_text.index(
+            "if ! eligible_current;"
+        )
+        ready = merge_text.index("gh pr ready")
+        second_eligibility = merge_text.index(
+            "if ! eligible_current;",
+            first_eligibility + 1,
+        )
+        configure = merge_text.index("--auto", second_eligibility)
+
+        self.assertLess(first_eligibility, ready)
+        self.assertLess(ready, second_eligibility)
+        self.assertLess(second_eligibility, configure)
+
+        eligibility_failures = merge_text.split(
+            "if ! eligible_current; then"
+        )[1:]
+        self.assertEqual(len(eligibility_failures), 2)
+
+        for failure in eligibility_failures:
+            block = failure.split("fi", 1)[0]
+            self.assertIn(
+                'CI_METADATA_STATUS" = "stale',
+                block,
+            )
+            self.assertNotIn("disable_auto_merge", block)
+
+        stale_case = merge_text.split(
+            'stale)',
+            1,
+        )[1].split('invalid)', 1)[0]
+        self.assertIn("exit 0", stale_case)
+        self.assertNotIn("disable_auto_merge", stale_case)
+
+        missing_case = merge_text.split(
+            "if ! download_ci_metadata; then",
+            1,
+        )[1].split("fi", 1)[0]
+        self.assertIn("disable_auto_merge", missing_case)
+
     def test_human_created_labeler_is_trusted_and_bounded(self):
         path = ROOT / ".github/workflows/human-created.yml"
         text = path.read_text(encoding="utf-8")

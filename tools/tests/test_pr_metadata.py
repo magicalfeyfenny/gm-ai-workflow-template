@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from copy import deepcopy
@@ -18,6 +20,7 @@ PR_NUMBER = 15
 HEAD_SHA = "a" * 40
 RUN_ID = 123456
 RUN_ATTEMPT = 1
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def event_payload(
@@ -261,6 +264,41 @@ class PrMetadataTests(unittest.TestCase):
 
                 self.assertEqual(status, INVALID)
 
+    def test_partial_rerun_accepts_same_run_earlier_attestation(self):
+        attestation = self.attestation()
+
+        status, _ = compare(
+            attestation,
+            current_pull_request(),
+            run_attempt=2,
+            attestation_run_attempt=1,
+        )
+
+        self.assertEqual(status, MATCH)
+
+    def test_attestation_attempt_is_cross_bound_and_not_future(self):
+        attestation = self.attestation()
+        cases = (
+            {
+                "run_attempt": 2,
+                "attestation_run_attempt": 2,
+            },
+            {
+                "run_attempt": 1,
+                "attestation_run_attempt": 2,
+            },
+        )
+
+        for overrides in cases:
+            with self.subTest(overrides=overrides):
+                status, _ = compare(
+                    attestation,
+                    current_pull_request(),
+                    **overrides,
+                )
+
+                self.assertEqual(status, INVALID)
+
     def test_malformed_attestations_are_invalid(self):
         valid = self.attestation()
         cases = []
@@ -385,6 +423,22 @@ class PrMetadataTests(unittest.TestCase):
             )
 
         self.assertEqual(result, INVALID)
+
+    def test_cli_parser_error_is_not_stale_evidence(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tools/ci/pr_metadata.py"),
+                "compare",
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertNotEqual(result.returncode, STALE)
 
 
 if __name__ == "__main__":

@@ -63,6 +63,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
+      actions: read
       contents: write
       pull-requests: write
 
@@ -81,6 +82,8 @@ jobs:
           PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
           CI_HEAD: ${{ github.event.workflow_run.head_sha }}
           CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+          CI_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           if [ -z "$PR_NUMBER" ]; then
             exit 0
@@ -90,7 +93,7 @@ jobs:
             gh pr view "$PR_NUMBER" \
               --repo "$GITHUB_REPOSITORY" \
               --json \
-              baseRefName,headRefName,headRefOid,headRepository,body,labels,additions,deletions,isDraft,state,autoMergeRequest \
+              number,baseRefName,headRefName,headRefOid,headRepository,body,labels,additions,deletions,isDraft,state,autoMergeRequest \
               > /tmp/pr.json
           }
 
@@ -102,6 +105,29 @@ jobs:
                 and .headRefOid == $head' \
               /tmp/pr.json \
               > /dev/null
+          }
+
+          classify_ci_metadata() {
+            if python3 tools/ci/pr_metadata.py compare \
+              --attestation-path "$PR_METADATA_PATH" \
+              --current-pr-path /tmp/pr.json \
+              --repository "$GITHUB_REPOSITORY" \
+              --pull-request-number "$PR_NUMBER" \
+              --head-sha "$CI_HEAD" \
+              --run-id "$CI_RUN_ID" \
+              --run-attempt "$CI_RUN_ATTEMPT" \
+              --attestation-run-attempt "$CI_METADATA_ATTEMPT"; then
+              CI_METADATA_STATUS="match"
+            else
+              case "$?" in
+                3)
+                  CI_METADATA_STATUS="stale"
+                  ;;
+                *)
+                  CI_METADATA_STATUS="invalid"
+                  ;;
+              esac
+            fi
           }
 
           collect_files() {
@@ -116,11 +142,22 @@ jobs:
             local eligible
 
             refresh_pr || return 1
+            classify_ci_metadata
+
+            if [ "$CI_METADATA_STATUS" != "match" ]; then
+              return 1
+            fi
+
             current_open_dev_head || return 1
             collect_files || return 1
             refresh_pr || return 1
-            current_open_dev_head || return 1
+            classify_ci_metadata
 
+            if [ "$CI_METADATA_STATUS" != "match" ]; then
+              return 1
+            fi
+
+            current_open_dev_head || return 1
             PR_BASE="$(jq -r '.baseRefName' /tmp/pr.json)"
             PR_HEAD="$(jq -r '.headRefName' /tmp/pr.json)"
             PR_HEAD_REPOSITORY="$(
@@ -157,6 +194,35 @@ jobs:
             [ "$eligible" = "true" ]
           }
 
+          download_ci_metadata() {
+            local artifact
+            local attempt
+            local destination
+
+            attempt="$CI_RUN_ATTEMPT"
+
+            while [ "$attempt" -ge 1 ]; do
+              artifact="pr-metadata-$CI_RUN_ID-$attempt"
+              destination="$RUNNER_TEMP/ci-metadata-$attempt"
+
+              if gh run download "$CI_RUN_ID" \
+                --repo "$GITHUB_REPOSITORY" \
+                --name "$artifact" \
+                --dir "$destination"; then
+                PR_METADATA_PATH="$destination/pr-metadata.json"
+                CI_METADATA_ATTEMPT="$attempt"
+                export PR_METADATA_PATH CI_METADATA_ATTEMPT
+
+                [ -f "$PR_METADATA_PATH" ]
+                return
+              fi
+
+              attempt=$((attempt - 1))
+            done
+
+            return 1
+          }
+
           disable_auto_merge() {
             refresh_pr
 
@@ -176,12 +242,42 @@ jobs:
               > /dev/null
           }
 
+          if ! download_ci_metadata; then
+            disable_auto_merge
+            echo "CI metadata evidence is missing." >&2
+            exit 0
+          fi
+
+          if ! refresh_pr; then
+            echo "Current PR metadata is unavailable." >&2
+            exit 1
+          fi
+
+          classify_ci_metadata
+
+          case "$CI_METADATA_STATUS" in
+            stale)
+              echo "Stale CI run ignored; current metadata needs its own CI."
+              exit 0
+              ;;
+            invalid)
+              disable_auto_merge
+              echo "CI metadata evidence is invalid." >&2
+              exit 0
+              ;;
+          esac
+
           if [ "$CI_CONCLUSION" != "success" ]; then
             disable_auto_merge
             exit 0
           fi
 
           if ! eligible_current; then
+            if [ "$CI_METADATA_STATUS" = "stale" ]; then
+              echo "Stale CI run ignored during eligibility recheck."
+              exit 0
+            fi
+
             disable_auto_merge
             echo "PR requires manual handling."
             exit 0
@@ -196,6 +292,11 @@ jobs:
           fi
 
           if ! eligible_current; then
+            if [ "$CI_METADATA_STATUS" = "stale" ]; then
+              echo "Stale CI run ignored after readiness recheck."
+              exit 0
+            fi
+
             disable_auto_merge
             echo "PR changed before auto-merge configuration."
             exit 0
@@ -205,6 +306,13 @@ jobs:
             /tmp/pr.json \
             > /dev/null; then
             disable_auto_merge
+            exit 0
+          fi
+
+          if jq -e '.autoMergeRequest != null' \
+            /tmp/pr.json \
+            > /dev/null; then
+            echo "Auto-merge is already configured for this PR state."
             exit 0
           fi
 

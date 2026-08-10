@@ -128,6 +128,11 @@ and without `manual-merge` is automatically:
 1. marked ready;
 2. configured for squash auto-merge.
 
+The successful CI run must attest to the current head and the current
+policy-relevant PR metadata, including the exact body and labels. Changing
+that metadata requires a new successful run; an older run for the same head
+cannot authorize readiness or auto-merge for the newer state.
+
 The `manual-merge` label disables both automatic readiness and auto-merge.
 
 ## Manual and high-risk changes
