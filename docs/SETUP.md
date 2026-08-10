@@ -93,7 +93,7 @@ fails closed before the merge call.
 
 ## Validate the generated repository
 
-Run:
+From the generated repository root, run:
 
 ```sh
 python3.12 tools/ci/check_repo.py
