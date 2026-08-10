@@ -62,6 +62,35 @@ The tool is safe to rerun: it never moves an existing `main`, and it updates
 the named labels and rulesets in place. Review its output if it reports that
 `main` already existed.
 
+## Configure governed merge authentication
+
+The built-in Actions `GITHUB_TOKEN` cannot provide the identity context needed
+for GitHub-native linked-issue closure when the low-risk workflow performs the
+merge. Configure a dedicated GitHub App for that final merge call:
+
+1. Register a private GitHub App owned by the repository owner. Disable
+   webhooks and grant no account or organization permissions.
+2. Grant exactly these repository permissions:
+   - Contents: read and write;
+   - Issues: read and write;
+   - Pull requests: read and write.
+   Metadata read access is implicit.
+3. Install the App only on the generated repository. Do not grant access to
+   other repositories.
+4. Add the App client ID as the repository Actions variable
+   `GOVERNED_MERGE_APP_CLIENT_ID`.
+5. Generate a private key and store the complete PEM as the repository Actions
+   secret `GOVERNED_MERGE_APP_PRIVATE_KEY`. Never commit the key.
+
+Provisioning, installation, private-key rotation, and revocation are
+human-owned setup steps. The workflow uses the built-in job token for CI
+evidence, current-PR reads, readiness, and stale auto-merge revocation. It
+mints a separate installation token limited to the current repository and the
+three permissions above, uses it only for the final exact-head merge, and
+revokes it when the job ends. No personal access token is required or
+supported. If the App variable or secret is absent, automatic low-risk merging
+fails closed before the merge call.
+
 ## Validate the generated repository
 
 Run:
