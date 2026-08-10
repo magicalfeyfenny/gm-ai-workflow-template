@@ -64,9 +64,7 @@ jobs:
 
     permissions:
       actions: read
-      contents: write
-      # GitHub uses the merge token for native linked-issue closure.
-      issues: write
+      contents: read
       pull-requests: write
 
     steps:
@@ -78,9 +76,20 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Revalidate and configure auto-merge
+      - name: Create governed merge token
+        id: governed-merge-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.GOVERNED_MERGE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GOVERNED_MERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Revalidate and merge
         env:
           GH_TOKEN: ${{ github.token }}
+          MERGE_TOKEN: ${{ steps.governed-merge-token.outputs.token }}
           PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
           CI_HEAD: ${{ github.event.workflow_run.head_sha }}
           CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
@@ -300,7 +309,7 @@ jobs:
             fi
 
             disable_auto_merge
-            echo "PR changed before auto-merge configuration."
+            echo "PR changed before merge."
             exit 0
           fi
 
@@ -318,7 +327,10 @@ jobs:
             exit 0
           fi
 
-          gh pr merge \
+          # Use a distinct App identity only for the final merge. GitHub's
+          # built-in Actions token does not perform native linked-issue
+          # closure even when the job grants it Issues write permission.
+          GH_TOKEN="$MERGE_TOKEN" gh pr merge \
             "$PR_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
             --auto \

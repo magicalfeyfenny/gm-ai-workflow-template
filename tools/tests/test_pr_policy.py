@@ -360,17 +360,74 @@ class WorkflowPolicyTests(unittest.TestCase):
         )
         self.assertIn("PR_HEAD_REPOSITORY", text)
 
-    def test_native_issue_closure_permission_is_merge_job_scoped(self):
+    def test_native_issue_closure_uses_repository_scoped_app_token(self):
         path = ROOT / ".github/workflows/low-risk-auto-merge.yml"
         text = path.read_text(encoding="utf-8")
         workflow_header, jobs = text.split("\njobs:\n", 1)
         cancel_job, merge_job = jobs.split("\n  merge:\n", 1)
         merge_permissions = merge_job.split("\n    steps:\n", 1)[0]
+        token_step = merge_job.split(
+            "uses: actions/create-github-app-token@v3",
+            1,
+        )[1].split("\n      - name:", 1)[0]
 
         self.assertIn("permissions: {}", workflow_header)
         self.assertNotIn("issues:", cancel_job)
-        self.assertIn("issues: write", merge_permissions)
+        self.assertIn("actions: read", merge_permissions)
+        self.assertIn("contents: read", merge_permissions)
+        self.assertIn("pull-requests: write", merge_permissions)
+        self.assertNotIn("contents: write", merge_permissions)
+        self.assertNotIn("issues:", merge_permissions)
+        self.assertEqual(
+            text.count("actions/create-github-app-token@v3"),
+            1,
+        )
+
+        for required in (
+            "client-id: ${{ vars.GOVERNED_MERGE_APP_CLIENT_ID }}",
+            "private-key: "
+            "${{ secrets.GOVERNED_MERGE_APP_PRIVATE_KEY }}",
+            "permission-contents: write",
+            "permission-issues: write",
+            "permission-pull-requests: write",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, token_step)
+
+        self.assertNotIn("owner:", token_step)
+        self.assertNotIn("repositories:", token_step)
         self.assertEqual(text.count("issues: write"), 1)
+        self.assertIn(
+            "MERGE_TOKEN: "
+            "${{ steps.governed-merge-token.outputs.token }}",
+            merge_job,
+        )
+
+        final_merge = merge_job.split(
+            'GH_TOKEN="$MERGE_TOKEN" gh pr merge',
+            1,
+        )[1]
+        self.assertIn("--auto", final_merge)
+        self.assertIn("--squash", final_merge)
+        self.assertIn('--match-head-commit "$CI_HEAD"', final_merge)
+
+    def test_governed_merge_app_setup_is_explicit_and_human_owned(self):
+        setup = (ROOT / "docs/SETUP.md").read_text(encoding="utf-8")
+
+        for required in (
+            "Configure governed merge authentication",
+            "Contents: read and write",
+            "Issues: read and write",
+            "Pull requests: read and write",
+            "only on the generated repository",
+            "GOVERNED_MERGE_APP_CLIENT_ID",
+            "GOVERNED_MERGE_APP_PRIVATE_KEY",
+            "human-owned setup steps",
+            "No personal access token",
+            "fails closed before the merge call",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, setup)
 
     def test_auto_merge_relies_on_native_issue_closure(self):
         path = ROOT / ".github/workflows/low-risk-auto-merge.yml"
@@ -435,11 +492,14 @@ class WorkflowPolicyTests(unittest.TestCase):
             "if ! eligible_current;",
             first_eligibility + 1,
         )
-        configure = merge_text.index("--auto", second_eligibility)
+        merge = merge_text.index(
+            'GH_TOKEN="$MERGE_TOKEN" gh pr merge',
+            second_eligibility,
+        )
 
         self.assertLess(first_eligibility, ready)
         self.assertLess(ready, second_eligibility)
-        self.assertLess(second_eligibility, configure)
+        self.assertLess(second_eligibility, merge)
 
         eligibility_failures = merge_text.split(
             "if ! eligible_current; then"
