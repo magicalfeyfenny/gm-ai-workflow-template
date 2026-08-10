@@ -64,8 +64,9 @@ See [GOVERNANCE.md](GOVERNANCE.md) and
 
    - A low-risk `dev` pull request without `manual-merge` gets exactly one
      `Closes #<issue>` line and the `work:complete` label. After required CI
-     passes for the current head, automation marks it ready and configures
-     squash auto-merge.
+     passes for the current head, body, and labels, automation marks it ready
+     and configures squash auto-merge. Older runs for the same head cannot
+     authorize a newer metadata state.
    - A high-risk or `manual-merge` pull request gets exactly one
      `Closes #<issue>` line and the `work:review-ready` label. It then waits for
      a human to review it, mark it ready, and merge it.

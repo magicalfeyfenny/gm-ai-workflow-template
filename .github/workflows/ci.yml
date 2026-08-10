@@ -32,6 +32,23 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Capture CI PR metadata
+        run: |
+          python3 tools/ci/pr_metadata.py capture \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output "$RUNNER_TEMP/pr-metadata.json" \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Upload CI PR metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-metadata-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pr-metadata.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Collect changed files
         env:
           GH_TOKEN: ${{ github.token }}
