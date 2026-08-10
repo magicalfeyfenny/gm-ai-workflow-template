@@ -65,6 +65,8 @@ jobs:
     permissions:
       actions: read
       contents: write
+      # GitHub uses the merge token for native linked-issue closure.
+      issues: write
       pull-requests: write
 
     steps:

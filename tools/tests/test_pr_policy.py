@@ -360,6 +360,32 @@ class WorkflowPolicyTests(unittest.TestCase):
         )
         self.assertIn("PR_HEAD_REPOSITORY", text)
 
+    def test_native_issue_closure_permission_is_merge_job_scoped(self):
+        path = ROOT / ".github/workflows/low-risk-auto-merge.yml"
+        text = path.read_text(encoding="utf-8")
+        workflow_header, jobs = text.split("\njobs:\n", 1)
+        cancel_job, merge_job = jobs.split("\n  merge:\n", 1)
+        merge_permissions = merge_job.split("\n    steps:\n", 1)[0]
+
+        self.assertIn("permissions: {}", workflow_header)
+        self.assertNotIn("issues:", cancel_job)
+        self.assertIn("issues: write", merge_permissions)
+        self.assertEqual(text.count("issues: write"), 1)
+
+    def test_auto_merge_relies_on_native_issue_closure(self):
+        path = ROOT / ".github/workflows/low-risk-auto-merge.yml"
+        text = path.read_text(encoding="utf-8")
+
+        for direct_close in (
+            "gh issue close",
+            "closeIssue",
+            "/issues/",
+            "state=closed",
+            '"state": "closed"',
+        ):
+            with self.subTest(direct_close=direct_close):
+                self.assertNotIn(direct_close, text)
+
     def test_auto_merge_is_bound_to_exact_ci_metadata(self):
         ci_text = (ROOT / ".github/workflows/ci.yml").read_text(
             encoding="utf-8"
