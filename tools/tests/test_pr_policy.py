@@ -374,9 +374,9 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn("permissions: {}", workflow_header)
         self.assertNotIn("issues:", cancel_job)
         self.assertIn("actions: read", merge_permissions)
-        self.assertIn("contents: read", merge_permissions)
+        self.assertIn("contents: write", merge_permissions)
         self.assertIn("pull-requests: write", merge_permissions)
-        self.assertNotIn("contents: write", merge_permissions)
+        self.assertNotIn("contents: read", merge_permissions)
         self.assertNotIn("issues:", merge_permissions)
         self.assertEqual(
             text.count("actions/create-github-app-token@v3"),
@@ -401,6 +401,10 @@ class WorkflowPolicyTests(unittest.TestCase):
             "MERGE_TOKEN: "
             "${{ steps.governed-merge-token.outputs.token }}",
             merge_job,
+        )
+        self.assertEqual(
+            merge_job.count('GH_TOKEN="$MERGE_TOKEN"'),
+            1,
         )
 
         final_merge = merge_job.split(
