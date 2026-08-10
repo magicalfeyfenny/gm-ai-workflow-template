@@ -83,9 +83,18 @@ human-owned steps:
 3. Make the bundled skills under `skills/` available to Codex. For
    repository-scoped discovery, link them under `.agents/skills/`; Codex
    supports symlinked skill directories.
-4. In Codex, create the Project Steward scheduled task for this repository
-   using `templates/codex/project-steward.txt`. Choose its schedule and
-   execution identity manually.
+4. In Codex, manually create whichever scheduled automations the generated
+   repository should use. Choose each automation's schedule and execution
+   identity:
+   - Project Steward uses `templates/codex/project-steward.txt` to audit the
+     repository and create evidence-backed issues without changing
+     implementation.
+   - Governed Change uses `templates/codex/governed-change.txt` to select at
+     most one eligible existing issue and execute its governed branch,
+     validation, draft pull request, risk, and completion workflow.
+   Keep these automations separate: Project Steward creates and tracks
+   actionable issue work, while Governed Change executes one existing
+   agent-workable issue.
 5. Add any game-specific hosted runner configuration or secrets needed by the
    GameMaker tests. Do not infer visual or runtime success from the Python
    policy checks.
