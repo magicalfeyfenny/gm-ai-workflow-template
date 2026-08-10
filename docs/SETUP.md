@@ -17,10 +17,13 @@ needs repository Administration, Contents, and Issues write access so the
 setup tool can configure settings and rulesets, create `main`, and manage
 labels.
 
+
 ## Configure GitHub
 
 1. Create the repository from this template. Its initial branch must be the
    template's default `dev` branch.
+   When creating the repository, do not select "Include all branches".
+   Generate it from the template's default `dev` branch only.
 2. Clone the generated repository and enter its root directory.
 3. Initialize Git LFS for the local account:
 
