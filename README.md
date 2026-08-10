@@ -7,11 +7,14 @@ source/runtime asset rules without assuming a specific game.
 
 ## Create a project
 
-Create a repository from this template, then follow [docs/SETUP.md](docs/SETUP.md)
-to configure its GitHub branches, labels, merge settings, and rulesets.
+This template supplies the reusable governed workflow scaffold. Each generated
+repository must still initialize its project-specific GameMaker project under
+`project/` and download and pin the latest GM-Testing-Library release.
 
-Place the GameMaker project under `project/`. Read `AGENTS.md`, `GOVERNANCE.md`,
-and `PROJECT_POLICY.toml` before making repository changes.
+After creating a repository from the template, follow
+[docs/SETUP.md](docs/SETUP.md) for the complete setup checklist. Read
+`AGENTS.md`, `GOVERNANCE.md`, and `PROJECT_POLICY.toml` before making repository
+changes.
 
 ## Governance at a glance
 
