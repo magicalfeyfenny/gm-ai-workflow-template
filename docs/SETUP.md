@@ -91,6 +91,14 @@ revokes it when the job ends. No personal access token is required or
 supported. If the App variable or secret is absent, automatic low-risk merging
 fails closed before the merge call.
 
+After provisioning, verify this identity path with one fresh, bounded
+documentation-only issue and low-risk pull request targeting `dev`. Let the
+repository automation mark the pull request ready and merge its exact head;
+do not manually ready, merge, or close it. Confirm that Required CI used the
+current pull-request metadata, the App performed the merge, and GitHub natively
+closed the linked issue. Preserve the issue, pull request, and workflow-run
+evidence if any part of that smoke check fails.
+
 ## Validate the generated repository
 
 Run:
