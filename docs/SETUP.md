@@ -120,10 +120,7 @@ human-owned steps:
 1. Initialize the GameMaker project under `project/`.
 2. Download the latest GM-Testing-Library release when the GameMaker project
    is initialized, pin that version, and add the project's GameMaker tests.
-3. Make the bundled skills under `skills/` available to Codex. For
-   repository-scoped discovery, link them under `.agents/skills/`; Codex
-   supports symlinked skill directories.
-4. In Codex, manually create whichever scheduled automations the generated
+3. In Codex, manually create whichever scheduled automations the generated
    repository should use. Choose each automation's schedule and execution
    identity:
    - Project Steward uses `templates/codex/project-steward.txt` to audit the
@@ -135,9 +132,13 @@ human-owned steps:
    Keep these automations separate: Project Steward creates and tracks
    actionable issue work, while Governed Change executes one existing
    agent-workable issue.
-5. Add any game-specific hosted runner configuration or secrets needed by the
+4. Add any game-specific hosted runner configuration or secrets needed by the
    GameMaker tests. Do not infer visual or runtime success from the Python
    policy checks.
 
 If the bootstrap tool completes successfully, no manual GitHub branch,
 default-branch, merge-strategy, label, or ruleset configuration remains.
+
+Repository-local Codex skills are stored directly under `.agents/skills/`.
+They are included automatically when the repository is created from this
+template.
