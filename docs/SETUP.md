@@ -102,6 +102,31 @@ current pull-request metadata, the App performed the merge, and GitHub natively
 closed the linked issue. Preserve the issue, pull request, and workflow-run
 evidence if any part of that smoke check fails.
 
+## Register pinned imported libraries
+
+Keep imported third-party libraries pinned to a specific upstream version and
+treat their files as read-only. If an imported source file must retain upstream
+structure that conflicts with this repository's source rules, add its exact
+repository-relative path to `structure.large_file_exceptions` in
+`PROJECT_POLICY.toml`:
+
+```toml
+large_file_exceptions = [
+    "project/game/scripts/vendor_library/vendor_library.gml",
+]
+```
+
+List only the necessary imported-library files. Each entry bypasses all
+source-structure checks for that exact file, including the line limit,
+forbidden generic-name check, and UTF-8 check. Entries are not globs and do not
+exempt a directory, path prefix, neighboring file, or similarly named file.
+They do not affect checks outside source-structure validation.
+
+Do not add repository-owned source to this list. Adding or changing an
+exception is high-risk governed work. When an imported library is updated,
+update its pinned version and exact exception paths in the same bounded change,
+then run the full validation below.
+
 ## Validate the generated repository
 
 From the generated repository root, run:

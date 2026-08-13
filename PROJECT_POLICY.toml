@@ -25,6 +25,9 @@ forbidden_generic_stems = [
     "common",
 ]
 
+# Exact repository-relative files from pinned, read-only imported libraries.
+# Each listed file bypasses every source-structure check; entries are not globs
+# and do not match directories, prefixes, or neighboring files.
 large_file_exceptions = []
 
 [assets]

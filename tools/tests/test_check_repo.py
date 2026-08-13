@@ -5,12 +5,29 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.ci.check_repo import new_policy_errors, validate_assets
+from tools.ci.check_repo import (
+    new_policy_errors,
+    validate_assets,
+    validate_structure,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class RepositoryPolicyTests(unittest.TestCase):
+    @staticmethod
+    def structure_policy(
+        exceptions: list[str] | None = None,
+    ) -> dict:
+        return {
+            "structure": {
+                "max_source_lines": 800,
+                "source_extensions": [".gml"],
+                "forbidden_generic_stems": ["helpers"],
+                "large_file_exceptions": exceptions or [],
+            }
+        }
+
     @staticmethod
     def asset_policy() -> dict:
         return {
@@ -85,6 +102,79 @@ class RepositoryPolicyTests(unittest.TestCase):
                 {"source/legacy.gml"},
             ),
             [current],
+        )
+
+    def test_exact_large_file_exception_skips_structure_checks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = Path("vendor/helpers.gml")
+            (root / path).parent.mkdir(parents=True)
+            (root / path).write_text(
+                "upstream line\n" * 801,
+                encoding="utf-8",
+            )
+            errors: list[str] = []
+
+            validate_structure(
+                root,
+                self.structure_policy([path.as_posix()]),
+                [path],
+                errors,
+            )
+
+        self.assertEqual(errors, [])
+
+    def test_exact_large_file_exception_skips_utf8_check(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = Path("vendor/library.gml")
+            (root / path).parent.mkdir(parents=True)
+            (root / path).write_bytes(b"\xff")
+            errors: list[str] = []
+
+            validate_structure(
+                root,
+                self.structure_policy([path.as_posix()]),
+                [path],
+                errors,
+            )
+
+        self.assertEqual(errors, [])
+
+    def test_large_file_exception_does_not_expand_beyond_exact_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            exempt = Path("vendor/library.gml")
+            sibling = Path("vendor/helpers.gml")
+            nested = Path("vendor/imported/nested.gml")
+
+            for path in (exempt, sibling, nested):
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_text(
+                    "upstream line\n" * 801,
+                    encoding="utf-8",
+                )
+
+            errors: list[str] = []
+            validate_structure(
+                root,
+                self.structure_policy(
+                    [
+                        exempt.as_posix(),
+                        "vendor/imported",
+                    ]
+                ),
+                [exempt, sibling, nested],
+                errors,
+            )
+
+        self.assertEqual(
+            errors,
+            [
+                f"{sibling}: generic source filename is forbidden",
+                f"{sibling}: 801 lines exceeds limit 800",
+                f"{nested}: 801 lines exceeds limit 800",
+            ],
         )
 
     def test_asset_validation_reads_the_selected_root(self):
