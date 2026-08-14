@@ -259,16 +259,28 @@ Canonical JSON is stored once and is not entered in the derived-asset manifest.
 
 ## Source structure
 
-A source file has one primary responsibility.
+A repository-owned source file has one primary responsibility.
 
-Generic dumping-ground source files named `helper`, `helpers`, `util`, `utils`,
-`misc`, or `common` are not allowed.
+Generic dumping-ground repository-owned source files named `helper`, `helpers`,
+`util`, `utils`, `misc`, or `common` are not allowed.
 
-Source files may not exceed the configured line limit.
+Repository-owned source files may not exceed the configured line limit. When a
+file approaches the limit, split it by responsibility.
 
-When a file approaches the limit, split it by responsibility.
+Pinned, read-only imported-library source is an exception. To preserve its
+upstream bytes, list only the necessary exact repository-relative file paths in
+`structure.large_file_exceptions` in `PROJECT_POLICY.toml`. Each listed file
+bypasses every source-structure check, including the line limit, forbidden
+generic-name check, and UTF-8 check.
 
-Changing the limit or adding an exception is high risk.
+Exception entries match files exactly. Globs, directory entries, path prefixes,
+and library-like names do not exempt any other file. Do not use an exception
+for repository-owned source or infer one merely from a file's location or name.
+The setting does not bypass checks outside source-structure validation.
+
+Changing the limit or adding an exception is high risk. Keep each imported
+library pinned and read-only; update its version and exception paths together
+as separate governed work.
 
 ## CI
 
