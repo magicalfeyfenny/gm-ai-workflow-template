@@ -261,6 +261,18 @@ Canonical JSON is stored once and is not entered in the derived-asset manifest.
 
 A repository-owned source file has one primary responsibility.
 
+Code written or changed by an agent must be intentionally interpretable by
+humans. Make each function plain and obvious to understand by reading it.
+Prefer straightforward code over clever techniques. When a clever or
+non-obvious technique is necessary, add a concise plain-English comment that
+explains the technique and why it is needed.
+
+Add a concise plain-English comment to every function written or changed by an
+agent, and wherever implementation intent would otherwise be unclear. Comments
+must accurately describe current behavior. A function comment must limit its
+claims to behavior the function actually implements. Do not use comments as a
+wishlist unless planned or desired behavior is clearly labeled `TODO`.
+
 Generic dumping-ground repository-owned source files named `helper`, `helpers`,
 `util`, `utils`, `misc`, or `common` are not allowed.
 
