@@ -57,7 +57,16 @@ Do not create generic helper, utility, misc, or common dumping grounds.
 
 Respect the source-size limit in PROJECT_POLICY.toml.
 
-Prefer explicit, human-readable code.
+Write code that is intentionally interpretable by humans. Make each function
+plain and obvious to understand by reading it. Avoid clever techniques unless
+they are necessary, and explain each necessary non-obvious technique with a
+concise plain-English comment.
+
+Add a concise plain-English comment to every function you write or change, and
+wherever intent would otherwise be unclear. Comments must accurately describe
+current behavior and limit their claims to what the code actually does. Do not
+use comments as a wishlist unless the planned behavior is clearly labeled
+`TODO`.
 
 ## Asset pipelines
 
