@@ -5,84 +5,64 @@ description: Execute one repository change through issue, branch, validation, dr
 
 # Governed change
 
-1. Read GOVERNANCE.md and PROJECT_POLICY.toml.
+Use this skill for a direct governed request. A scheduled run also uses it,
+with the narrower selection and authority in its automation template.
 
-2. Find the issue for the requested work.
+## Routes
 
-3. If none exists, create one with:
-   - summary;
-   - acceptance criteria;
-   - bounded scope;
-   - expected risk.
+- Start: [Issue authority](../../../GOVERNANCE.md#issue-authority),
+  [Branches](../../../GOVERNANCE.md#branches), and
+  [Unit of work](../../../GOVERNANCE.md#unit-of-work).
+- Evidence and publication:
+  [Validation evidence](../../../GOVERNANCE.md#validation-evidence) and
+  [Milestone commits](../../../GOVERNANCE.md#milestone-commits-and-draft-publication).
+- Completion: [Risk](../../../GOVERNANCE.md#risk),
+  [Completion transition](../../../GOVERNANCE.md#completion-transition), and
+  the applicable [low-risk](../../../GOVERNANCE.md#low-risk-changes) or
+  [manual](../../../GOVERNANCE.md#manual-and-high-risk-changes) path.
+- Executable values: only the affected tables in
+  [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml).
 
-4. Assign a newly created issue to the current user.
+For production code, assets, or GameMaker data, also use the
+[GameMaker production skill](../gamemaker-production/SKILL.md). If live state
+is human-owned, follow
+[Human-created changes](../../../GOVERNANCE.md#human-created-changes) and stop.
+Read [Releases](../../../GOVERNANCE.md#releases) only for explicitly authorized
+release work.
 
-5. Run:
+## Issue selection
 
-   git fetch origin dev
+For a direct request, use the exact matching issue or, if absent, create only
+the issue authorized by Issue authority. For a scheduled run, follow its
+template: direct-request creation does not apply, and no eligible issue means
+no repository mutation.
 
-6. Create:
+## Execute
 
-   work/<issue>-<slug>
+1. Inspect live tracking and checkout state. Immediately before direct work,
+   recheck the issue match, ownership, authority, branch, and PR; for scheduled
+   work, recheck every template eligibility condition.
+2. Refresh `origin/dev` and create the governed issue branch.
+3. Implement only the issue scope in coherent milestones through any additional
+   task route above.
+4. For each milestone, obtain Stage 1 evidence, commit it, and publish or
+   update the draft PR under the milestone rules.
+5. After the whole issue is complete, obtain Stage 2 evidence for the unchanged
+   candidate, perform the applicable completion transition, and obtain fresh
+   Stage 3 evidence.
+6. Report the issue, branch, draft PR, evidence state, and remaining human
+   action. Leave manual-path readiness and merge to a human.
 
-   from origin/dev.
+## Critical stops
 
-   Never create or use a `human/*` branch. That namespace is human-only.
+These stops repeat Governance because a mutation procedure must expose them:
 
-7. Implement only the issue scope in coherent milestones.
-
-8. Apply repository structure, asset, and content rules.
-
-9. When a coherent milestone is ready, obtain Stage 1 milestone evidence under
-   GOVERNANCE.md and commit it immediately to the current issue branch.
-   Separate commit authorization is not required.
-
-10. After the first meaningful commit:
-   - push the work branch;
-   - create a draft PR into dev;
-   - omit the `Closes #<issue>` line while work remains;
-   - apply exactly one of `risk:low` or `risk:high`.
-
-   This publication permission applies to high-risk work. It does not grant
-   readiness or merge authority.
-
-11. Commit and push every later coherent milestone to the same draft PR.
-
-12. Before declaring the whole issue complete, obtain valid Stage 2
-    whole-issue local evidence under GOVERNANCE.md.
-
-13. Never downgrade automatically high-risk work.
-
-14. For low risk without `manual-merge`, only after the entire issue scope is
-    complete and Stage 2 evidence is valid:
-    - add exactly one `Closes #<issue>` line;
-    - apply `work:complete`;
-    - obtain Stage 3 hosted PR evidence for that completion metadata;
-    - allow repository automation to mark the PR ready and configure squash
-      auto-merge only after Stage 3 passes.
-
-15. For high risk or `manual-merge`, only after the entire issue scope is
-    complete and Stage 2 evidence is valid:
-    - add exactly one `Closes #<issue>` line;
-    - apply `work:review-ready`;
-    - obtain Stage 3 hosted PR evidence for that completion metadata;
-    - stop for human review, readiness, and merge.
-
-Never:
-
-- branch from local dev;
-- force-push;
-- leave a completed coherent milestone uncommitted while waiting for the whole
-  issue to finish;
-- add `Closes #<issue>`, `work:complete`, or `work:review-ready` before the
-  entire issue scope is finished and Stage 2 evidence is valid;
-- work a PR labeled `work:blocked` until its blockers are resolved;
-- apply both completion labels;
-- automatically mark high-risk work ready;
-- automatically merge high-risk work;
-- merge into main;
-- create releases;
-- create, modify, review, validate, label, ready, or merge a `human-created`
-  PR;
-- invoke a ruleset bypass;
-- perform unrelated cleanup.
+- Never branch from local `dev`, use a `human/*` branch, or work a
+  `human-created` or `work:blocked` PR.
+- Do not force-push, invoke a ruleset bypass, or perform unrelated cleanup.
+- Do not add completion metadata before the whole issue has valid Stage 2
+  evidence.
+- Do not downgrade automatically high-risk work or ready or merge a manual-path
+  PR.
+- Do not merge into `main` or create release builds, tags, releases, or
+  publication without explicit human authority.

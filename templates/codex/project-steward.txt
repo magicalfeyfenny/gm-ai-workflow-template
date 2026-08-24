@@ -1,5 +1,8 @@
 Use the project-steward skill for this repository.
 
+This scheduled audit owns evidence-backed issue creation and does not execute
+issues.
+
 Audit current GitHub issues and pull requests.
 
 Create issues only when the skill's concrete-evidence rules are satisfied.

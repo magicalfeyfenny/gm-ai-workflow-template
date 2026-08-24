@@ -1,5 +1,42 @@
 # Governance
 
+## Authority
+
+This document is the authoritative home for shared repository workflow,
+rationale, permissions, and lifecycle rules.
+[PROJECT_POLICY.toml](PROJECT_POLICY.toml) is the authoritative home for
+configured executable values such as paths, asset formats, limits, and risk
+patterns.
+
+[AGENTS.md](AGENTS.md) is a task router and pre-mutation safety summary.
+Repository skills own task-specific procedures and unique task constraints;
+shared rules link here. The governance overview in [README.md](README.md) is
+non-normative navigation. Setup documentation owns setup procedure, not
+repository-change lifecycle policy.
+
+Except for a critical stop that must be exposed before mutation, entrypoints
+link here instead of restating shared rules. A repeated stop is a safety
+reminder, not a second source of authority.
+
+## Issue authority
+
+Every issue created by an agent contains a summary, acceptance criteria,
+bounded scope, and expected risk, and is assigned to the current user.
+
+A direct human request for governed repository work authorizes the
+`governed-change` workflow to find the matching issue or, if none exists,
+create one for exactly that requested work. This permission does not authorize
+speculative backlog work.
+
+A scheduled Governed Change run selects only an existing eligible issue under
+its automation contract. The direct-request permission above does not apply,
+and the run must not create a replacement when no issue is eligible.
+
+Project Steward owns evidence-backed issue creation for stewardship audits,
+including scheduled audits. Its skill owns the audit-specific evidence and
+per-run constraints. In scheduled operation, Project Steward owns issue
+creation and does not implement issues.
+
 ## Branches
 
 `dev` is the default integration branch.
@@ -39,13 +76,10 @@ Every agent-governed repository change uses:
 5. required CI;
 6. merge according to the risk policy.
 
-An in-progress draft PR does not contain a closing line. When the entire issue
-is ready for review or automatic merge, add exactly one line:
+The issue number must match the branch name and completion metadata.
 
-Closes #<issue>
-
-The issue number must match the branch name. The closing line appears together
-with the completion label required by the merge path below.
+Keep the change bounded to that issue and do not absorb unrelated cleanup.
+Preserve useful behavior, not obsolete architecture merely because it exists.
 
 ## Validation evidence
 
@@ -159,15 +193,23 @@ Any change may be voluntarily classified high risk.
 
 Automatically high-risk changes may not be downgraded.
 
-## Low-risk changes
+## Completion transition
 
 After the entire issue scope is finished and Stage 2 whole-issue local evidence
-is valid, add the closing line and apply `work:complete`. This label marks issue
-completion, not the completion of an intermediate milestone.
+is valid, add exactly one `Closes #<issue>` line and the completion label
+required by the applicable path below. The issue number must match the branch.
+Use exactly one completion label; `work:complete` and `work:review-ready` must
+not coexist. Do not add completion metadata to an intermediate milestone.
 
-After Stage 3 hosted PR evidence passes for that completion metadata, a
-low-risk PR targeting `dev` with `work:complete` and without `manual-merge` is
-automatically:
+Obtain Stage 3 hosted PR evidence for the final head and completion metadata
+before automation or final handoff.
+
+## Low-risk changes
+
+The low-risk completion label is `work:complete`.
+
+After Stage 3 passes, a low-risk PR targeting `dev` with `work:complete` and
+without `manual-merge` is automatically:
 
 1. marked ready;
 2. configured for squash auto-merge.
@@ -177,12 +219,8 @@ The `manual-merge` label disables both automatic readiness and auto-merge.
 ## Manual and high-risk changes
 
 A PR uses the manual completion path when it is high risk or has
-`manual-merge`. It receives the same automatic CI verification.
-
-After the entire issue scope is finished and Stage 2 whole-issue local evidence
-is valid, add the closing line and apply `work:review-ready`. Obtain Stage 3
-hosted PR evidence for that completion metadata before the final handoff. The
-label means that implementation is done and the PR is waiting for human review.
+`manual-merge`. Its completion label is `work:review-ready`, meaning that
+implementation is done and the PR is waiting for human review.
 
 Manual-path PRs are never automatically marked ready or merged.
 
@@ -213,89 +251,30 @@ After the first release, `main` changes only through release PRs.
 
 ## Derived assets
 
-Editable source assets live under:
+The `[assets]` and `[assets.pipelines.*]` tables in
+[PROJECT_POLICY.toml](PROJECT_POLICY.toml) define the executable roots,
+manifest path, supported source and runtime formats, and audio parameters.
 
-assets/source/
+Editable assets belong under the configured source root. Generated or
+exported assets belong under the configured runtime root, and every tracked
+derived runtime asset is mapped in the configured export manifest.
 
-Derived runtime assets live under:
-
-assets/runtime/
-
-Every tracked derived runtime asset must be mapped in:
-
-assets/exports.json
-
-Supported pipelines are:
-
-### Vector graphics
-
-Source:
-- Inkscape `.svg`
-
-Runtime:
-- plain `.svg`
-
-Runtime SVG must not contain Inkscape editor metadata.
-
-### Raster graphics
-
-Source:
-- `.kra`
-
-Runtime:
-- `.png`
-
-### Music
-
-Sources:
-- `.mid` sheet music
-- `.logicx` audio project
-
-Runtime:
-- `.flac`
-- 48 kHz
-- stereo
-
-### Sound effects
-
-Source:
-- `.logicx` audio project
-
-Runtime:
-- `.wav`
-- 48 kHz
-- stereo
-
-### 3D graphics
-
-Sources:
-- `.blend` project
-- `.obj` export source
-- `.mtl` export source
-
-Runtime:
-- `.vbuff`
-
-The OBJ and MTL files are retained intermediate sources.
+Each asset follows its named pipeline. Editable vector source is an Inkscape
+SVG; vector runtime is plain SVG when `plain_runtime_svg` is enabled and
+contains no editor metadata. In the music pipeline, `.mid` is sheet music and
+`.logicx` is the editable audio project; sound effects also use `.logicx` as
+the editable audio project. For 3D assets, `.obj` and `.mtl` are retained
+intermediate export sources.
 
 ## GameMaker structured data
 
-Canonical GameMaker-specific structured data lives under:
+Canonical GameMaker-specific structured data lives under the `content_root`
+configured in [PROJECT_POLICY.toml](PROJECT_POLICY.toml). It uses `.json`
+directly as both editable source and runtime data, is stored once, and is not
+entered in the derived-asset manifest.
 
-content/
-
-It uses `.json` directly as both editable source and runtime data.
-
-Examples include:
-
-- story data;
-- bullet-pattern data;
-- stage and level data;
-- encounter data;
-- save schemas and defaults;
-- cached GameMaker-specific structures.
-
-Canonical JSON is stored once and is not entered in the derived-asset manifest.
+This includes story, bullet-pattern, stage, encounter, save-schema and default,
+and cached GameMaker-specific data.
 
 ## Production code
 
@@ -334,8 +313,9 @@ desired behavior is clearly labeled `TODO`.
 
 A repository-owned source file has one primary responsibility.
 
-Generic dumping-ground repository-owned source files named `helper`, `helpers`,
-`util`, `utils`, `misc`, or `common` are not allowed.
+Repository-owned source files may not use a stem listed in
+`structure.forbidden_generic_stems` in
+[PROJECT_POLICY.toml](PROJECT_POLICY.toml).
 
 Repository-owned source files may not exceed the configured line limit. When a
 file approaches the limit, split it by responsibility.
@@ -364,7 +344,10 @@ Required checks:
 - Tests
 - Format
 
-GM-Testing-Library (https://github.com/DAndrewBox/GM-Testing-Library) is used as the test framework for all GameMaker projects. When the project is initialized, download the latest release and pin it as the testing framework version -- do not update  it unless specifically instructed by a human.
+[GM-Testing-Library](https://github.com/DAndrewBox/GM-Testing-Library) is the
+test framework for GameMaker projects. When initializing a project, download
+and pin its latest release. Do not update that pinned version without specific
+human instruction.
 
 Game-specific test suites are added to `Tests` as they become available.
 

@@ -1,5 +1,8 @@
 Use the governed-change skill for this repository.
 
+This is a scheduled run. The skill's direct-request issue-creation permission
+does not apply.
+
 Before modifying repository state, inspect live open GitHub issues and select
 at most one eligible issue. An issue is eligible only when:
 
@@ -23,10 +26,8 @@ no longer eligible and stop without modifying repository state.
 If no eligible issue exists, do not create a replacement issue or modify
 repository state. Report that no candidate was available and stop.
 
-After selecting and rechecking one issue, execute only that issue through the
-governed-change workflow, including its branch, validation, milestone commits,
-draft pull request, risk classification, and completion rules. Work no more
-than one issue per run and do not absorb unrelated fixes.
+After selecting and rechecking one issue, execute only that issue with the
+skill and its routed Governance sections. Do not absorb unrelated fixes.
 
 Return:
 

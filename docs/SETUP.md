@@ -3,6 +3,9 @@
 Use this checklist for a repository generated from this GameMaker workflow
 template.
 
+This document owns setup procedure. Repository-change lifecycle policy remains
+in [GOVERNANCE.md](../GOVERNANCE.md#authority).
+
 ## Prerequisites
 
 Install:
@@ -49,17 +52,16 @@ enables squash merging and auto-merge, disables merge commits, rebase merges,
 and automatic branch deletion, ensures the eight governance labels, and
 installs the active `dev-protection` and `main-release` rulesets.
 
-The `work:complete` label is the positive completion signal for low-risk
-automation. Milestone draft PRs remain drafts until the full issue scope is
-finished, the closing line is added, and this label is applied.
+The tool creates the labels used by the Governance
+[low-risk](../GOVERNANCE.md#low-risk-changes),
+[manual](../GOVERNANCE.md#manual-and-high-risk-changes), and
+[blocked-work](../GOVERNANCE.md#milestone-commits-and-draft-publication) paths.
+It renames a legacy `blocked` label to `work:blocked`, preserving assignments
+when the new name is absent.
 
-The equivalent manual completion signal is `work:review-ready`. The setup tool
-also renames a legacy `blocked` label to `work:blocked`, preserving its current
-assignments and behavior when the new name is not already present.
-
-Both rulesets grant repository administrators pull-request-only bypass. The
-bypass is reserved for manually merging PRs labeled `human-created`; it does
-not permit direct pushes to protected branches.
+Both rulesets grant repository administrators pull-request-only bypass.
+[Human-created changes](../GOVERNANCE.md#human-created-changes) owns the limits
+on that bypass and protected-branch behavior.
 
 The tool is safe to rerun: it never moves an existing `main`, and it updates
 the named labels and rulesets in place. Review its output if it reports that
@@ -104,11 +106,9 @@ evidence if any part of that smoke check fails.
 
 ## Register pinned imported libraries
 
-Keep imported third-party libraries pinned to a specific upstream version and
-treat their files as read-only. If an imported source file must retain upstream
-structure that conflicts with this repository's source rules, add its exact
-repository-relative path to `structure.large_file_exceptions` in
-`PROJECT_POLICY.toml`:
+Follow [Source structure](../GOVERNANCE.md#source-structure) when a pinned,
+read-only imported source file needs an exception. Add an authorized exact path
+to `structure.large_file_exceptions` in `PROJECT_POLICY.toml`:
 
 ```toml
 large_file_exceptions = [
@@ -116,16 +116,7 @@ large_file_exceptions = [
 ]
 ```
 
-List only the necessary imported-library files. Each entry bypasses all
-source-structure checks for that exact file, including the line limit,
-forbidden generic-name check, and UTF-8 check. Entries are not globs and do not
-exempt a directory, path prefix, neighboring file, or similarly named file.
-They do not affect checks outside source-structure validation.
-
-Do not add repository-owned source to this list. Adding or changing an
-exception is high-risk governed work. When an imported library is updated,
-update its pinned version and exact exception paths in the same bounded change,
-then run the full validation below.
+Register the exception as bounded governed work, then run the validation below.
 
 ## Validate the generated repository
 
@@ -148,12 +139,14 @@ human-owned steps:
 3. In Codex, manually create whichever scheduled automations the generated
    repository should use. Choose each automation's schedule and execution
    identity:
-   - Project Steward uses `templates/codex/project-steward.txt` to audit the
-     repository and create evidence-backed issues without changing
+   - Project Steward uses
+     [templates/codex/project-steward.txt](../templates/codex/project-steward.txt)
+     to audit the repository and create evidence-backed issues without changing
      implementation.
-   - Governed Change uses `templates/codex/governed-change.txt` to select at
-     most one eligible existing issue and execute its governed branch,
-     validation, draft pull request, risk, and completion workflow.
+   - Governed Change uses
+     [templates/codex/governed-change.txt](../templates/codex/governed-change.txt)
+     to select at most one eligible existing issue and execute its governed
+     workflow.
    Keep these automations separate: Project Steward creates and tracks
    actionable issue work, while Governed Change executes one existing
    agent-workable issue.
