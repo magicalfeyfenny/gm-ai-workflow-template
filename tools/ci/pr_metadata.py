@@ -445,9 +445,10 @@ def compare_attestation(
     return MATCH, "current PR metadata matches validated CI"
 
 
-def _read_json(
+def read_json_evidence(
     path: Path,
 ) -> object:
+    """Read one size-bounded JSON input from an untrusted workflow source."""
     try:
         size = path.stat().st_size
     except OSError as exc:
@@ -567,11 +568,12 @@ def parse_args(
 def main(
     argv: list[str] | None = None,
 ) -> int:
+    """Capture or compare bounded pull-request metadata evidence."""
     args = parse_args(argv)
 
     try:
         if args.command == "capture":
-            event = _read_json(args.event_path)
+            event = read_json_evidence(args.event_path)
             attestation = build_attestation(
                 event,
                 args.repository,
@@ -582,8 +584,8 @@ def main(
             print("pr-metadata: captured CI metadata attestation")
             return MATCH
 
-        attestation = _read_json(args.attestation_path)
-        current_pull_request = _read_json(
+        attestation = read_json_evidence(args.attestation_path)
+        current_pull_request = read_json_evidence(
             args.current_pr_path
         )
     except (MetadataError, OSError) as exc:

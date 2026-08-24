@@ -336,38 +336,55 @@ class PrPolicyTests(unittest.TestCase):
 
 
 class WorkflowPolicyTests(unittest.TestCase):
-    def test_collectors_preserve_complete_file_records(self):
-        workflows = [
-            ROOT / ".github/workflows/ci.yml",
-            ROOT / ".github/workflows/low-risk-auto-merge.yml",
-        ]
+    """Keep workflow tests focused on declarative trust boundaries."""
 
-        for workflow in workflows:
-            with self.subTest(workflow=workflow.name):
-                text = workflow.read_text(encoding="utf-8")
+    def test_ci_collector_preserves_complete_file_records(self):
+        """Keep CI policy input complete instead of projecting filenames."""
+        text = (ROOT / ".github/workflows/ci.yml").read_text(
+            encoding="utf-8"
+        )
 
-                self.assertIn("--slurp", text)
-                self.assertNotIn("--jq '.[].filename'", text)
+        self.assertIn("--slurp", text)
+        self.assertNotIn("--jq '.[].filename'", text)
 
-    def test_auto_merge_is_revocable_and_head_bound(self):
+    def test_auto_merge_workflow_routes_to_trusted_boundary(self):
+        """Keep event wiring visible and orchestration out of shell YAML."""
         path = ROOT / ".github/workflows/low-risk-auto-merge.yml"
         text = path.read_text(encoding="utf-8")
 
         self.assertIn("pull_request_target:", text)
-        self.assertIn("--disable-auto", text)
+        self.assertIn("workflow_run:", text)
+        self.assertIn(
+            "python3 -m tools.ci.low_risk_merge cancel",
+            text,
+        )
+        self.assertIn(
+            "python3 -m tools.ci.low_risk_merge merge",
+            text,
+        )
+        self.assertEqual(text.count("persist-credentials: false"), 2)
+        self.assertEqual(text.count("ref: dev"), 2)
+
+        for inline_detail in (
+            "eligible_current",
+            "refresh_pr",
+            "classify_ci_metadata",
+            "gh pr ready",
+            "gh pr merge",
+            "jq ",
+        ):
+            with self.subTest(inline_detail=inline_detail):
+                self.assertNotIn(inline_detail, text)
+
         self.assertIn(
             "stale auto-merge request remains",
             (ROOT / ".github/workflows/ci.yml").read_text(
                 encoding="utf-8"
             ),
         )
-        self.assertIn(
-            '--match-head-commit "$CI_HEAD"',
-            text,
-        )
-        self.assertIn("PR_HEAD_REPOSITORY", text)
 
     def test_native_issue_closure_uses_repository_scoped_app_token(self):
+        """Keep App credentials scoped and separate from the ambient token."""
         path = ROOT / ".github/workflows/low-risk-auto-merge.yml"
         text = path.read_text(encoding="utf-8")
         workflow_header, jobs = text.split("\njobs:\n", 1)
@@ -409,18 +426,11 @@ class WorkflowPolicyTests(unittest.TestCase):
             "${{ steps.governed-merge-token.outputs.token }}",
             merge_job,
         )
-        self.assertEqual(
-            merge_job.count('GH_TOKEN="$MERGE_TOKEN"'),
-            1,
+        self.assertIn(
+            "python3 -m tools.ci.low_risk_merge merge",
+            merge_job,
         )
-
-        final_merge = merge_job.split(
-            'GH_TOKEN="$MERGE_TOKEN" gh pr merge',
-            1,
-        )[1]
-        self.assertIn("--auto", final_merge)
-        self.assertIn("--squash", final_merge)
-        self.assertIn('--match-head-commit "$CI_HEAD"', final_merge)
+        self.assertNotIn('GH_TOKEN="$MERGE_TOKEN"', merge_job)
 
     def test_governed_merge_app_setup_is_explicit_and_human_owned(self):
         setup = (ROOT / "docs/SETUP.md").read_text(encoding="utf-8")
@@ -441,8 +451,11 @@ class WorkflowPolicyTests(unittest.TestCase):
                 self.assertIn(required, setup)
 
     def test_auto_merge_relies_on_native_issue_closure(self):
+        """Keep issue completion native to the merge instead of scripting it."""
         path = ROOT / ".github/workflows/low-risk-auto-merge.yml"
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8") + (
+            ROOT / "tools/ci/low_risk_merge.py"
+        ).read_text(encoding="utf-8")
 
         for direct_close in (
             "gh issue close",
@@ -455,6 +468,7 @@ class WorkflowPolicyTests(unittest.TestCase):
                 self.assertNotIn(direct_close, text)
 
     def test_auto_merge_is_bound_to_exact_ci_metadata(self):
+        """Pass every completed-run identity field into one trusted unit."""
         ci_text = (ROOT / ".github/workflows/ci.yml").read_text(
             encoding="utf-8"
         )
@@ -477,66 +491,20 @@ class WorkflowPolicyTests(unittest.TestCase):
 
         self.assertIn("actions: read", merge_text)
         self.assertIn(
-            'gh run download "$CI_RUN_ID"',
-            merge_text,
-        )
-        self.assertIn(
-            "github.event.workflow_run.run_attempt",
-            merge_text,
-        )
-        self.assertIn(
-            '--attestation-run-attempt "$CI_METADATA_ATTEMPT"',
-            merge_text,
-        )
-        self.assertIn('while [ "$attempt" -ge 1 ]', merge_text)
-        self.assertIn("attempt=$((attempt - 1))", merge_text)
-        self.assertIn(
-            "tools/ci/pr_metadata.py compare",
+            "python3 -m tools.ci.low_risk_merge merge",
             merge_text,
         )
 
-        first_eligibility = merge_text.index(
-            "if ! eligible_current;"
-        )
-        ready = merge_text.index("gh pr ready")
-        second_eligibility = merge_text.index(
-            "if ! eligible_current;",
-            first_eligibility + 1,
-        )
-        merge = merge_text.index(
-            'GH_TOKEN="$MERGE_TOKEN" gh pr merge',
-            second_eligibility,
-        )
-
-        self.assertLess(first_eligibility, ready)
-        self.assertLess(ready, second_eligibility)
-        self.assertLess(second_eligibility, merge)
-
-        eligibility_failures = merge_text.split(
-            "if ! eligible_current; then"
-        )[1:]
-        self.assertEqual(len(eligibility_failures), 2)
-
-        for failure in eligibility_failures:
-            block = failure.split("fi", 1)[0]
-            self.assertIn(
-                'CI_METADATA_STATUS" = "stale',
-                block,
-            )
-            self.assertNotIn("disable_auto_merge", block)
-
-        stale_case = merge_text.split(
-            'stale)',
-            1,
-        )[1].split('invalid)', 1)[0]
-        self.assertIn("exit 0", stale_case)
-        self.assertNotIn("disable_auto_merge", stale_case)
-
-        missing_case = merge_text.split(
-            "if ! download_ci_metadata; then",
-            1,
-        )[1].split("fi", 1)[0]
-        self.assertIn("disable_auto_merge", missing_case)
+        for source, argument in (
+            ("github.event.workflow_run.pull_requests[0].number", "PR_NUMBER"),
+            ("github.event.workflow_run.head_sha", "CI_HEAD"),
+            ("github.event.workflow_run.conclusion", "CI_CONCLUSION"),
+            ("github.event.workflow_run.id", "CI_RUN_ID"),
+            ("github.event.workflow_run.run_attempt", "CI_RUN_ATTEMPT"),
+        ):
+            with self.subTest(source=source):
+                self.assertIn(source, merge_text)
+                self.assertIn(f'"${argument}"', merge_text)
 
     def test_human_created_labeler_is_trusted_and_bounded(self):
         path = ROOT / ".github/workflows/human-created.yml"
