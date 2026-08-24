@@ -1,5 +1,5 @@
 name: Work item
-description: Define one bounded repository change.
+description: Define one atomic repository change.
 labels: []
 assignees: []
 
@@ -24,7 +24,7 @@ body:
     id: scope
     attributes:
       label: Scope
-      description: Important files, systems, or boundaries.
+      description: One independently completable outcome and its boundaries. Split separable outcomes into linked issues.
     validations:
       required: true
 
@@ -32,6 +32,7 @@ body:
     id: expected-risk
     attributes:
       label: Expected risk
+      description: Classify this issue's own scope; do not inherit risk from a parent issue.
       options:
         - Low
         - High

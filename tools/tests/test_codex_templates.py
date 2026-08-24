@@ -23,7 +23,7 @@ class CodexAutomationTemplateTests(unittest.TestCase):
             "live open GitHub issues",
             "at most one eligible issue",
             "direct-request issue-creation permission does not apply",
-            "actionable acceptance criteria and bounded scope",
+            "an atomic implementation issue with actionable acceptance criteria and bounded scope",
             "unassigned or assigned to the automation's current user",
             "not labeled `work:blocked`",
             "no unresolved dependency",

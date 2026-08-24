@@ -32,10 +32,10 @@ release work.
 
 ## Issue selection
 
-For a direct request, use the exact matching issue or, if absent, create only
-the issue authorized by Issue authority. For a scheduled run, follow its
-template: direct-request creation does not apply, and no eligible issue means
-no repository mutation.
+For a direct request, use or create only the atomic issue or linked issue set
+authorized by Issue authority, then execute one atomic implementation issue at
+a time. For a scheduled run, follow its template: direct-request creation does
+not apply, and no eligible issue means no repository mutation.
 
 ## Execute
 

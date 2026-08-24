@@ -23,10 +23,17 @@ reminder, not a second source of authority.
 Every issue created by an agent contains a summary, acceptance criteria,
 bounded scope, and expected risk, and is assigned to the current user.
 
+An issue that authorizes implementation must be atomic: it defines one
+coherent, independently completable and verifiable outcome with one acceptance
+contract. If a request contains separable outcomes, split it into linked atomic
+sub-issues before implementation begins. A coordinating parent may track the
+sub-issues but is not itself an implementation unit.
+
 A direct human request for governed repository work authorizes the
-`governed-change` workflow to find the matching issue or, if none exists,
-create one for exactly that requested work. This permission does not authorize
-speculative backlog work.
+`governed-change` workflow to find or create only the atomic implementation
+issue or linked atomic issue set needed for exactly that requested work. A
+coordinating parent may be included only when useful for tracking. This
+permission does not authorize speculative backlog work.
 
 A scheduled Governed Change run selects only an existing eligible issue under
 its automation contract. The direct-request permission above does not apply,
@@ -67,7 +74,7 @@ Never branch from a local `dev`.
 
 ## Unit of work
 
-Every agent-governed repository change uses:
+Each atomic implementation issue independently uses:
 
 1. one GitHub issue;
 2. one issue-numbered branch;
@@ -77,6 +84,10 @@ Every agent-governed repository change uses:
 6. merge according to the risk policy.
 
 The issue number must match the branch name and completion metadata.
+
+A coordinating parent does not use an implementation branch or pull request;
+it tracks its atomic sub-issues. Dependencies may order sub-issues but do not
+combine their scopes.
 
 Keep the change bounded to that issue and do not absorb unrelated cleanup.
 Preserve useful behavior, not obsolete architecture merely because it exists.
@@ -181,6 +192,11 @@ Every agent-governed PR has exactly one label:
 
 - `risk:low`
 - `risk:high`
+
+Each atomic implementation issue states its own expected risk. Its PR is
+classified from that issue's scope and the PR's actual changes and
+circumstances. A coordinating parent's risk does not determine a sub-issue's
+risk, and risk does not propagate between sub-issues.
 
 A PR is automatically high risk if:
 
