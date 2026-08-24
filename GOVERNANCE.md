@@ -47,12 +47,55 @@ Closes #<issue>
 The issue number must match the branch name. The closing line appears together
 with the completion label required by the merge path below.
 
+## Validation evidence
+
+Agent-governed work uses three separate repository-change validation stages.
+Evidence from one stage does not replace another.
+
+### Stage 1: milestone evidence
+
+Before each coherent milestone commit, run narrow, proportionate checks for
+the files and behavior changed by that milestone. Include relevant GameMaker
+tests when available. This evidence supports the milestone commit and draft
+publication only; it does not establish that the whole issue is complete.
+
+### Stage 2: whole-issue local evidence
+
+After the entire issue scope is complete, run the following on one unchanged
+repository-content candidate before adding completion metadata or making a
+final handoff:
+
+- `python3.12 tools/ci/check_repo.py --baseline-ref origin/dev`;
+- relevant tests, including relevant GameMaker tests when available;
+- `python3.12 -m unittest discover -s tools/tests -p 'test_*.py'`;
+- `git diff --check`.
+
+This evidence applies to the exact candidate tree that was checked. Committing
+that same tree does not invalidate it. A later repository-content change
+requires affected Stage 1 checks again and, if Stage 2 had already passed, the
+complete Stage 2 suite on the new candidate. Do not repeat Stage 2 while the
+candidate tree remains unchanged.
+
+### Stage 3: hosted PR evidence
+
+After the final head, body, and labels are in place, all required checks under
+CI must pass for that exact head and the attested policy-relevant PR metadata.
+Missing, failed, invalid, or stale evidence does not satisfy this stage.
+
+A head change invalidates Stage 3. Changing only the PR body or labels leaves
+local evidence valid but invalidates Stage 3, so obtain fresh hosted evidence
+without rerunning the local suite.
+
+No validation stage changes risk classification or grants completion,
+readiness, review, merge, release, or publication authority. Those actions
+remain governed by the paths below.
+
 ## Milestone commits and draft publication
 
 Agents may commit to their current issue-scoped branch without separate human
 authorization. Create a commit as soon as a coherent milestone is complete and
-has received proportionate validation. Do not leave a completed milestone only
-in the working tree while waiting for the entire issue to finish.
+has received Stage 1 milestone evidence. Do not leave a completed milestone
+only in the working tree while waiting for the entire issue to finish.
 
 Push the first meaningful milestone commit and open its draft PR immediately.
 This permission applies to low- and high-risk work. Continue committing and
@@ -118,20 +161,16 @@ Automatically high-risk changes may not be downgraded.
 
 ## Low-risk changes
 
-After the entire issue scope is finished and the candidate has received the
-required validation, add the closing line and apply `work:complete`. This label
-marks issue completion, not the completion of an intermediate milestone.
+After the entire issue scope is finished and Stage 2 whole-issue local evidence
+is valid, add the closing line and apply `work:complete`. This label marks issue
+completion, not the completion of an intermediate milestone.
 
-After required CI passes, a low-risk PR targeting `dev` with `work:complete`
-and without `manual-merge` is automatically:
+After Stage 3 hosted PR evidence passes for that completion metadata, a
+low-risk PR targeting `dev` with `work:complete` and without `manual-merge` is
+automatically:
 
 1. marked ready;
 2. configured for squash auto-merge.
-
-The successful CI run must attest to the current head and the current
-policy-relevant PR metadata, including the exact body and labels. Changing
-that metadata requires a new successful run; an older run for the same head
-cannot authorize readiness or auto-merge for the newer state.
 
 The `manual-merge` label disables both automatic readiness and auto-merge.
 
@@ -140,9 +179,10 @@ The `manual-merge` label disables both automatic readiness and auto-merge.
 A PR uses the manual completion path when it is high risk or has
 `manual-merge`. It receives the same automatic CI verification.
 
-After the entire issue scope is finished and validated, add the closing line
-and apply `work:review-ready`. The label means that implementation is done and
-the PR is waiting for human review.
+After the entire issue scope is finished and Stage 2 whole-issue local evidence
+is valid, add the closing line and apply `work:review-ready`. Obtain Stage 3
+hosted PR evidence for that completion metadata before the final handoff. The
+label means that implementation is done and the PR is waiting for human review.
 
 Manual-path PRs are never automatically marked ready or merged.
 

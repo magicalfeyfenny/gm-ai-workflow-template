@@ -50,29 +50,23 @@ See [GOVERNANCE.md](GOVERNANCE.md) and
    expected risk.
 2. Fetch `origin/dev`, create `work/<issue>-<slug>` from that remote branch,
    and implement only the issue scope.
-3. Validate and commit each coherent milestone. After the first meaningful
-   commit, push the branch and open a draft pull request into `dev`. Keep the
-   closing line out of the pull request while work remains.
-4. Before declaring the issue complete, run:
-
-   ```sh
-   python3.12 tools/ci/check_repo.py --baseline-ref origin/dev
-   python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
-   git diff --check
-   ```
-
-   Run relevant GameMaker tests as soon as the project provides them.
-5. When the entire change is complete and validated, choose the completion
-   path required by its risk and labels:
+3. Obtain Stage 1 milestone evidence from `GOVERNANCE.md` and commit each
+   coherent milestone. After the first meaningful commit, push the branch and
+   open a draft pull request into `dev`. Keep the closing line out of the pull
+   request while work remains.
+4. Before declaring the issue complete, obtain Stage 2 whole-issue local
+   evidence under `GOVERNANCE.md` for the unchanged candidate.
+5. When the entire change is complete and Stage 2 evidence is valid, choose the
+   completion path required by its risk and labels:
 
    - A low-risk `dev` pull request without `manual-merge` gets exactly one
-     `Closes #<issue>` line and the `work:complete` label. After required CI
-     passes for the current head, body, and labels, automation marks it ready
-     and configures squash auto-merge. Older runs for the same head cannot
-     authorize a newer metadata state.
+     `Closes #<issue>` line and the `work:complete` label. After Stage 3 hosted
+     PR evidence passes for the resulting head, body, and labels, automation
+     marks it ready and configures squash auto-merge.
    - A high-risk or `manual-merge` pull request gets exactly one
-     `Closes #<issue>` line and the `work:review-ready` label. It then waits for
-     a human to review it, mark it ready, and merge it.
+     `Closes #<issue>` line and the `work:review-ready` label. After Stage 3
+     hosted PR evidence passes, it waits for a human to review it, mark it
+     ready, and merge it.
 
 Agent-governed pull requests into `dev` or `main` run four required checks: PR
 policy, repository policy, tests, and format. A `work:blocked` pull request

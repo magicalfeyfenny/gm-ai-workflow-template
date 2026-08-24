@@ -28,11 +28,11 @@ The `human/` branch namespace is reserved for humans. Agents must never create,
 switch to, push to, or modify a `human/*` branch.
 
 Agents may commit freely to their current issue-scoped branch. Commit each
-coherent milestone as soon as proportionate validation passes. Push the first
-meaningful commit and create its draft PR immediately, including for high-risk
-work. Continue pushing later milestone commits to that draft PR. Commit and
-draft publication do not grant readiness or merge authority. An in-progress
-draft omits the `Closes #<issue>` line.
+coherent milestone as soon as Stage 1 milestone evidence from GOVERNANCE.md
+passes. Push the first meaningful commit and create its draft PR immediately,
+including for high-risk work. Continue pushing later milestone commits to that
+draft PR. Commit and draft publication do not grant readiness or merge
+authority. An in-progress draft omits the `Closes #<issue>` line.
 
 Do not force-push.
 
@@ -121,13 +121,9 @@ Do not duplicate it into assets/source or assets/runtime.
 
 ## Validation
 
-Before publishing a change, run:
-
-python3.12 tools/ci/check_repo.py --baseline-ref origin/dev
-python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
-git diff --check
-
-Run relevant GameMaker tests when available.
+Follow the three validation evidence stages and invalidation rules in
+GOVERNANCE.md. Use only the evidence required for the current stage. Relevant
+GameMaker tests remain required when available.
 
 ## Pull requests
 
@@ -140,16 +136,17 @@ Apply exactly one:
 
 Low-risk PRs may continue through repository automation.
 
-After the entire low-risk issue scope is finished and full validation passes,
-add exactly one `Closes #<issue>` line and apply `work:complete`. Do not apply
-it to an intermediate milestone. For a low-risk PR without `manual-merge`,
-repository automation then marks it ready and configures squash auto-merge
-after required CI passes.
+After the entire low-risk issue scope is finished and Stage 2 whole-issue local
+evidence is valid, add exactly one `Closes #<issue>` line and apply
+`work:complete`. Do not apply it to an intermediate milestone. For a low-risk
+PR without `manual-merge`, repository automation then marks it ready and
+configures squash auto-merge after Stage 3 hosted PR evidence passes.
 
 High-risk PRs may be committed, pushed, and published as drafts without
 separate permission. When high-risk or `manual-merge` work is finished and
-validated, add exactly one `Closes #<issue>` line and apply
-`work:review-ready`. It then waits for human review, readiness, and merge.
+Stage 2 whole-issue local evidence is valid, add exactly one `Closes #<issue>`
+line and apply `work:review-ready`. Obtain Stage 3 hosted PR evidence, then wait
+for human review, readiness, and merge.
 
 `work:blocked` retains the former `blocked` behavior. Do not work the PR or add
 a closing line or completion label until its blockers are resolved.

@@ -33,9 +33,9 @@ description: Execute one repository change through issue, branch, validation, dr
 
 8. Apply repository structure, asset, and content rules.
 
-9. When a coherent milestone is ready, run proportionate validation and commit
-   it immediately to the current issue branch. Separate commit authorization is
-   not required.
+9. When a coherent milestone is ready, obtain Stage 1 milestone evidence under
+   GOVERNANCE.md and commit it immediately to the current issue branch.
+   Separate commit authorization is not required.
 
 10. After the first meaningful commit:
    - push the work branch;
@@ -48,25 +48,24 @@ description: Execute one repository change through issue, branch, validation, dr
 
 11. Commit and push every later coherent milestone to the same draft PR.
 
-12. Before declaring the whole issue complete, run:
-   - python3.12 tools/ci/check_repo.py --baseline-ref origin/dev
-   - relevant tests
-   - python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
-   - git diff --check
+12. Before declaring the whole issue complete, obtain valid Stage 2
+    whole-issue local evidence under GOVERNANCE.md.
 
 13. Never downgrade automatically high-risk work.
 
-14. For low risk without `manual-merge`, only after the entire issue scope and
-    validation are complete:
+14. For low risk without `manual-merge`, only after the entire issue scope is
+    complete and Stage 2 evidence is valid:
     - add exactly one `Closes #<issue>` line;
     - apply `work:complete`;
+    - obtain Stage 3 hosted PR evidence for that completion metadata;
     - allow repository automation to mark the PR ready and configure squash
-      auto-merge.
+      auto-merge only after Stage 3 passes.
 
-15. For high risk or `manual-merge`, only after the entire issue scope and
-    validation are complete:
+15. For high risk or `manual-merge`, only after the entire issue scope is
+    complete and Stage 2 evidence is valid:
     - add exactly one `Closes #<issue>` line;
     - apply `work:review-ready`;
+    - obtain Stage 3 hosted PR evidence for that completion metadata;
     - stop for human review, readiness, and merge.
 
 Never:
@@ -76,7 +75,7 @@ Never:
 - leave a completed coherent milestone uncommitted while waiting for the whole
   issue to finish;
 - add `Closes #<issue>`, `work:complete`, or `work:review-ready` before the
-  entire issue scope is finished;
+  entire issue scope is finished and Stage 2 evidence is valid;
 - work a PR labeled `work:blocked` until its blockers are resolved;
 - apply both completion labels;
 - automatically mark high-risk work ready;
