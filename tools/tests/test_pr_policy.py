@@ -58,7 +58,9 @@ class PrPolicyTests(unittest.TestCase):
         self.assertTrue(reasons)
 
     def test_project_sensitive_paths_are_high_risk(self):
+        """Keep governance and core project paths on the high-risk path."""
         paths = [
+            ".agents/skills/gamemaker-production/SKILL.md",
             "project/game.yyp",
             "project/options/main/options_main.yy",
             "project/extensions/store/store.yy",

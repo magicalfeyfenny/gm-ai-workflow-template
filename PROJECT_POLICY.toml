@@ -70,7 +70,7 @@ high_risk_paths = [
     "AGENTS.md",
     "GOVERNANCE.md",
     "PROJECT_POLICY.toml",
-    "skills/**",
+    ".agents/skills/**",
     "tools/ci/**",
     "tools/assets/**",
     "project/*.yyp",
