@@ -257,21 +257,42 @@ Examples include:
 
 Canonical JSON is stored once and is not entered in the derived-asset manifest.
 
-## Source structure
+## Production code
 
-A repository-owned source file has one primary responsibility.
+These requirements apply to repository-owned production code written or
+changed by an agent. They do not apply to pinned, read-only imported-library
+source. Preserve libraries under the imported-library policy below instead of
+modifying them to match repository style.
 
-Code written or changed by an agent must be intentionally interpretable by
-humans. Make each function plain and obvious to understand by reading it.
-Prefer straightforward code over clever techniques. When a clever or
-non-obvious technique is necessary, add a concise plain-English comment that
-explains the technique and why it is needed.
+Follow established project conventions and the language's ordinary style. Use
+consistent formatting, descriptive names, and visible control flow.
+
+Use the simplest design that reasonably satisfies current requirements, with
+no more moving parts than the behavior needs. Do not add pass-through layers,
+indirection, duplicate state, configuration, duplicated validation, or
+speculative flexibility unless a current requirement, distinct trust boundary,
+or separate failure mode needs them.
+
+Make both the code path and the reason for taking it plain to a human reader.
+Prefer direct control flow, concrete names, and explicit data. Establish an
+invariant at the appropriate boundary; do not repeatedly check it along a
+trusted path without a separate reason.
+
+When necessary complexity or a non-obvious technique remains, explain why at
+the narrowest useful boundary with a concise plain-English comment. A design
+with many moving parts is maintainable only when the reason for them can be
+explained.
 
 Add a concise plain-English comment to every function written or changed by an
 agent, and wherever implementation intent would otherwise be unclear. Comments
-must accurately describe current behavior. A function comment must limit its
-claims to behavior the function actually implements. Do not use comments as a
-wishlist unless planned or desired behavior is clearly labeled `TODO`.
+must accurately describe current behavior and intent without merely restating
+the code. A function comment must limit its claims to behavior the function
+actually implements. Do not use comments as a wishlist unless planned or
+desired behavior is clearly labeled `TODO`.
+
+## Source structure
+
+A repository-owned source file has one primary responsibility.
 
 Generic dumping-ground repository-owned source files named `helper`, `helpers`,
 `util`, `utils`, `misc`, or `common` are not allowed.
