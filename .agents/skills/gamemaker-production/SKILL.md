@@ -13,7 +13,9 @@ Read:
 
 ## Code
 
-Prefer explicit, readable GML.
+For repository-owned production GML, follow the style, readability, and
+simplicity rules in AGENTS.md and GOVERNANCE.md. Preserve imported libraries
+instead of restyling or simplifying them.
 
 Give every source file one primary responsibility.
 
