@@ -62,23 +62,21 @@ source_extensions = [".blend", ".obj", ".mtl"]
 runtime_extensions = [".vbuff"]
 
 [risk]
-max_changed_files = 20
-max_changed_lines = 1200
+max_changed_files = 100
+max_changed_lines = 10000
 
 high_risk_paths = [
-    ".github/**",
+    ".github/actions/**",
+    ".github/rulesets/**",
+    ".github/workflows/**",
+    ".agents/skills/**",
+    ".gitattributes",
     "AGENTS.md",
     "GOVERNANCE.md",
     "PROJECT_POLICY.toml",
-    ".agents/skills/**",
-    "tools/ci/**",
+    "docs/SETUP.md",
+    "templates/codex/**",
     "tools/assets/**",
-    "project/*.yyp",
-    "project/options/**",
-    "project/extensions/**",
-    "project/scripts/core/**",
-    "project/scripts/save/**",
-    "project/scripts/persistence/**",
-    "project/scripts/migrations/**",
-    "content/save/**",
+    "tools/ci/**",
+    "tools/setup_github.py",
 ]

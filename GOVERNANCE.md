@@ -189,7 +189,17 @@ A PR is automatically high risk if:
 - it exceeds the configured changed-file limit;
 - it exceeds the configured changed-line limit.
 
-Any change may be voluntarily classified high risk.
+Automatic high risk is exceptional. Configured path rules cover
+authority-bearing governance, repository setup, CI and merge enforcement, and
+asset-pipeline tooling. Ordinary production code, project metadata, structured
+content, and source or runtime assets are not high risk merely because of their
+domain. The size limits are backstops for genuinely massive structural changes,
+not ordinary production scope.
+
+Any change may be voluntarily classified high risk when its concrete behavior
+or circumstances warrant human review. Consider blast radius, irreversibility,
+security or compatibility risk, cross-system coupling, and unusual uncertainty
+instead of using the file's domain as a proxy.
 
 Automatically high-risk changes may not be downgraded.
 

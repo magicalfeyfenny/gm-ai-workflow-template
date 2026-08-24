@@ -6,10 +6,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools.ci.pr_policy import (
+    POLICY,
     auto_merge_eligible,
     branch_issue,
     changed_file_paths,
     completion_policy_errors,
+    evaluate_pull_request,
     forced_high_risk,
     is_human_created,
     validate,
@@ -46,33 +48,22 @@ class PrPolicyTests(unittest.TestCase):
         self.assertEqual(issue, 27)
         self.assertEqual(errors, [])
 
-    def test_sensitive_path_is_high_risk(self):
-        high, reasons = forced_high_risk(
-            "dev",
-            [".github/workflows/ci.yml"],
-            1,
-            1,
-        )
-
-        self.assertTrue(high)
-        self.assertTrue(reasons)
-
-    def test_project_sensitive_paths_are_high_risk(self):
-        """Keep governance and core project paths on the high-risk path."""
+    def test_governance_and_pipeline_paths_are_high_risk(self) -> None:
+        """Keep authority and pipeline mechanisms on the manual path."""
         paths = [
+            ".github/actions/validate/action.yml",
+            ".github/rulesets/dev-protection.json",
+            ".github/workflows/ci.yml",
+            ".gitattributes",
             "AGENTS.md",
             "GOVERNANCE.md",
             "PROJECT_POLICY.toml",
             ".agents/skills/gamemaker-production/SKILL.md",
-            ".agents/skills/governed-change/SKILL.md",
-            ".agents/skills/project-steward/SKILL.md",
-            "project/game.yyp",
-            "project/options/main/options_main.yy",
-            "project/extensions/store/store.yy",
-            "project/scripts/core/state.gml",
-            "project/scripts/save/write_save.gml",
-            "project/scripts/persistence/profile.gml",
-            "project/scripts/migrations/save_v2.gml",
+            "docs/SETUP.md",
+            "templates/codex/governed-change.txt",
+            "tools/assets/export_assets.py",
+            "tools/ci/pr_policy.py",
+            "tools/setup_github.py",
         ]
 
         for path in paths:
@@ -85,18 +76,98 @@ class PrPolicyTests(unittest.TestCase):
                 )
 
                 self.assertTrue(high)
-                self.assertTrue(reasons)
+                self.assertEqual(reasons, [f"high-risk path: {path}"])
 
-    def test_small_game_change_can_be_low_risk(self):
-        high, reasons = forced_high_risk(
+    def test_routine_production_paths_can_be_low_risk(self) -> None:
+        """Do not use ordinary project and asset domains as risk proxies."""
+        paths = [
+            "project/game.yyp",
+            "project/options/main/options_main.yy",
+            "project/extensions/store/store.yy",
+            "project/scripts/core/state.gml",
+            "project/scripts/save/write_save.gml",
+            "project/scripts/persistence/profile.gml",
+            "project/scripts/migrations/save_v2.gml",
+            "content/save/schema.json",
+            "content/story/chapter_1.json",
+            "assets/source/portrait.kra",
+            "assets/runtime/portrait.png",
+            "assets/exports.json",
+            ".github/ISSUE_TEMPLATE/work-item.yml",
+            ".github/pull_request_template.md",
+            "docs/design.md",
+        ]
+
+        for path in paths:
+            with self.subTest(path=path):
+                high, reasons = forced_high_risk(
+                    "dev",
+                    [path],
+                    1,
+                    0,
+                )
+
+                self.assertFalse(high)
+                self.assertEqual(reasons, [])
+
+    def test_size_limits_only_force_massive_changes_high(self) -> None:
+        """Keep exact limits inclusive and force only limit-plus-one high."""
+        max_files = int(POLICY["risk"]["max_changed_files"])
+        max_lines = int(POLICY["risk"]["max_changed_lines"])
+
+        self.assertEqual((max_files, max_lines), (100, 10000))
+
+        at_limit = forced_high_risk(
             "dev",
             ["project/scripts/player/player.gml"],
-            20,
-            10,
+            6000,
+            4000,
+            max_files,
+        )
+        over_files = forced_high_risk(
+            "dev",
+            ["project/scripts/player/player.gml"],
+            1,
+            0,
+            max_files + 1,
+        )
+        over_lines = forced_high_risk(
+            "dev",
+            ["project/scripts/player/player.gml"],
+            max_lines,
+            1,
+            1,
         )
 
-        self.assertFalse(high)
-        self.assertEqual(reasons, [])
+        self.assertEqual(at_limit, (False, []))
+        self.assertEqual(
+            over_files,
+            (True, ["changed file count exceeds low-risk limit"]),
+        )
+        self.assertEqual(
+            over_lines,
+            (True, ["changed line count exceeds low-risk limit"]),
+        )
+
+    def test_routine_change_can_be_voluntarily_high_risk(self) -> None:
+        """Honor an explicit high-risk label without a path-based reason."""
+        evaluation = evaluate_pull_request(
+            base="dev",
+            head="work/12-save-schema",
+            head_repository="owner/game",
+            repository="owner/game",
+            body="Closes #12\n",
+            labels={"risk:high", "work:review-ready"},
+            additions=10,
+            deletions=2,
+            changed_paths=["project/game.yyp"],
+            changed_file_count=1,
+        )
+
+        self.assertEqual(evaluation.errors, ())
+        self.assertEqual(evaluation.high_risk_reasons, ())
+        self.assertTrue(evaluation.effective_high)
+        self.assertFalse(evaluation.auto_merge_allowed)
 
     def test_main_is_high_risk(self):
         high, reasons = forced_high_risk(
@@ -281,15 +352,16 @@ class PrPolicyTests(unittest.TestCase):
         self.assertTrue(missing)
         self.assertIn("PR issue must match branch issue", wrong)
 
-    def test_rename_preserves_sensitive_source_path(self):
+    def test_rename_preserves_governance_source_path(self) -> None:
+        """Keep a renamed authority file high through its previous path."""
         paths, count = changed_file_paths(
             [[
                 {
                     "filename": (
-                        "project/scripts/player/state.gml"
+                        "docs/legacy-policy.md"
                     ),
                     "previous_filename": (
-                        "project/scripts/core/state.gml"
+                        "tools/ci/legacy_policy.py"
                     ),
                 }
             ]]
@@ -307,7 +379,9 @@ class PrPolicyTests(unittest.TestCase):
         self.assertTrue(high)
         self.assertTrue(reasons)
 
-    def test_renames_do_not_inflate_changed_file_count(self):
+    def test_renames_do_not_inflate_changed_file_count(self) -> None:
+        """Count API file records once even when each has two paths."""
+        max_files = int(POLICY["risk"]["max_changed_files"])
         entries = [
             {
                 "filename": (
@@ -317,7 +391,7 @@ class PrPolicyTests(unittest.TestCase):
                     f"project/scripts/archive/old_{index}.gml"
                 ),
             }
-            for index in range(20)
+            for index in range(max_files)
         ]
 
         paths, count = changed_file_paths([entries])
@@ -329,8 +403,8 @@ class PrPolicyTests(unittest.TestCase):
             count,
         )
 
-        self.assertEqual(count, 20)
-        self.assertEqual(len(paths), 40)
+        self.assertEqual(count, max_files)
+        self.assertEqual(len(paths), max_files * 2)
         self.assertFalse(high)
         self.assertEqual(reasons, [])
 
