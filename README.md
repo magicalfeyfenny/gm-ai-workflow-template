@@ -11,10 +11,11 @@ workflow and rationale live in [GOVERNANCE.md](GOVERNANCE.md#authority), while
 [PROJECT_POLICY.toml](PROJECT_POLICY.toml) owns executable paths, formats,
 limits, and risk patterns.
 
-Normal agent-governed work starts with one bounded issue. It branches from
-current `origin/dev`, uses an issue-numbered branch, and opens a draft pull
-request after the first meaningful, tested milestone. Blocked work waits until
-its blockers are resolved.
+Normal agent-governed work starts with one atomic issue. Broader requests split
+into independently governed sub-issues, each with its own risk. Each issue
+branches from current `origin/dev`, uses an issue-numbered branch, and opens a
+draft pull request after the first meaningful, tested milestone. Blocked work
+waits until its blockers are resolved.
 
 Validation happens in three stages: focused checks support each milestone,
 the complete change receives whole-issue local validation, and hosted CI then
