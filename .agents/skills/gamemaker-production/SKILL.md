@@ -5,84 +5,29 @@ description: Make production GameMaker changes while preserving readable archite
 
 # GameMaker production
 
-Read:
+Use this skill alongside `governed-change` for repository mutations. Follow
+only the routes matching the files and behavior in scope:
 
-- AGENTS.md
-- GOVERNANCE.md
-- PROJECT_POLICY.toml
+| Work | Required route |
+| --- | --- |
+| Repository-owned production code | [Production code](../../../GOVERNANCE.md#production-code), [Source structure](../../../GOVERNANCE.md#source-structure), and `[structure]` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
+| Derived asset | [Derived assets](../../../GOVERNANCE.md#derived-assets) and `[assets]` plus the matching `[assets.pipelines.*]` table in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
+| GameMaker structured data | [GameMaker structured data](../../../GOVERNANCE.md#gamemaker-structured-data) and `assets.content_root` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
 
-## Code
+Imported-library source follows the exception in Source structure, not the
+repository-owned production-code style rules.
 
-For repository-owned production GML, follow the style, readability, and
-simplicity rules in AGENTS.md and GOVERNANCE.md. Preserve imported libraries
-instead of restyling or simplifying them.
-
-Give every source file one primary responsibility.
-
-Do not create generic helper or utility dumping grounds.
-
-Respect the source-size limit.
+## Production procedure
 
 When reusing an older project:
 
 1. identify the useful behavior;
 2. understand its assumptions;
-3. adapt it to current architecture;
+3. adapt it to the current architecture;
 4. leave unrelated legacy structure behind.
 
-## Assets
+Preserve valid GameMaker resource relationships and verify any relationship
+changed by the work.
 
-Use:
-
-Vector:
-- Inkscape `.svg`
-- plain runtime `.svg`
-
-Raster:
-- `.kra`
-- runtime `.png`
-
-Music:
-- `.mid`
-- `.logicx`
-- runtime `.flac`, 48 kHz stereo
-
-Sound effects:
-- `.logicx`
-- runtime `.wav`, 48 kHz stereo
-
-3D:
-- `.blend`
-- `.obj` and `.mtl`
-- runtime `.vbuff`
-
-Derived runtime assets must be mapped in assets/exports.json.
-
-## GameMaker data
-
-Use canonical `.json` under content/ for:
-
-- stories;
-- saves;
-- bullet patterns;
-- levels and stages;
-- encounters;
-- cached GameMaker data.
-
-The same JSON is source and runtime data.
-
-## GameMaker resources
-
-Preserve valid GameMaker resource relationships.
-
-Treat project configuration, extensions, core architecture, persistence, save
-code, and migrations as high risk.
-
-## Validation
-
-Run the narrowest relevant tests first.
-
-Then run all required repository checks.
-
-For visual behavior, report actual observed results rather than inferring
-visual correctness from code.
+For visual behavior, report observed results rather than inferring visual
+correctness from code.

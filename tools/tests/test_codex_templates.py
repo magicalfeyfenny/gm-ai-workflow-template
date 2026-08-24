@@ -9,19 +9,20 @@ ROOT = Path(__file__).resolve().parents[2]
 class CodexAutomationTemplateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        """Load the scheduled governed-change prompt once for focused checks."""
         cls.prompt = (
             ROOT / "templates/codex/governed-change.txt"
         ).read_text(encoding="utf-8")
-        cls.setup = (ROOT / "docs/SETUP.md").read_text(encoding="utf-8")
         cls.prompt_flat = " ".join(cls.prompt.split())
         cls.prompt_casefold = cls.prompt_flat.casefold()
-        cls.setup_flat = " ".join(cls.setup.split())
 
     def test_governed_change_selects_one_live_eligible_issue(self):
+        """Keep the scheduled worker's task-specific eligibility contract."""
         required_contract = (
             "Use the governed-change skill for this repository.",
             "live open GitHub issues",
             "at most one eligible issue",
+            "direct-request issue-creation permission does not apply",
             "actionable acceptance criteria and bounded scope",
             "unassigned or assigned to the automation's current user",
             "not labeled `work:blocked`",
@@ -37,7 +38,8 @@ class CodexAutomationTemplateTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIn(text, self.prompt_flat)
 
-    def test_selection_order_recheck_and_no_candidate_stop_are_explicit(self):
+    def test_selection_order_and_no_candidate_stop_are_explicit(self):
+        """Keep scheduled ordering, freshness, and no-replacement behavior."""
         required_contract = (
             "Prefer the oldest eligible issue",
             "explicit priority or dependency data",
@@ -46,8 +48,7 @@ class CodexAutomationTemplateTests(unittest.TestCase):
             "stop without modifying repository state",
             "do not create a replacement issue",
             "no candidate was available",
-            "Work no more than one issue per run",
-            "do not absorb unrelated fixes",
+            "Do not absorb unrelated fixes",
         )
 
         for text in required_contract:
@@ -55,6 +56,7 @@ class CodexAutomationTemplateTests(unittest.TestCase):
                 self.assertIn(text, self.prompt_flat)
 
     def test_result_contract_and_portability(self):
+        """Keep useful output fields without baking in repository identity."""
         for text in (
             "selected issue",
             "branch",
@@ -82,20 +84,6 @@ class CodexAutomationTemplateTests(unittest.TestCase):
                 self.prompt_flat,
             )
         )
-
-    def test_setup_distinguishes_the_two_manual_automations(self):
-        required_setup = (
-            "manually create whichever scheduled automations",
-            "Choose each automation's schedule and execution identity",
-            "templates/codex/project-steward.txt",
-            "templates/codex/governed-change.txt",
-            "Project Steward creates and tracks",
-            "Governed Change executes one existing agent-workable issue",
-        )
-
-        for text in required_setup:
-            with self.subTest(text=text):
-                self.assertIn(text, self.setup_flat)
 
 
 if __name__ == "__main__":

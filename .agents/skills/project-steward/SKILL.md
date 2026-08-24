@@ -5,9 +5,15 @@ description: Audit repository issues and pull requests and create bounded issues
 
 # Project steward
 
-Inspect open issues and PRs.
+This is an audit and evidence-backed tracking procedure, not an implementation
+workflow. Use [Issue authority](../../../GOVERNANCE.md#issue-authority) for
+shared issue fields and assignment. Use
+[Human-created changes](../../../GOVERNANCE.md#human-created-changes) when
+interpreting human-owned work.
 
-Report:
+## Audit procedure
+
+Inspect live issues and PRs, then report only:
 
 - duplicates;
 - issues without actionable acceptance criteria;
@@ -16,34 +22,22 @@ Report:
 - persistent CI failures;
 - clearly abandoned or superseded tracking.
 
-Create an issue only from concrete evidence:
+Create an issue only from:
 
-- a reproducible CI failure not already tracked;
-- an explicit TODO(ISSUE) marker;
-- an explicit user-authored backlog item.
-- a merged `human-created` PR that provides concrete evidence for a bounded
-  repository-compliance issue.
+- a reproducible untracked CI failure;
+- an explicit `TODO(ISSUE)` marker;
+- an explicit user-authored backlog item; or
+- concrete evidence for a bounded repository-compliance issue from a merged
+  human-created PR.
 
-Search for duplicates before creating anything.
+Search live tracking for duplicates before creating anything. Add the source
+evidence to the shared issue fields and create no more than five issues per
+run.
 
-Every created issue contains:
+## Critical stops
 
-- summary;
-- acceptance criteria;
-- bounded scope;
-- expected risk;
-- source evidence.
-
-Assign created issues to the current user.
-
-Create no more than five issues per run.
-
-Do not:
-
-- modify code;
-- treat an open `human-created` PR as a governance defect or work item;
-- modify, review, validate, label, ready, or merge a `human-created` PR;
-- mark PRs ready;
-- merge PRs;
-- close stale issues automatically;
-- create speculative work.
+- Do not modify code, branches, PR state, readiness, merges, releases, or
+  publication.
+- Do not treat an open human-created PR as a governance defect, and do not
+  modify, review, validate, label, ready, or merge it.
+- Do not close stale issues automatically or create speculative work.
