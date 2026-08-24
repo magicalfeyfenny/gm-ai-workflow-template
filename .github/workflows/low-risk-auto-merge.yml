@@ -23,42 +23,33 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
+      contents: read
       pull-requests: write
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Revoke pending auto-merge
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          gh pr view "$PR_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json autoMergeRequest,state \
-            > /tmp/pr.json
-
-          if jq -e \
-            '.state == "OPEN" and .autoMergeRequest != null' \
-            /tmp/pr.json \
-            > /dev/null; then
-            gh pr merge \
-              "$PR_NUMBER" \
-              --repo "$GITHUB_REPOSITORY" \
-              --disable-auto
-          fi
-
-          gh pr view "$PR_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json autoMergeRequest \
-            > /tmp/pr-after.json
-
-          jq -e '.autoMergeRequest == null' \
-            /tmp/pr-after.json \
-            > /dev/null
+          python3 -m tools.ci.low_risk_merge cancel \
+            --repository "$GITHUB_REPOSITORY" \
+            --pull-request-number "$PR_NUMBER"
 
   merge:
     if: >
       github.event_name == 'workflow_run' &&
-      github.event.workflow_run.event == 'pull_request'
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.pull_requests[0].number != null
 
     runs-on: ubuntu-latest
 
@@ -71,6 +62,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: dev
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -96,243 +88,10 @@ jobs:
           CI_RUN_ID: ${{ github.event.workflow_run.id }}
           CI_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
-          if [ -z "$PR_NUMBER" ]; then
-            exit 0
-          fi
-
-          refresh_pr() {
-            gh pr view "$PR_NUMBER" \
-              --repo "$GITHUB_REPOSITORY" \
-              --json \
-              number,baseRefName,headRefName,headRefOid,headRepository,body,labels,additions,deletions,isDraft,state,autoMergeRequest \
-              > /tmp/pr.json
-          }
-
-          current_open_dev_head() {
-            jq -e \
-              --arg head "$CI_HEAD" \
-              '.state == "OPEN"
-                and .baseRefName == "dev"
-                and .headRefOid == $head' \
-              /tmp/pr.json \
-              > /dev/null
-          }
-
-          classify_ci_metadata() {
-            if python3 tools/ci/pr_metadata.py compare \
-              --attestation-path "$PR_METADATA_PATH" \
-              --current-pr-path /tmp/pr.json \
-              --repository "$GITHUB_REPOSITORY" \
-              --pull-request-number "$PR_NUMBER" \
-              --head-sha "$CI_HEAD" \
-              --run-id "$CI_RUN_ID" \
-              --run-attempt "$CI_RUN_ATTEMPT" \
-              --attestation-run-attempt "$CI_METADATA_ATTEMPT"; then
-              CI_METADATA_STATUS="match"
-            else
-              case "$?" in
-                3)
-                  CI_METADATA_STATUS="stale"
-                  ;;
-                *)
-                  CI_METADATA_STATUS="invalid"
-                  ;;
-              esac
-            fi
-          }
-
-          collect_files() {
-            gh api \
-              --paginate \
-              --slurp \
-              "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
-              > /tmp/pr-files.json
-          }
-
-          eligible_current() {
-            local eligible
-
-            refresh_pr || return 1
-            classify_ci_metadata
-
-            if [ "$CI_METADATA_STATUS" != "match" ]; then
-              return 1
-            fi
-
-            current_open_dev_head || return 1
-            collect_files || return 1
-            refresh_pr || return 1
-            classify_ci_metadata
-
-            if [ "$CI_METADATA_STATUS" != "match" ]; then
-              return 1
-            fi
-
-            current_open_dev_head || return 1
-            PR_BASE="$(jq -r '.baseRefName' /tmp/pr.json)"
-            PR_HEAD="$(jq -r '.headRefName' /tmp/pr.json)"
-            PR_HEAD_REPOSITORY="$(
-              jq -r '.headRepository.nameWithOwner // ""' \
-                /tmp/pr.json
-            )"
-            PR_REPOSITORY="$GITHUB_REPOSITORY"
-            PR_BODY="$(jq -r '.body // ""' /tmp/pr.json)"
-            PR_LABELS="$(
-              jq -r '[.labels[].name] | join(",")' \
-                /tmp/pr.json
-            )"
-            PR_ADDITIONS="$(jq -r '.additions' /tmp/pr.json)"
-            PR_DELETIONS="$(jq -r '.deletions' /tmp/pr.json)"
-            PR_FILES_PATH="/tmp/pr-files.json"
-
-            export \
-              PR_BASE \
-              PR_HEAD \
-              PR_HEAD_REPOSITORY \
-              PR_REPOSITORY \
-              PR_BODY \
-              PR_LABELS \
-              PR_ADDITIONS \
-              PR_DELETIONS \
-              PR_FILES_PATH
-
-            if ! eligible="$(
-              python3 tools/ci/pr_policy.py --auto-eligible
-            )"; then
-              return 1
-            fi
-
-            [ "$eligible" = "true" ]
-          }
-
-          download_ci_metadata() {
-            local artifact
-            local attempt
-            local destination
-
-            attempt="$CI_RUN_ATTEMPT"
-
-            while [ "$attempt" -ge 1 ]; do
-              artifact="pr-metadata-$CI_RUN_ID-$attempt"
-              destination="$RUNNER_TEMP/ci-metadata-$attempt"
-
-              if gh run download "$CI_RUN_ID" \
-                --repo "$GITHUB_REPOSITORY" \
-                --name "$artifact" \
-                --dir "$destination"; then
-                PR_METADATA_PATH="$destination/pr-metadata.json"
-                CI_METADATA_ATTEMPT="$attempt"
-                export PR_METADATA_PATH CI_METADATA_ATTEMPT
-
-                [ -f "$PR_METADATA_PATH" ]
-                return
-              fi
-
-              attempt=$((attempt - 1))
-            done
-
-            return 1
-          }
-
-          disable_auto_merge() {
-            refresh_pr
-
-            if jq -e \
-              '.state == "OPEN" and .autoMergeRequest != null' \
-              /tmp/pr.json \
-              > /dev/null; then
-              gh pr merge \
-                "$PR_NUMBER" \
-                --repo "$GITHUB_REPOSITORY" \
-                --disable-auto
-            fi
-
-            refresh_pr
-            jq -e '.autoMergeRequest == null' \
-              /tmp/pr.json \
-              > /dev/null
-          }
-
-          if ! download_ci_metadata; then
-            disable_auto_merge
-            echo "CI metadata evidence is missing." >&2
-            exit 0
-          fi
-
-          if ! refresh_pr; then
-            echo "Current PR metadata is unavailable." >&2
-            exit 1
-          fi
-
-          classify_ci_metadata
-
-          case "$CI_METADATA_STATUS" in
-            stale)
-              echo "Stale CI run ignored; current metadata needs its own CI."
-              exit 0
-              ;;
-            invalid)
-              disable_auto_merge
-              echo "CI metadata evidence is invalid." >&2
-              exit 0
-              ;;
-          esac
-
-          if [ "$CI_CONCLUSION" != "success" ]; then
-            disable_auto_merge
-            exit 0
-          fi
-
-          if ! eligible_current; then
-            if [ "$CI_METADATA_STATUS" = "stale" ]; then
-              echo "Stale CI run ignored during eligibility recheck."
-              exit 0
-            fi
-
-            disable_auto_merge
-            echo "PR requires manual handling."
-            exit 0
-          fi
-
-          if jq -e '.isDraft == true' \
-            /tmp/pr.json \
-            > /dev/null; then
-            gh pr ready \
-              "$PR_NUMBER" \
-              --repo "$GITHUB_REPOSITORY"
-          fi
-
-          if ! eligible_current; then
-            if [ "$CI_METADATA_STATUS" = "stale" ]; then
-              echo "Stale CI run ignored after readiness recheck."
-              exit 0
-            fi
-
-            disable_auto_merge
-            echo "PR changed before merge."
-            exit 0
-          fi
-
-          if ! jq -e '.isDraft == false' \
-            /tmp/pr.json \
-            > /dev/null; then
-            disable_auto_merge
-            exit 0
-          fi
-
-          if jq -e '.autoMergeRequest != null' \
-            /tmp/pr.json \
-            > /dev/null; then
-            echo "Auto-merge is already configured for this PR state."
-            exit 0
-          fi
-
-          # Use a distinct App identity only for the final merge. GitHub's
-          # built-in Actions token does not perform native linked-issue
-          # closure even when the job grants it Issues write permission.
-          GH_TOKEN="$MERGE_TOKEN" gh pr merge \
-            "$PR_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --auto \
-            --squash \
-            --match-head-commit "$CI_HEAD"
+          python3 -m tools.ci.low_risk_merge merge \
+            --repository "$GITHUB_REPOSITORY" \
+            --pull-request-number "$PR_NUMBER" \
+            --head-sha "$CI_HEAD" \
+            --conclusion "$CI_CONCLUSION" \
+            --run-id "$CI_RUN_ID" \
+            --run-attempt "$CI_RUN_ATTEMPT"

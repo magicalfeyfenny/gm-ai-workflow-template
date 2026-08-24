@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +17,17 @@ ROOT = Path(__file__).resolve().parents[2]
 POLICY = tomllib.loads(
     (ROOT / "PROJECT_POLICY.toml").read_text(encoding="utf-8")
 )
+
+
+@dataclass(frozen=True)
+class PolicyEvaluation:
+    """Report policy validity, risk, and automatic-merge eligibility."""
+
+    human_created: bool
+    errors: tuple[str, ...]
+    high_risk_reasons: tuple[str, ...]
+    effective_high: bool
+    auto_merge_allowed: bool
 
 
 def env(
@@ -243,9 +255,102 @@ def completion_policy_errors(
     return errors
 
 
+def evaluate_pull_request(
+    *,
+    base: str,
+    head: str,
+    head_repository: str,
+    repository: str,
+    body: str,
+    labels: set[str],
+    additions: int,
+    deletions: int,
+    changed_paths: list[str],
+    changed_file_count: int,
+) -> PolicyEvaluation:
+    """Evaluate one complete PR snapshot without CLI or environment state."""
+    human_created = is_human_created(
+        head,
+        labels,
+        head_repository,
+        repository,
+    )
+
+    if human_created:
+        return PolicyEvaluation(
+            human_created=True,
+            errors=(),
+            high_risk_reasons=(),
+            effective_high=False,
+            auto_merge_allowed=False,
+        )
+
+    errors: list[str] = []
+    issue, branch_errors = branch_issue(base, head)
+    errors.extend(branch_errors)
+
+    closure_matches = re.findall(
+        r"(?mi)^Closes #([1-9][0-9]*)\s*$",
+        body,
+    )
+    risk_labels = labels.intersection(
+        {
+            "risk:low",
+            "risk:high",
+        }
+    )
+
+    if len(risk_labels) != 1:
+        errors.append("PR must have exactly one risk label")
+
+    forced_high, reasons = forced_high_risk(
+        base,
+        changed_paths,
+        additions,
+        deletions,
+        changed_file_count,
+    )
+
+    if "risk:low" in labels and forced_high:
+        errors.append("policy requires risk:high")
+
+    if base == "main":
+        if "release" not in labels:
+            errors.append("main PR requires release label")
+
+        if "risk:high" not in labels:
+            errors.append("main PR must be risk:high")
+
+    effective_high = forced_high or "risk:high" in labels
+    errors.extend(
+        completion_policy_errors(
+            issue,
+            labels,
+            closure_matches,
+            effective_high or "manual-merge" in labels,
+        )
+    )
+
+    return PolicyEvaluation(
+        human_created=False,
+        errors=tuple(errors),
+        high_risk_reasons=tuple(reasons),
+        effective_high=effective_high,
+        auto_merge_allowed=(
+            not errors
+            and auto_merge_eligible(
+                base,
+                effective_high,
+                labels,
+            )
+        ),
+    )
+
+
 def validate(
     auto_eligible: bool,
 ) -> int:
+    """Adapt environment and changed-file input to the pure PR evaluation."""
     base = env("PR_BASE")
     head = env("PR_HEAD")
     body = os.environ.get("PR_BODY", "")
@@ -256,14 +361,15 @@ def validate(
         if item
     }
 
-    human_created = is_human_created(
+    additions = int(env("PR_ADDITIONS", "0"))
+    deletions = int(env("PR_DELETIONS", "0"))
+
+    if is_human_created(
         head,
         labels,
         env("PR_HEAD_REPOSITORY"),
         env("PR_REPOSITORY"),
-    )
-
-    if human_created:
+    ):
         print(
             "false"
             if auto_eligible
@@ -271,17 +377,24 @@ def validate(
         )
         return 0
 
-    additions = int(env("PR_ADDITIONS", "0"))
-    deletions = int(env("PR_DELETIONS", "0"))
-
     files_path = Path(env("PR_FILES_PATH"))
 
     try:
         pages = json.loads(
             files_path.read_text(encoding="utf-8")
         )
-        paths, changed_file_count = changed_file_paths(
-            pages
+        paths, changed_file_count = changed_file_paths(pages)
+        evaluation = evaluate_pull_request(
+            base=base,
+            head=head,
+            head_repository=env("PR_HEAD_REPOSITORY"),
+            repository=env("PR_REPOSITORY"),
+            body=body,
+            labels=labels,
+            additions=additions,
+            deletions=deletions,
+            changed_paths=paths,
+            changed_file_count=changed_file_count,
         )
     except (OSError, ValueError) as exc:
         print(
@@ -290,82 +403,14 @@ def validate(
         )
         return 1
 
-    errors: list[str] = []
-
-    issue, branch_errors = branch_issue(
-        base,
-        head,
-    )
-
-    errors.extend(branch_errors)
-
-    closure_matches = re.findall(
-        r"(?mi)^Closes #([1-9][0-9]*)\s*$",
-        body,
-    )
-
-    risk_labels = labels.intersection(
-        {
-            "risk:low",
-            "risk:high",
-        }
-    )
-
-    if len(risk_labels) != 1:
-        errors.append(
-            "PR must have exactly one risk label"
-        )
-
-    forced_high, reasons = forced_high_risk(
-        base,
-        paths,
-        additions,
-        deletions,
-        changed_file_count,
-    )
-
-    if (
-        "risk:low" in labels
-        and forced_high
-    ):
-        errors.append(
-            "policy requires risk:high"
-        )
-
-    if base == "main":
-        if "release" not in labels:
-            errors.append(
-                "main PR requires release label"
-            )
-
-        if "risk:high" not in labels:
-            errors.append(
-                "main PR must be risk:high"
-            )
-
-    effective_high = (
-        forced_high
-        or "risk:high" in labels
-    )
-
-    errors.extend(
-        completion_policy_errors(
-            issue,
-            labels,
-            closure_matches,
-            effective_high
-            or "manual-merge" in labels,
-        )
-    )
-
-    if errors:
-        for error in errors:
+    if evaluation.errors:
+        for error in evaluation.errors:
             print(
                 f"pr-policy: {error}",
                 file=sys.stderr,
             )
 
-        for reason in reasons:
+        for reason in evaluation.high_risk_reasons:
             print(
                 f"pr-policy: high-risk reason: {reason}",
                 file=sys.stderr,
@@ -374,15 +419,9 @@ def validate(
         return 1
 
     if auto_eligible:
-        eligible = auto_merge_eligible(
-            base,
-            effective_high,
-            labels,
-        )
-
         print(
             "true"
-            if eligible
+            if evaluation.auto_merge_allowed
             else "false"
         )
     else:
@@ -390,7 +429,7 @@ def validate(
             "PR policy passed; risk: "
             + (
                 "high"
-                if effective_high
+                if evaluation.effective_high
                 else "low"
             )
         )
