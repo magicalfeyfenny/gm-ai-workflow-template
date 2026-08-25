@@ -29,9 +29,6 @@ When reusing an older project:
 Preserve valid GameMaker resource relationships and verify any relationship
 changed by the work.
 
-For visual behavior, report observed results rather than inferring visual
-correctness from code.
-
 ## Production defaults
 
 1. GameMaker-native first. Use ordinary objects, instances, rooms, layers,
@@ -43,9 +40,9 @@ prefer a runnable consumer over defining a representation in isolation. Do not
 create a canonical schema ahead of its first consumer unless the schema itself
 is the requested deliverable or an actual shared boundary.
 3. Existing architecture is precedent, not authority. Reuse an abstraction when
-it makes the current change simpler. Do not extend one merely because it 
-exists, and do not preserve unnecessary architecture when a simpler compatible
-path exists.
+it makes the current change simpler. Do not extend one merely because it exists.
+Simplify existing architecture when doing so directly serves the requested
+outcome; otherwise leave unrelated cleanup out of scope.
 4. New machinery needs a present-tense reason. Before adding a schema,
 validator, registry, service, adapter, port, event bus, generalized framework,
 custom editor, or similar layer, identify the current requirement, trust
@@ -71,6 +68,7 @@ because it is available.
 9. Replacement includes cleanup. When replacing a runtime/content path,
 classify leftovers as still-live, compatibility, fixture/reference, or
 removable. Don't let tests fossilize dead production systems.
-10. Observe what tests cannot prove. Keep your current rule about actually 
-observing visual behavior, and generalize it to player-visible behavior where
-appropriate.
+10. Observe what tests cannot prove. When the requested outcome is visual, 
+interactive, or otherwise player-visible, verify the relevant behavior in the
+running game when practical. Do not infer visual or experiential correctness
+from code or unit tests alone.

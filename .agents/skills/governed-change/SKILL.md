@@ -43,6 +43,10 @@ characterization, or future extension.
 For a scheduled run, follow its template: direct-request creation does
 not apply, and no eligible issue means no repository mutation.
 
+Deferred work is not automatically backlog work. Create a follow-up issue
+only for an explicit requested outcome, a concrete defect/risk that should be 
+tracked, or a blocker that cannot remain in the current issue.
+
 ## Execute
 
 1. Inspect live tracking and checkout state. Immediately before direct work,
@@ -61,6 +65,7 @@ not apply, and no eligible issue means no repository mutation.
 7. Deferred work is not automatically backlog work. Create a follow-up issue
    only for an explicit requested outcome, a concrete defect/risk that should be 
    tracked, or a blocker that cannot remain in the current issue.
+
 
 
 ## Critical stops
