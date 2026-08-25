@@ -1,7 +1,7 @@
 # GameMaker AI Workflow Template
 
 This repository is a reusable governance scaffold for GameMaker projects, not a
-game. It lets agents work in small, auditable units while humans retain
+game. It lets agents work in coherent, auditable units while humans retain
 authority over high-risk and release decisions.
 
 ## Governance overview (non-normative)
@@ -12,11 +12,11 @@ workflow and rationale live in [GOVERNANCE.md](GOVERNANCE.md#authority), while
 limits, and risk patterns.
 
 Normal agent-governed work starts with one coherent implementation issue.
-Broader requests split only when they contain independently meaningful 
-outcomes; technical implementation layers stay together when they jointly 
-deliver one outcome. Each issue branches from current `origin/dev`, uses an 
-issue-numbered branch, and opens a draft pull request after the first 
-meaningful, tested milestone. Blocked work waits until its blockers are 
+Broader requests split only when they contain independently meaningful
+outcomes; technical implementation layers stay together when they jointly
+deliver one outcome. Each issue branches from current `origin/dev`, uses an
+issue-numbered branch, and opens a draft pull request after the first
+meaningful, tested milestone. Blocked work waits until its blockers are
 resolved.
 
 Validation happens in three stages: focused checks support each milestone,

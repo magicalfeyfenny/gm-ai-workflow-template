@@ -24,21 +24,21 @@ Every issue created by an agent contains a summary, acceptance criteria,
 bounded scope, and expected risk, and is assigned to the current user.
 
 An implementation issue defines one coherent, independently meaningful outcome
-with one acceptance contract. Atomicity is measured by the product or 
+with one acceptance contract. Atomicity is measured by the product or
 repository outcome, not by technical implementation layers.
 
-Prefer one vertical issue containing the data, runtime behavior, integration, 
+Prefer one vertical issue containing the data, runtime behavior, integration,
 tests, and documentation needed to deliver that outcome. Technical separability
 alone is not a reason to split.
 
 Split work when outcomes can be meaningfully accepted, deferred, prioritized,
-shipped, rolled back, or reviewed independently, or when they require 
+shipped, rolled back, or reviewed independently, or when they require
 materially different authority or risk handling. Separate schemas, validators,
-adapters, runtime consumers, tests, documentation, or other implementation 
+adapters, runtime consumers, tests, documentation, or other implementation
 layers are not independently meaningful merely because they can be implemented
 separately.
 
-Create the minimum issue set needed for the requested outcome. Do not 
+Create the minimum issue set needed for the requested outcome. Do not
 pre-expand speculative downstream work into a backlog.
 
 A direct human request for governed repository work authorizes the
@@ -297,19 +297,19 @@ Editable assets belong under the configured source root. Generated or
 exported assets belong under the configured runtime root, and every tracked
 derived runtime asset is mapped in the configured export manifest.
 
-Each asset follows its named pipeline. 
+Each asset follows its named pipeline.
 
 ## GameMaker structured data
 
-When file-backed structured content is justified by the project, store its 
-canonical representation once under the configured content root. Do not 
-introduce structured content merely because a concept can be represented as 
-data. Prefer GameMaker-native resources, placed instances, instance variables, 
-sequences, rooms, layers, and ordinary GML when they provide the simpler 
+When file-backed structured content is justified by the project, store its
+canonical representation once under the configured content root. Do not
+introduce structured content merely because a concept can be represented as
+data. Prefer GameMaker-native resources, placed instances, instance variables,
+sequences, rooms, layers, and ordinary GML when they provide the simpler
 authoring and runtime model.
 
 Structured content should have one canonical representation. Validation
-should exist at actual authoring, compatibility, or trust boundaries rather 
+should exist at actual authoring, compatibility, or trust boundaries rather
 than being duplicated along trusted internal paths.
 
 ## Production code
@@ -343,13 +343,13 @@ Add a concise plain-English comment to public contracts, engine-lifecycle
 assumptions, non-obvious intent, invariants, and necessary complexity. Comments
 must accurately describe current behavior and intent without merely restating
 the code. A function comment must limit its claims to behavior the function
-actually implements. Do not use comments as a wishlist. Do not add comments 
+actually implements. Do not use comments as a wishlist. Do not add comments
 that merely restate obvious code.
 
 Assume that "plain-English" means short, direct language understandable to a
 middle-school reader when the subject permits it. Use technical or more complex
 language only when it makes an important distinction clearer or more precise.
-Unnecessary linguistic complexity is obfuscation, just as unnecessary 
+Unnecessary linguistic complexity is obfuscation, just as unnecessary
 implementation complexity is, and must be avoided unless it is necessary and
 justified by the outcome it serves.
 

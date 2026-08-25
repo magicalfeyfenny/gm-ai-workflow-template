@@ -44,7 +44,7 @@ For a scheduled run, follow its template: direct-request creation does
 not apply, and no eligible issue means no repository mutation.
 
 Deferred work is not automatically backlog work. Create a follow-up issue
-only for an explicit requested outcome, a concrete defect/risk that should be 
+only for an explicit requested outcome, a concrete defect/risk that should be
 tracked, or a blocker that cannot remain in the current issue.
 
 ## Execute
@@ -62,11 +62,6 @@ tracked, or a blocker that cannot remain in the current issue.
    Stage 3 evidence.
 6. Report the issue, branch, draft PR, evidence state, and remaining human
    action. Leave manual-path readiness and merge to a human.
-7. Deferred work is not automatically backlog work. Create a follow-up issue
-   only for an explicit requested outcome, a concrete defect/risk that should be 
-   tracked, or a blocker that cannot remain in the current issue.
-
-
 
 ## Critical stops
 

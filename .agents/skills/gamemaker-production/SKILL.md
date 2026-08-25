@@ -32,7 +32,7 @@ changed by the work.
 ## Production defaults
 
 1. GameMaker-native first. Use ordinary objects, instances, rooms, layers,
-sequences, sprites, instance variables, structs and GML before creating a 
+sequences, sprites, instance variables, structs and GML before creating a
 parallel authoring/runtime model. Preserve direct manipulation in the GameMaker
 IDE when practical.
 2. Build the smallest end-to-end behavior first. For gameplay/content work,
@@ -46,12 +46,12 @@ outcome; otherwise leave unrelated cleanup out of scope.
 4. New machinery needs a present-tense reason. Before adding a schema,
 validator, registry, service, adapter, port, event bus, generalized framework,
 custom editor, or similar layer, identify the current requirement, trust
-boundary, repeated variation, or distinct failure mode it solves. If none 
+boundary, repeated variation, or distinct failure mode it solves. If none
 exists, don't add it.
-5. Strong guarantees are not free defaults. Stable IDs, schema versions, 
+5. Strong guarantees are not free defaults. Stable IDs, schema versions,
 migration layers, canonical normalization, hashes, fixed-point representations,
-deterministic serialization and fail-closed cross-language validation should 
-protect a concrete persistence, compatibility, replay, reproducibility, 
+deterministic serialization and fail-closed cross-language validation should
+protect a concrete persistence, compatibility, replay, reproducibility,
 external-authoring, or trust requirement. Don't add them simply because they
 are theoretically nice.
 6. Validation follows real boundaries. Do not invent a representation and then
@@ -59,7 +59,7 @@ use the need to validate that representation as justification for more
 architecture. Tests should primarily establish requested behavior and important
 invariants.
 7. Authoring ergonomics count. A system that runs correctly but makes ordinary
-content harder to create in GameMaker is not automatically an improvement. 
+content harder to create in GameMaker is not automatically an improvement.
 Routine tuning/content should remain easy for a human to inspect and edit.
 8. Legacy archaeology is bounded. When consulting old projects, inspect only
 the behavior relevant to the current outcome. Treat legacy architecture as
@@ -68,7 +68,7 @@ because it is available.
 9. Replacement includes cleanup. When replacing a runtime/content path,
 classify leftovers as still-live, compatibility, fixture/reference, or
 removable. Don't let tests fossilize dead production systems.
-10. Observe what tests cannot prove. When the requested outcome is visual, 
+10. Observe what tests cannot prove. When the requested outcome is visual,
 interactive, or otherwise player-visible, verify the relevant behavior in the
 running game when practical. Do not infer visual or experiential correctness
 from code or unit tests alone.
