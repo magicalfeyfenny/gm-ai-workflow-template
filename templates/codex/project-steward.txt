@@ -17,4 +17,5 @@ Return only:
 - duplicate or stale tracking;
 - PRs labeled `work:blocked`;
 - persistent CI failures;
-- items requiring my decision.
+- items requiring my decision;
+- over-decomposed or over-prescribed tracking requiring my decision.
