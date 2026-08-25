@@ -21,6 +21,11 @@ Inspect live issues and PRs, then report only:
 - PRs labeled `work:blocked`;
 - persistent CI failures;
 - clearly abandoned or superseded tracking.
+- obviously over-decomposed issue clusters
+- issue acceptance criteria that prescribe technical machinery without an
+  independent outcome
+- stale blocker/dependency language
+- tracking whose only purpose is an abstraction that no longer has a consumer
 
 Create an issue only from:
 
@@ -41,3 +46,6 @@ run.
 - Do not treat an open human-created PR as a governance defect, and do not
   modify, review, validate, label, ready, or merge it.
 - Do not close stale issues automatically or create speculative work.
+- Do not create issues to simplify over-decomposed issue clusters, fix
+  over-prescribed technical machinery, or repair stale tracking or language
+  unless the issue is explicitly requested.

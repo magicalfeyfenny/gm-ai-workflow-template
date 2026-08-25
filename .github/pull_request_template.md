@@ -2,7 +2,7 @@
 
 ## Summary
 
-Summarize changes to the project.
+State the completed outcome and what now works or is possible.
 
 ## Validation
 

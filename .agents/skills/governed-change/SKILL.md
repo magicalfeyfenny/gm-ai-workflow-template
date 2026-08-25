@@ -34,7 +34,13 @@ release work.
 
 For a direct request, use or create only the atomic issue or linked issue set
 authorized by Issue authority, then execute one atomic implementation issue at
-a time. For a scheduled run, follow its template: direct-request creation does
+a time. Use or create the minimum issue set necessary to represent the 
+requested outcomes. Prefer one vertical implementation issue when multiple 
+technical layers are jointly necessary for one outcome. Do not create 
+downstream issues merely for potential generalization, hardening, versioning,
+characterization, or future extension.
+
+For a scheduled run, follow its template: direct-request creation does
 not apply, and no eligible issue means no repository mutation.
 
 ## Execute
@@ -52,6 +58,10 @@ not apply, and no eligible issue means no repository mutation.
    Stage 3 evidence.
 6. Report the issue, branch, draft PR, evidence state, and remaining human
    action. Leave manual-path readiness and merge to a human.
+7. Deferred work is not automatically backlog work. Create a follow-up issue
+   only for an explicit requested outcome, a concrete defect/risk that should be 
+   tracked, or a blocker that cannot remain in the current issue.
+
 
 ## Critical stops
 

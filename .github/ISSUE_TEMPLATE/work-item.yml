@@ -16,7 +16,7 @@ body:
     id: acceptance
     attributes:
       label: Acceptance
-      description: What must be true when this is complete?
+      description: What observable behavior, capability, or required invariant establishes completion? Describe implementation details only when they are part of the requested contract.
     validations:
       required: true
 
@@ -24,7 +24,7 @@ body:
     id: scope
     attributes:
       label: Scope
-      description: One independently completable outcome and its boundaries. Split separable outcomes into linked issues.
+      description: One independently meaningful outcome and its boundaries. Include all technical layers needed to deliver that outcome. Split only independently valuable outcomes.
     validations:
       required: true
 

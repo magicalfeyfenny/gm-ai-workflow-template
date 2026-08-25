@@ -23,11 +23,23 @@ reminder, not a second source of authority.
 Every issue created by an agent contains a summary, acceptance criteria,
 bounded scope, and expected risk, and is assigned to the current user.
 
-An issue that authorizes implementation must be atomic: it defines one
-coherent, independently completable and verifiable outcome with one acceptance
-contract. If a request contains separable outcomes, split it into linked atomic
-sub-issues before implementation begins. A coordinating parent may track the
-sub-issues but is not itself an implementation unit.
+An implementation issue defines one coherent, independently meaningful outcome
+with one acceptance contract. Atomicity is measured by the product or 
+repository outcome, not by technical implementation layers.
+
+Prefer one vertical issue containing the data, runtime behavior, integration, 
+tests, and documentation needed to deliver that outcome. Technical separability
+alone is not a reason to split.
+
+Split work when outcomes can be meaningfully accepted, deferred, prioritized,
+shipped, rolled back, or reviewed independently, or when they require 
+materially different authority or risk handling. Separate schemas, validators,
+adapters, runtime consumers, tests, documentation, or other implementation 
+layers are not independently meaningful merely because they can be implemented
+separately.
+
+Create the minimum issue set needed for the requested outcome. Do not 
+pre-expand speculative downstream work into a backlog.
 
 A direct human request for governed repository work authorizes the
 `governed-change` workflow to find or create only the atomic implementation
@@ -285,22 +297,20 @@ Editable assets belong under the configured source root. Generated or
 exported assets belong under the configured runtime root, and every tracked
 derived runtime asset is mapped in the configured export manifest.
 
-Each asset follows its named pipeline. Editable vector source is an Inkscape
-SVG; vector runtime is plain SVG when `plain_runtime_svg` is enabled and
-contains no editor metadata. In the music pipeline, `.mid` is sheet music and
-`.logicx` is the editable audio project; sound effects also use `.logicx` as
-the editable audio project. For 3D assets, `.obj` and `.mtl` are retained
-intermediate export sources.
+Each asset follows its named pipeline. 
 
 ## GameMaker structured data
 
-Canonical GameMaker-specific structured data lives under the `content_root`
-configured in [PROJECT_POLICY.toml](PROJECT_POLICY.toml). It uses `.json`
-directly as both editable source and runtime data, is stored once, and is not
-entered in the derived-asset manifest.
+When file-backed structured content is justified by the project, store its 
+canonical representation once under the configured content root. Do not 
+introduce structured content merely because a concept can be represented as 
+data. Prefer GameMaker-native resources, placed instances, instance variables, 
+sequences, rooms, layers, and ordinary GML when they provide the simpler 
+authoring and runtime model.
 
-This includes story, bullet-pattern, stage, encounter, save-schema and default,
-and cached GameMaker-specific data.
+Structured content should have one canonical representation. Validation
+should exist at actual authoring, compatibility, or trust boundaries rather 
+than being duplicated along trusted internal paths.
 
 ## Production code
 
@@ -316,7 +326,8 @@ Use the simplest design that reasonably satisfies current requirements, with
 no more moving parts than the behavior needs. Do not add pass-through layers,
 indirection, duplicate state, configuration, duplicated validation, or
 speculative flexibility unless a current requirement, distinct trust boundary,
-or separate failure mode needs them.
+or separate failure mode needs them and cannot reasonably use any simpler or
+already-existing design.
 
 Make both the code path and the reason for taking it plain to a human reader.
 Prefer direct control flow, concrete names, and explicit data. Establish an
@@ -328,12 +339,19 @@ the narrowest useful boundary with a concise plain-English comment. A design
 with many moving parts is maintainable only when the reason for them can be
 explained.
 
-Add a concise plain-English comment to every function written or changed by an
-agent, and wherever implementation intent would otherwise be unclear. Comments
+Add a concise plain-English comment to public contracts, engine-lifecycle
+assumptions, non-obvious intent, invariants, and necessary complexity. Comments
 must accurately describe current behavior and intent without merely restating
 the code. A function comment must limit its claims to behavior the function
-actually implements. Do not use comments as a wishlist unless planned or
-desired behavior is clearly labeled `TODO`.
+actually implements. Do not use comments as a wishlist. Do not add comments 
+that merely restate obvious code.
+
+Assume that "plain-English" means short, direct language understandable to a
+middle-school reader when the subject permits it. Use technical or more complex
+language only when it makes an important distinction clearer or more precise.
+Unnecessary linguistic complexity is obfuscation, just as unnecessary 
+implementation complexity is, and must be avoided unless it is necessary and
+justified by the outcome it serves.
 
 ## Source structure
 
