@@ -54,6 +54,7 @@ class GovernanceRoutingTests(unittest.TestCase):
             ROOT / "GOVERNANCE.md",
             ROOT / "README.md",
             ROOT / "docs/SETUP.md",
+            ROOT / ".agents/skills/asset-production/SKILL.md",
             ROOT / ".agents/skills/gamemaker-production/SKILL.md",
             ROOT / ".agents/skills/governed-change/SKILL.md",
             ROOT / ".agents/skills/project-steward/SKILL.md",
@@ -69,6 +70,9 @@ class GovernanceRoutingTests(unittest.TestCase):
     def test_task_entrypoints_route_to_their_scoped_governance_sections(self):
         """Keep normal work on its relevant Governance sections."""
         agents = governance_fragments(ROOT / "AGENTS.md")
+        assets = governance_fragments(
+            ROOT / ".agents/skills/asset-production/SKILL.md"
+        )
         production = governance_fragments(
             ROOT / ".agents/skills/gamemaker-production/SKILL.md"
         )
@@ -112,10 +116,10 @@ class GovernanceRoutingTests(unittest.TestCase):
             {
                 "production-code",
                 "source-structure",
-                "derived-assets",
                 "gamemaker-structured-data",
             },
         )
+        self.assertEqual(assets, {"derived-assets"})
         self.assertTrue(
             {
                 "issue-authority",
@@ -145,6 +149,7 @@ class GovernanceRoutingTests(unittest.TestCase):
 
         policy = (ROOT / "PROJECT_POLICY.toml").resolve()
         for entrypoint in (
+            ROOT / ".agents/skills/asset-production/SKILL.md",
             ROOT / ".agents/skills/gamemaker-production/SKILL.md",
             ROOT / ".agents/skills/governed-change/SKILL.md",
         ):
