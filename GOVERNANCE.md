@@ -146,6 +146,27 @@ combine their scopes.
 Keep the change bounded to that issue and do not absorb unrelated cleanup.
 Preserve useful behavior, not obsolete architecture merely because it exists.
 
+### Contract-oriented validation
+
+Tests and automated policy checks should validate required behavior, structure,
+and repository contracts rather than incidental wording or representation.
+
+Prefer assertions about semantic requirements over exact prose, formatting,
+field order, counts, serialized text, or other incidental representation.
+
+Exact-representation assertions are appropriate only when that exact
+representation is explicitly part of the contract, such as a documented
+compatibility interface, protocol grammar, required identifier, checksum, or
+other externally fixed value. Do not infer that representation is contractual
+merely because code, tests, tools, or automation consume it.
+
+When a semantic assertion can establish the governed requirement, use the
+semantic assertion.
+
+A wording, formatting, ordering, or representation change that preserves the
+intended contract should not require unrelated test changes merely to satisfy
+stale textual expectations.
+
 ## Validation evidence
 
 Agent-governed work uses three separate repository-change validation stages.
@@ -437,7 +458,16 @@ human instruction.
 
 Game-specific test suites are added to `Tests` as they become available.
 
-CI may enforce exact structured rules.
+Tests should protect contracts, not incidental representations. Do not use
+exact-text, exact-order, or exact-count assertions when a semantic assertion
+can establish the same requirement, unless the exact representation is itself
+part of the contract.
+
+CI may enforce exact structured rules when that exact structure is itself part
+of the contract. Do not infer that a representation is contractual merely
+because a test, tool, or automation consumes it.
+
+CI must not interpret arbitrary natural-language prose.
 
 CI must not interpret arbitrary natural-language prose.
 
