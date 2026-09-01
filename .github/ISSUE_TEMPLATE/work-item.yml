@@ -15,10 +15,26 @@ body:
   - type: textarea
     id: acceptance
     attributes:
-      label: Acceptance
-      description: What observable behavior, capability, or required invariant establishes completion? Describe implementation details only when they are part of the requested contract.
+      label: Acceptance criteria
+      description: What observable product or integration outcomes must be true for this work to be complete? Prefer outcomes over implementation mechanisms. Do not list tests, routine repository checks, or generic engineering invariants here.
     validations:
       required: true
+
+  - type: textarea
+    id: engineering-constraints
+    attributes:
+      label: Engineering constraints
+      description: Feature-specific implementation properties that must be preserved, such as determinism, stable identities, lifecycle or ownership invariants, compatibility boundaries, or asset-authority requirements. Leave blank when normal repository policy is sufficient.
+    validations:
+      required: false
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: Representative feature-specific evidence needed to establish the acceptance criteria or engineering constraints. Do not repeat the repository-wide governed validation suite.
+    validations:
+      required: false
 
   - type: textarea
     id: scope
