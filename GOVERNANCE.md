@@ -22,6 +22,48 @@ reminder, not a second source of authority.
 
 Every issue created by an agent contains a summary, acceptance criteria,
 bounded scope, and expected risk, and is assigned to the current user.
+Feature-specific engineering constraints and validation may be included when
+they materially clarify the completion contract.
+
+Acceptance criteria describe the minimum product-visible or
+integration-visible outcomes required to consider the issue complete. They
+state what must be true of the completed outcome, not every property that may
+be useful to implement or test.
+
+Classify issue requirements as follows:
+
+- Acceptance criteria describe required observable behavior, capability,
+  integration results, or failure behavior. A criterion should normally remain
+  valid if the implementation is replaced with a different implementation
+  that provides the same outcome.
+- Engineering constraints describe implementation properties that must be
+  preserved, such as stable identities, determinism, ownership boundaries,
+  lifecycle invariants, coordinate systems, compatibility requirements, or
+  asset-authority rules.
+- Validation describes evidence used to establish that the outcome and its
+  constraints hold, such as representative automated tests, fixtures,
+  playtests, captures, or other checks.
+- Repository-wide policy requirements are not repeated as issue acceptance
+  criteria merely because they apply to the work. The governed validation
+  lifecycle and other applicable repository policy remain required without
+  being copied into each issue.
+
+An issue may include Engineering constraints and Validation sections when they
+clarify feature-specific requirements. Omit those sections when the shared
+repository rules and ordinary proportional validation are sufficient.
+
+Do not make a statement an acceptance criterion merely because it is testable.
+Prefer outcome requirements over implementation mechanisms. Promote a detail
+to explicit acceptance criteria when it defines the requested outcome,
+distinguishes a plausible but incorrect implementation, records a known
+regression or important failure case, or expresses a requirement that cannot
+safely be inferred.
+
+Prefer concise representative criteria over exhaustive permutations. Merge
+equivalent lifecycle states and edge cases unless their differences create
+distinct behavior or a known feature-specific risk. Validation should likewise
+cover representative risks rather than enumerate every theoretically testable
+state.
 
 An implementation issue defines one coherent, independently meaningful outcome
 with one acceptance contract. Atomicity is measured by the product or

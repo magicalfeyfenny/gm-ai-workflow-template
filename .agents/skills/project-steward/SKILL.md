@@ -22,8 +22,9 @@ Inspect live issues and PRs, then report only:
 - persistent CI failures;
 - clearly abandoned or superseded tracking.
 - obviously over-decomposed issue clusters
-- issue acceptance criteria that prescribe technical machinery without an
-  independent outcome
+- acceptance criteria that prescribe technical machinery without an independent
+  outcome, or contain implementation machinery, validation procedures, or 
+  routine repository policy instead of independently required outcomes
 - stale blocker/dependency language
 - tracking whose only purpose is an abstraction that no longer has a consumer
 
