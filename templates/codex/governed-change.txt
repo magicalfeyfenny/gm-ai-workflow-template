@@ -4,10 +4,14 @@ This is a scheduled run. The skill's direct-request issue-creation permission
 does not apply.
 
 Before modifying repository state, inspect live open GitHub issues and select
-at most one eligible issue. An issue is eligible only when:
+at most one eligible issue under
+[Scheduled claim eligibility](../../GOVERNANCE.md#scheduled-claim-eligibility).
+An issue is eligible only when:
 
 - it defines one independently meaningful product or repository outcome under
   Issue authority, with actionable acceptance criteria and bounded scope;
+- the current execution environment has the capabilities required to complete
+  its primary non-degradable deliverable;
 - it is unassigned or assigned to the automation's current user;
 - it is not labeled `work:blocked` and has no unresolved dependency;
 - it has no existing implementation branch or open pull request;
