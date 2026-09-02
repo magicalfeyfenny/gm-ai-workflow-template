@@ -133,6 +133,7 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "branches",
                 "unit-of-work",
                 "placeholder-backed-mixed-work",
+                "validation-coverage-allocation",
                 "validation-evidence",
                 "milestone-commits-and-draft-publication",
                 "human-created-changes",
@@ -152,7 +153,11 @@ class GovernanceRoutingTests(unittest.TestCase):
         )
         self.assertEqual(
             steward,
-            {"issue-authority", "human-created-changes"},
+            {
+                "issue-authority",
+                "validation-coverage-allocation",
+                "human-created-changes",
+            },
         )
 
         policy = (ROOT / "PROJECT_POLICY.toml").resolve()

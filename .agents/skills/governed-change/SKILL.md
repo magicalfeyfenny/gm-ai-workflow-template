@@ -15,8 +15,9 @@ with the narrower selection and authority in its automation template.
   [Unit of work](../../../GOVERNANCE.md#unit-of-work).
 - Mixed implementation using visual placeholders:
   [Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work).
-- Evidence and publication:
-  [Validation evidence](../../../GOVERNANCE.md#validation-evidence) and
+- Validation planning, evidence, and publication:
+  [Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation),
+  [Validation evidence](../../../GOVERNANCE.md#validation-evidence), and
   [Milestone commits](../../../GOVERNANCE.md#milestone-commits-and-draft-publication).
 - Completion: [Risk](../../../GOVERNANCE.md#risk),
   [Completion transition](../../../GOVERNANCE.md#completion-transition), and
@@ -61,7 +62,8 @@ that the placeholder satisfies authored-asset acceptance.
    work, recheck every template eligibility condition.
 2. Refresh `origin/dev` and create the governed issue branch.
 3. Implement only the issue scope in coherent milestones through any additional
-   task route above.
+   task route above, allocating automated and manual or live validation through
+   the Governance route above.
 4. For each milestone, obtain Stage 1 evidence, commit it, and publish or
    update the draft PR under the milestone rules.
 5. After the whole issue is complete, obtain Stage 2 evidence for the unchanged

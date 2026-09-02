@@ -7,7 +7,10 @@ description: Audit repository issues and pull requests and create bounded issues
 
 This is an audit and evidence-backed tracking procedure, not an implementation
 workflow. Use [Issue authority](../../../GOVERNANCE.md#issue-authority) for
-shared issue fields and assignment. Use
+shared issue fields and assignment. When authoring or auditing feature-specific
+validation, use
+[Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation).
+Use
 [Human-created changes](../../../GOVERNANCE.md#human-created-changes) when
 interpreting human-owned work.
 
