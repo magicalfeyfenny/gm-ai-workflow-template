@@ -58,6 +58,7 @@ class GovernanceRoutingTests(unittest.TestCase):
             ROOT / ".agents/skills/gamemaker-production/SKILL.md",
             ROOT / ".agents/skills/governed-change/SKILL.md",
             ROOT / ".agents/skills/project-steward/SKILL.md",
+            ROOT / "templates/codex/governed-change.txt",
         )
 
         for source in entrypoints:
@@ -188,6 +189,18 @@ class GovernanceRoutingTests(unittest.TestCase):
         }
 
         self.assertTrue(expected.issubset(setup_targets))
+
+    def test_scheduled_claim_policy_has_one_implementation_owner(self):
+        """Route scheduled claims through Governed Change, not stewardship."""
+        governed = governance_fragments(
+            ROOT / "templates/codex/governed-change.txt"
+        )
+        steward = governance_fragments(
+            ROOT / "templates/codex/project-steward.txt"
+        )
+
+        self.assertIn("scheduled-claim-eligibility", governed)
+        self.assertNotIn("scheduled-claim-eligibility", steward)
 
 
 if __name__ == "__main__":

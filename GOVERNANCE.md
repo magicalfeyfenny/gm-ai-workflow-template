@@ -98,6 +98,38 @@ including scheduled audits. Its skill owns the audit-specific evidence and
 per-run constraints. In scheduled operation, Project Steward owns issue
 creation and does not implement issues.
 
+### Scheduled claim eligibility
+
+The scheduled Governed Change automation owns selection and claim decisions
+for existing implementation issues. Project Steward continues to own audit,
+tracking, and evidence-backed issue creation; it does not claim or execute
+issues. Skills route scheduled work to the Governed Change automation template
+instead of defining separate claim policies.
+
+Before claiming an issue, compare its primary non-degradable deliverable with
+the capabilities available in the current execution environment. The primary
+non-degradable deliverable is the outcome that makes the issue independently
+meaningful and cannot be deferred, substituted, or reduced without violating
+its acceptance contract. The issue is eligible only when the environment has
+the capabilities required to complete that deliverable. If capability is
+unknown, fail closed and leave the issue available for a later capable run.
+
+When final authored visual assets are that deliverable, the issue is
+ineligible if the environment lacks the required asset-authoring capability.
+Eligibility is based on capability, not on a named runner, provider, model, or
+generation mechanism.
+
+Broader implementation work remains eligible when visual assets are incidental
+and deterministic placeholders preserve meaningful implementation progress
+without weakening the issue's acceptance contract. A placeholder is
+scaffolding, not evidence for an acceptance criterion that explicitly requires
+final production or authored assets.
+
+This capability check composes with every other scheduled eligibility
+condition, including issue atomicity, risk handling, dependency order, and the
+fail-closed recheck immediately before repository mutation. It does not replace
+or relax any of them.
+
 ## Branches
 
 `dev` is the default integration branch.
