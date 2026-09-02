@@ -120,12 +120,19 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "gamemaker-structured-data",
             },
         )
-        self.assertEqual(assets, {"derived-assets"})
+        self.assertEqual(
+            assets,
+            {
+                "derived-assets",
+                "placeholder-backed-mixed-work",
+            },
+        )
         self.assertTrue(
             {
                 "issue-authority",
                 "branches",
                 "unit-of-work",
+                "placeholder-backed-mixed-work",
                 "validation-evidence",
                 "milestone-commits-and-draft-publication",
                 "human-created-changes",
