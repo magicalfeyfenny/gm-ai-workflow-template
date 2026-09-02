@@ -32,7 +32,13 @@ body:
     id: validation
     attributes:
       label: Validation
-      description: Representative feature-specific evidence needed to establish the acceptance criteria or engineering constraints. Do not repeat the repository-wide governed validation suite.
+      description: >-
+        Choose proportionate feature-specific evidence: automate practical
+        exhaustive coverage of contract-relevant deterministic invariants,
+        and use representative manual or live cases for player-visible,
+        integration, readability, accessibility, timing or feel, and engine or
+        tool qualities automation cannot establish. Do not repeat the
+        repository-wide governed validation suite.
     validations:
       required: false
 

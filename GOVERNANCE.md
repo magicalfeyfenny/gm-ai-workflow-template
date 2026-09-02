@@ -41,8 +41,8 @@ Classify issue requirements as follows:
   lifecycle invariants, coordinate systems, compatibility requirements, or
   asset-authority rules.
 - Validation describes evidence used to establish that the outcome and its
-  constraints hold, such as representative automated tests, fixtures,
-  playtests, captures, or other checks.
+  constraints hold, such as automated tests and fixtures, representative
+  manual or live playtests and captures, or other checks.
 - Repository-wide policy requirements are not repeated as issue acceptance
   criteria merely because they apply to the work. The governed validation
   lifecycle and other applicable repository policy remain required without
@@ -59,11 +59,11 @@ distinguishes a plausible but incorrect implementation, records a known
 regression or important failure case, or expresses a requirement that cannot
 safely be inferred.
 
-Prefer concise representative criteria over exhaustive permutations. Merge
+Prefer concise outcome criteria over exhaustive permutations. Merge
 equivalent lifecycle states and edge cases unless their differences create
-distinct behavior or a known feature-specific risk. Validation should likewise
-cover representative risks rather than enumerate every theoretically testable
-state.
+distinct behavior or a known feature-specific risk. Keep validation plans out
+of acceptance criteria and allocate their evidence under
+[Validation coverage allocation](#validation-coverage-allocation).
 
 An implementation issue defines one coherent, independently meaningful outcome
 with one acceptance contract. Atomicity is measured by the product or
@@ -236,6 +236,42 @@ semantic assertion.
 A wording, formatting, ordering, or representation change that preserves the
 intended contract should not require unrelated test changes merely to satisfy
 stale textual expectations.
+
+### Validation coverage allocation
+
+Allocate validation coverage according to risk, contract relevance, and what
+each form of evidence can establish. Automated and manual or live validation
+have complementary responsibilities; neither is a blanket substitute for the
+other.
+
+When numeric, combinatorial, deterministic, or state-transition behavior is
+contract-relevant and practical to assert mechanically, prefer automated
+validation for the exhaustive relevant state space. Automated invariant
+coverage should replace manual repetition of every ship, difficulty, rank,
+state, or similar machine-testable combination. Do not require exhaustive
+automated matrices when the combinations are meaningless, intractable,
+redundant, or outside the contract.
+
+Use manual or live validation to sample a small, risk-appropriate set of cases
+for qualities that automated assertions cannot adequately establish. Check
+representative player-visible behavior and integration, visual readability and
+accessibility, timing and feel, interaction, and tool or engine behavior. As
+applicable, sample baseline, typical or midpoint, edge, and highest-pressure
+cases. These are selection dimensions, not a universal checklist or fixed
+sample count. Preserve additional manual coverage for known cross-state risks
+or any genuinely visual, interactive, timing-sensitive, accessibility,
+readability, integration, or tool and engine outcome that remains unproven
+mechanically.
+
+Issue acceptance criteria state required outcomes. Feature-specific validation
+plans choose this allocation and record the evidence needed without expanding
+the criteria into a large coverage matrix. Manual or live samples may traverse
+states already covered by automation to judge different qualities, but they do
+not need to repeat the complete machine-tested state space.
+
+This allocation operates inside the existing validation stages. It does not
+remove required Stage 1 checks or the full Stage 2 suite, weaken Stage 3 hosted
+evidence, change risk classification, or replace required human review.
 
 ## Validation evidence
 
