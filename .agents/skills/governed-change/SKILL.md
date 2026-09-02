@@ -13,6 +13,8 @@ with the narrower selection and authority in its automation template.
 - Start: [Issue authority](../../../GOVERNANCE.md#issue-authority),
   [Branches](../../../GOVERNANCE.md#branches), and
   [Unit of work](../../../GOVERNANCE.md#unit-of-work).
+- Mixed implementation using visual placeholders:
+  [Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work).
 - Evidence and publication:
   [Validation evidence](../../../GOVERNANCE.md#validation-evidence) and
   [Milestone commits](../../../GOVERNANCE.md#milestone-commits-and-draft-publication).
@@ -46,6 +48,11 @@ not apply, and no eligible issue means no repository mutation.
 Deferred work is not automatically backlog work. Create a follow-up issue
 only for an explicit requested outcome, a concrete defect/risk that should be
 tracked, or a blocker that cannot remain in the current issue.
+
+For placeholder-backed mixed work, resolve the canonical final-asset follow-up
+required by Governance before Stage 2. Record the exact placeholder scope,
+replacement point, and issue link in the draft pull request without claiming
+that the placeholder satisfies authored-asset acceptance.
 
 ## Execute
 

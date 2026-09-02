@@ -130,6 +130,44 @@ condition, including issue atomicity, risk handling, dependency order, and the
 fail-closed recheck immediately before repository mutation. It does not replace
 or relax any of them.
 
+### Placeholder-backed mixed work
+
+A mixed implementation issue may use deterministic placeholders when final
+authored visual assets are secondary and the current execution environment
+lacks the capability to produce them. This is allowed only when the placeholder
+preserves an independently meaningful primary outcome and the issue's existing
+acceptance contract permits the final asset to be deferred. It does not make an
+asset-primary issue eligible.
+
+Keep every placeholder explicitly identified as non-production scaffolding in
+the implementation and pull-request handoff. Preserve the intended gameplay,
+UI, or runtime integration point so the final authored asset can replace the
+placeholder without recreating completed implementation work.
+
+A placeholder never satisfies an acceptance criterion that requires a final
+authored or production asset. If the current issue still contains such a
+criterion, the issue remains incomplete; linking a follow-up does not make that
+criterion complete.
+
+When the implementation issue can complete independently and only the
+separable final-asset deliverable remains, resolve its tracking before the
+implementation issue completes:
+
+1. Search live tracking for an appropriate canonical asset issue. Link the
+   original issue and pull request to that issue, updating it only as needed to
+   identify the remaining authored-asset deliverable and replacement point.
+2. If no appropriate issue exists, create exactly one narrow follow-up assigned
+   to the current user. Reference the original issue and pull request, own only
+   the unresolved authored-asset replacement and its asset-specific validation,
+   and exclude implementation scope already completed with the placeholder.
+3. Record the canonical follow-up link and the exact placeholder scope and
+   replacement point in the original pull-request handoff.
+
+This required follow-up is part of completing the selected mixed issue, not
+permission to generate a general backlog. A scheduled execution may create it
+only after claiming that issue and only under the rules above. The follow-up
+uses the normal issue-authority, dependency, and risk rules for its own scope.
+
 ## Branches
 
 `dev` is the default integration branch.
