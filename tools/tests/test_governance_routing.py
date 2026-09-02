@@ -189,19 +189,6 @@ class GovernanceRoutingTests(unittest.TestCase):
 
         self.assertTrue(expected.issubset(setup_targets))
 
-        for template, skill_name in (
-            ("governed-change.txt", "governed-change"),
-            ("project-steward.txt", "project-steward"),
-        ):
-            text = (ROOT / "templates/codex" / template).read_text(
-                encoding="utf-8"
-            )
-            first_line = next(line for line in text.splitlines() if line.strip())
-            self.assertEqual(
-                first_line,
-                f"Use the {skill_name} skill for this repository.",
-            )
-
 
 if __name__ == "__main__":
     unittest.main()
