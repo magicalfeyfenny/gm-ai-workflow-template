@@ -13,6 +13,9 @@ validation, use
 Use
 [Human-created changes](../../../GOVERNANCE.md#human-created-changes) when
 interpreting human-owned work.
+When authoring or auditing compatibility, migration, alias, normalization, or
+legacy requirements, follow
+[Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations).
 
 ## Audit procedure
 
@@ -30,6 +33,8 @@ Inspect live issues and PRs, then report only:
   routine repository policy instead of independently required outcomes
 - stale blocker/dependency language
 - tracking whose only purpose is an abstraction that no longer has a consumer
+- compatibility or migration requirements that do not identify independent
+  pre-work evidence for the consumer or durable contract they preserve
 
 Create an issue only from:
 

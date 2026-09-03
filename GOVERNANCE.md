@@ -98,6 +98,60 @@ including scheduled audits. Its skill owns the audit-specific evidence and
 per-run constraints. In scheduled operation, Project Steward owns issue
 creation and does not implement issues.
 
+### Compatibility obligations
+
+Compatibility is required only when an independently established contract or
+consumer must continue to accept an older representation.
+
+A compatibility obligation must be supported by evidence that is independent
+of the implementation proposed to satisfy it. Valid evidence must either
+predate the current governed change or come from explicit current human
+direction. Examples include:
+
+- released or published interfaces;
+- persisted user data, saves, configuration, or other durable data that must
+  continue to load;
+- independently maintained consumers that cannot be updated atomically with
+  the current change;
+- imported or external contracts that the repository does not control; or
+- explicit human direction requiring old and new representations to coexist.
+
+Repository history establishes that an older representation existed; it does
+not by itself establish that the representation must remain compatible.
+Repository-owned code, tests, fixtures, content, and documentation that can be
+updated atomically with the current change are ordinary consumers of the
+current representation, not independent compatibility consumers.
+
+Evidence created by the current governed change cannot establish the
+compatibility obligation that would justify preserving it. Code, tests,
+fixtures, documentation, aliases, migration paths, normalization layers,
+deprecated representations, or other consumers introduced or modified on the
+current issue branch, pull request, or earlier implementation attempt do not
+become compatibility evidence merely because later work depends on them.
+
+The same applies to agent-authored intermediate states. When human direction
+changes an unreleased internal name or representation during governed work,
+implement the newly intended state directly and remove superseded intermediate
+machinery unless independent evidence establishes a real compatibility
+obligation.
+
+Do not infer a compatibility obligation merely because an identifier is named
+stable, canonical, versioned, legacy, public, or otherwise appears
+contract-like. Establish the actual consumer or durable boundary.
+
+When no independent compatibility obligation exists, prefer direct
+replacement. Update the canonical representation and all repository-owned
+consumers together, update tests to the intended current contract, and remove
+the superseded representation instead of adding aliases, migration layers,
+normalization paths, wrappers, or deprecated forms.
+
+Agent-authored issues must not speculate about compatibility. An Engineering
+constraint or Validation requirement for backward compatibility, aliases,
+migration, normalization, or legacy support must identify the concrete
+independent consumer or durable contract that requires it and cite the
+available source evidence. Do not add conditional requirements such as
+"preserve a compatibility alias if needed" without that evidence.
+
 ### Scheduled claim eligibility
 
 The scheduled Governed Change automation owns selection and claim decisions
@@ -625,6 +679,12 @@ language only when it makes an important distinction clearer or more precise.
 Unnecessary linguistic complexity is obfuscation, just as unnecessary
 implementation complexity is, and must be avoided unless it is necessary and
 justified by the outcome it serves.
+
+For renames, representation changes, and replacement of internal paths, follow
+[Compatibility obligations](#compatibility-obligations). Do not preserve a
+superseded internal representation merely because repository-owned consumers
+or tests currently reference it when they can be updated atomically with the
+change.
 
 ## Source structure
 
