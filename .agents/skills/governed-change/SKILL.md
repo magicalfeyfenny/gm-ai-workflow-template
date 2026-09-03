@@ -59,10 +59,16 @@ Deferred work is not automatically backlog work. Create a follow-up issue
 only for an explicit requested outcome, a concrete defect/risk that should be
 tracked, or a blocker that cannot remain in the current issue.
 
-For placeholder-backed mixed work, resolve the canonical final-asset follow-up
-required by Governance before Stage 2. Record the exact placeholder scope,
-replacement point, and issue link in the draft pull request without claiming
-that the placeholder satisfies authored-asset acceptance.
+For placeholder-backed mixed work, identify concrete remaining
+asset-production work and its independent source in explicit human direction
+or a current product or acceptance contract before creating, retaining,
+selecting, or continuing a canonical follow-up. "Human must accept or promote
+this existing authored asset as final" is not sufficient. When concrete work
+remains, resolve its tracking before Stage 2 and record the exact placeholder
+scope, replacement point, and issue link in the draft pull request without
+claiming that the deterministic placeholder satisfies authored-asset
+acceptance. When no concrete work remains, do not create, preserve, select, or
+continue a follow-up, dependency, or blocker for the authority decision alone.
 
 ## Execute
 

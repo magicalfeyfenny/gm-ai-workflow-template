@@ -162,6 +162,8 @@ class GovernanceRoutingTests(unittest.TestCase):
             steward,
             {
                 "issue-authority",
+                "asset-completion-and-authority",
+                "placeholder-backed-mixed-work",
                 "compatibility-obligations",
                 "validation-coverage-allocation",
                 "human-created-changes",
