@@ -30,6 +30,8 @@ with the narrower selection and authority in its automation template.
   [manual](../../../GOVERNANCE.md#manual-and-high-risk-changes) path.
 - Executable values: only the affected tables in
   [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml).
+- Renames, replacement, and compatibility:
+  [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations).
 
 For production code, assets, or GameMaker data, also use the
 [GameMaker production skill](../gamemaker-production/SKILL.md). If live state
