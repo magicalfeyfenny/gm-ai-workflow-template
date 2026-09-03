@@ -11,7 +11,7 @@ authored assets.
 Follow [Derived assets](../../../GOVERNANCE.md#derived-assets) and the affected
 `[assets]` and `[assets.pipelines.*]` tables in
 [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml).
-For visual placeholders supporting a mixed implementation issue, also follow
+For placeholders supporting a mixed implementation issue, also follow
 [Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work).
 
 Keep a placeholder deterministic and visibly non-production, preserve its
