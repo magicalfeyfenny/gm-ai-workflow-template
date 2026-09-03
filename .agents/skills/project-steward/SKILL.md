@@ -13,6 +13,10 @@ validation, use
 Use
 [Human-created changes](../../../GOVERNANCE.md#human-created-changes) when
 interpreting human-owned work.
+When authoring or auditing asset-production tracking, follow
+[Asset completion and authority](../../../GOVERNANCE.md#asset-completion-and-authority)
+and
+[Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work).
 When authoring or auditing compatibility, migration, alias, normalization, or
 legacy requirements, follow
 [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations).
@@ -33,6 +37,9 @@ Inspect live issues and PRs, then report only:
   routine repository policy instead of independently required outcomes
 - stale blocker/dependency language
 - tracking whose only purpose is an abstraction that no longer has a consumer
+- asset tracking whose only unresolved outcome is human review, approval,
+  acceptance, or promotion of an existing authored asset rather than concrete
+  remaining asset-production work
 - compatibility or migration requirements that do not identify independent
   pre-work evidence for the consumer or durable contract they preserve
 
@@ -55,6 +62,10 @@ run.
 - Do not treat an open human-created PR as a governance defect, and do not
   modify, review, validate, label, ready, or merge it.
 - Do not close stale issues automatically or create speculative work.
+- Do not create, recommend retaining, or treat as actionable tracking solely
+  for human review, approval, acceptance, or promotion of an existing authored
+  asset. Report it for human disposition without inventing production work or
+  closing it automatically.
 - Do not create issues to simplify over-decomposed issue clusters, fix
   over-prescribed technical machinery, or repair stale tracking or language
   unless the issue is explicitly requested.

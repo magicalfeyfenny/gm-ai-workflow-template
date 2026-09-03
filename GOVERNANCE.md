@@ -181,9 +181,9 @@ generation mechanism.
 
 Broader implementation work remains eligible when authored assets are
 incidental and deterministic placeholders preserve meaningful implementation
-progress without weakening the issue's acceptance contract. A placeholder is
-scaffolding, not evidence for an acceptance criterion that explicitly requires
-final production or authored assets.
+progress without weakening the issue's acceptance contract. A deterministic
+placeholder is scaffolding, not evidence for an acceptance criterion that
+explicitly requires final production or authored assets.
 
 This capability check composes with every other scheduled eligibility
 condition, including issue atomicity, risk handling, dependency order, and the
@@ -194,39 +194,47 @@ or relax any of them.
 
 A mixed implementation issue may use deterministic placeholders when final
 authored assets are secondary and the current execution environment
-lacks the capability to produce them. This is allowed only when the placeholder
-preserves an independently meaningful primary outcome and the issue's existing
-acceptance contract permits the final asset to be deferred. It does not make an
-asset-primary issue eligible.
+lacks the capability to produce them. This is allowed only when the
+deterministic placeholder preserves an independently meaningful primary
+outcome and the issue's existing acceptance contract permits the final asset
+to be deferred. It does not make an asset-primary issue eligible.
 
-Keep every placeholder explicitly identified as non-production scaffolding in
-the implementation and pull-request handoff. Preserve the intended gameplay,
-UI, or runtime integration point so the final authored asset can replace the
-placeholder without recreating completed implementation work.
+Keep every deterministic placeholder explicitly identified as non-production
+scaffolding in the implementation and pull-request handoff. Preserve the
+intended gameplay, UI, or runtime integration point so the final authored asset
+can replace the deterministic placeholder without recreating completed
+implementation work.
 
-A placeholder never satisfies an acceptance criterion that requires a final
-authored or production asset. If the current issue still contains such a
-criterion, the issue remains incomplete; linking a follow-up does not make that
-criterion complete.
+A deterministic placeholder never satisfies an acceptance criterion that
+requires a final authored or production asset. If the current issue still
+contains such a criterion, the issue remains incomplete; linking a follow-up
+does not make that criterion complete.
 
-When the implementation issue can complete independently and only the
-separable final-asset deliverable remains, resolve its tracking before the
+Follow-up tracking is required only for concrete remaining asset-production
+work. Such work must be explicitly requested by human direction or
+independently required by a current product or acceptance contract. An
+agent-authored tracking item does not establish that requirement merely by
+restating a possible future revision as issue scope.
+
+When the implementation issue can complete independently and concrete,
+separable asset-production work remains, resolve its tracking before the
 implementation issue completes:
 
 1. Search live tracking for an appropriate canonical asset issue. Link the
    original issue and pull request to that issue, updating it only as needed to
-   identify the remaining authored-asset deliverable and replacement point.
+   identify the concrete remaining production work and replacement point.
 2. If no appropriate issue exists, create exactly one narrow follow-up assigned
    to the current user. Reference the original issue and pull request, own only
-   the unresolved authored-asset replacement and its asset-specific validation,
+   the concrete unresolved asset production and its asset-specific validation,
    and exclude implementation scope already completed with the placeholder.
-3. Record the canonical follow-up link and the exact placeholder scope and
-   replacement point in the original pull-request handoff.
+3. Record the canonical follow-up link and the exact deterministic-placeholder
+   scope and replacement point in the original pull-request handoff.
 
-This required follow-up is part of completing the selected mixed issue, not
-permission to generate a general backlog. A scheduled execution may create it
-only after claiming that issue and only under the rules above. The follow-up
-uses the normal issue-authority, dependency, and risk rules for its own scope.
+When concrete remaining production meets this rule, its required follow-up is
+part of completing the selected mixed issue, not permission to generate a
+general backlog. A scheduled execution may create it only after claiming that
+issue and only under the rules above. The follow-up uses the normal
+issue-authority, dependency, and risk rules for its own scope.
 
 ### Scheduled continuation
 
@@ -276,8 +284,10 @@ Asset completion levels are ordered by completion commitment:
 
 1. `deterministic-placeholder` is reproducible scaffolding that is explicitly
    non-production.
-2. `authored-placeholder` has authorial or source commitment but has not been
-   accepted as the final production asset.
+2. `authored-placeholder` is a legitimately authored asset with authorial or
+   source commitment that has not yet been explicitly accepted as the final
+   production asset. It does not mean the asset is known to require revision,
+   replacement, refinement, redraw, regeneration, or later completion work.
 3. `final` is an asset explicitly accepted as final by human authorial
    authority.
 
@@ -294,6 +304,16 @@ visual, audio, 3D, and animation assets already present are
 as another level. Agents must not infer `deterministic-placeholder` from age,
 simplicity, low detail, temporary appearance, or missing provenance.
 
+Asset completion status is state. Only concrete requested work belongs in the
+backlog. The absence of `final` status alone does not establish deferred work,
+and possible future revision is not deferred work. An `authored-placeholder`
+may remain at that level indefinitely. Human authority may later accept it
+unchanged, request changes, replace it, or continue leaving it undecided.
+Authorized agent work may create and integrate an asset as
+`authored-placeholder` without seeking an immediate human decision about
+`final` status; that undecided status does not make otherwise-complete asset
+production unfinished.
+
 ### Replacement and promotion
 
 When the current issue authorizes work on an asset, normal agent work may
@@ -307,6 +327,21 @@ more polished or technically superior. Promotion to `final` is human-authority
 only. Asset quality alone does not promote an asset, and an
 `authored-placeholder` remains a placeholder until human authority explicitly
 accepts it as final.
+
+Promoting an `authored-placeholder` to `final` through human acceptance is an
+authority transition, not an implementation or asset-production deliverable.
+Human authorial authority may promote the existing asset unchanged, without
+modifying or replacing it and without creating an implementation issue.
+
+Agents must not create or retain an issue, dependency, blocker, sprint
+obligation, or asset-production task merely because an `authored-placeholder`
+might be changed later or has not been promoted to `final`. They must not claim
+or continue such tracking. In particular, agents must not create or retain an
+issue when its only unresolved outcome is human review, approval, acceptance,
+or promotion of an existing authored asset. Create or retain asset-production
+tracking only when concrete further asset work is explicitly requested by
+human direction or independently required by a current product or acceptance
+contract.
 
 ## Branches
 
