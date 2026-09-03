@@ -11,6 +11,8 @@ authored assets.
 Follow [Derived assets](../../../GOVERNANCE.md#derived-assets) and the affected
 `[assets]` and `[assets.pipelines.*]` tables in
 [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml).
+Before creating, changing, or replacing an authored asset, follow
+[Asset completion and authority](../../../GOVERNANCE.md#asset-completion-and-authority).
 For placeholders supporting a mixed implementation issue, also follow
 [Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work).
 

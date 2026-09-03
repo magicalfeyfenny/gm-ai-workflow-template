@@ -68,6 +68,8 @@ because it is available.
 classify leftovers as still-live, compatibility, fixture/reference, or
 removable. Don't let tests fossilize dead production systems.
 10. Observe what tests cannot prove. When the requested outcome is visual,
-interactive, or otherwise player-visible, verify the relevant behavior in the
-running game when practical. Do not infer visual or experiential correctness
-from code or unit tests alone.
+   interactive, or otherwise player-visible, verify the relevant behavior in the
+   running game when practical. Follow [Manual and live validation
+   availability](../../../GOVERNANCE.md#manual-and-live-validation-availability)
+   for interactive desktop preflight and unavailable live evidence. Do not
+   infer visual or experiential correctness from code or unit tests alone.

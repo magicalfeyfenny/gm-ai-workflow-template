@@ -174,6 +174,86 @@ permission to generate a general backlog. A scheduled execution may create it
 only after claiming that issue and only under the rules above. The follow-up
 uses the normal issue-authority, dependency, and risk rules for its own scope.
 
+### Scheduled continuation
+
+Before selecting a new issue, a scheduled Governed Change run checks for an
+existing incomplete governed change owned by the current automation user. A
+valid continuation has an open issue assigned to that user, its matching
+issue-numbered `work/<issue>-<slug>` branch, and its draft pull request. The
+issue and pull request must still pass the normal ownership, dependency,
+blocker, and human-authority checks. The capability check still applies to any
+remaining primary non-degradable deliverable; an unavailable environment
+needed only for required manual or live evidence is handled by the validation
+availability rule and does not invalidate the continuation. A human-created
+branch or pull request and a `work:blocked` change are never continuations.
+The draft pull request must not already have a completion line or completion
+label; a `work:complete` or `work:review-ready` pull request follows its normal
+completion path instead of being resumed as incomplete work.
+
+When a valid continuation exists, resume its next incomplete implementation or
+validation milestone on that branch and draft pull request before selecting
+new work only when the current environment can make meaningful progress on at
+least one remaining implementation or validation milestone. A continuation
+that can only wait for unavailable manual or live evidence, an unavailable
+interactive desktop, or required human action is pending rather than
+actionable; leave it pending and allow the run to select at most one new
+eligible issue. Do not repeatedly retry an unavailable GUI or alter the
+pending continuation just to make progress appear possible.
+
+A continuation does not make an asset-primary issue eligible when its remaining
+primary deliverable still needs an unavailable capability. When the required
+environment becomes available, or the required human action is resolved, the
+continuation becomes actionable and takes priority again. Resume the missing
+manual or live observation and then follow the ordinary completion transition.
+
+Do not create a replacement issue for a pending continuation. If no actionable
+continuation exists, the run may select at most one new eligible issue under
+the ordinary scheduled claim rules.
+
+## Asset completion and authority
+
+These rules apply to repository-owned authored assets across visual, audio, 3D,
+and animation work, including assets kept in source files, runtime outputs, or
+engine-native resources.
+
+### Completion levels
+
+Asset completion levels are ordered by completion commitment:
+
+1. `deterministic-placeholder` is reproducible scaffolding that is explicitly
+   non-production.
+2. `authored-placeholder` has authorial or source commitment but has not been
+   accepted as the final production asset.
+3. `final` is an asset explicitly accepted as final by human authorial
+   authority.
+
+Authorship, source authority, provenance, and completion level are independent.
+An editable source, a named author, or a human-authored asset does not by
+itself make an asset final, and a generated file does not become a permitted
+deterministic placeholder merely because it is simple or easy to reproduce.
+The level records completion and replacement authority; it is not a judgment
+based on asset quality alone.
+
+When this policy is adopted, repository-owned sprites and other authored
+visual, audio, 3D, and animation assets already present are
+`authored-placeholder` by default unless human authority explicitly marks them
+as another level. Agents must not infer `deterministic-placeholder` from age,
+simplicity, low detail, temporary appearance, or missing provenance.
+
+### Replacement and promotion
+
+When the current issue authorizes work on an asset, normal agent work may
+replace a non-final asset only with an asset at the same or a higher completion
+level. An agent must not replace an asset with a lower level; in particular,
+`deterministic-placeholder` must not replace `authored-placeholder`.
+
+Agents must not replace, overwrite, restyle, or regenerate a `final` asset
+without explicit human authorization, even when the proposed result appears
+more polished or technically superior. Promotion to `final` is human-authority
+only. Asset quality alone does not promote an asset, and an
+`authored-placeholder` remains a placeholder until human authority explicitly
+accepts it as final.
+
 ## Branches
 
 `dev` is the default integration branch.
@@ -278,6 +358,24 @@ not need to repeat the complete machine-tested state space.
 This allocation operates inside the existing validation stages. It does not
 remove required Stage 1 checks or the full Stage 2 suite, weaken Stage 3 hosted
 evidence, change risk classification, or replace required human review.
+
+### Manual and live validation availability
+
+Automated evidence and manual or live evidence establish different facts. Do
+not use automated tests, headless checks, or source inspection as a substitute
+for required manual or live observation.
+
+For GUI or GameMaker validation, preflight interactive desktop availability
+where practical. If the desktop or required interactive tool is unavailable,
+record that environment blocker and avoid repeated GUI launch attempts.
+
+When required manual or live evidence is unavailable after practical preflight,
+the agent may continue coherent implementation work and collect the automated
+evidence that is available. It may commit, push, and update the draft pull
+request, but it must stop before adding completion metadata or claiming the
+issue complete. The handoff must identify the exact missing observation and
+the environment condition that prevented it. The missing evidence remains
+required and must be obtained before the ordinary completion transition.
 
 ## Validation evidence
 
