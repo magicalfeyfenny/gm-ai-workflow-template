@@ -2,6 +2,7 @@ as a .json:
 
 {
   "kind": "music",
+  "completion": "authored-placeholder",
   "sources": [
     "assets/source/music/example.mid",
     "assets/source/music/example.logicx"
