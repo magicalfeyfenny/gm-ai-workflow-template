@@ -13,7 +13,7 @@ with the narrower selection and authority in its automation template.
 - Start: [Issue authority](../../../GOVERNANCE.md#issue-authority),
   [Branches](../../../GOVERNANCE.md#branches), and
   [Unit of work](../../../GOVERNANCE.md#unit-of-work).
-- Mixed implementation using visual placeholders:
+- Placeholder-backed mixed implementation:
   [Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work).
 - Validation planning, evidence, and publication:
   [Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation),

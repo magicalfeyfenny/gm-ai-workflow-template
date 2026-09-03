@@ -114,14 +114,20 @@ its acceptance contract. The issue is eligible only when the environment has
 the capabilities required to complete that deliverable. If capability is
 unknown, fail closed and leave the issue available for a later capable run.
 
-When final authored visual assets are that deliverable, the issue is
+The ability to create, encode, convert, or procedurally construct a file in the
+required runtime or source format does not by itself establish the capability
+to author the requested asset. Eligibility depends on the environment being
+capable of producing the asset form and quality required by the issue’s
+acceptance contract.
+
+When final authored assets are that deliverable, the issue is
 ineligible if the environment lacks the required asset-authoring capability.
 Eligibility is based on capability, not on a named runner, provider, model, or
 generation mechanism.
 
-Broader implementation work remains eligible when visual assets are incidental
-and deterministic placeholders preserve meaningful implementation progress
-without weakening the issue's acceptance contract. A placeholder is
+Broader implementation work remains eligible when authored assets are
+incidental and deterministic placeholders preserve meaningful implementation
+progress without weakening the issue's acceptance contract. A placeholder is
 scaffolding, not evidence for an acceptance criterion that explicitly requires
 final production or authored assets.
 
@@ -133,7 +139,7 @@ or relax any of them.
 ### Placeholder-backed mixed work
 
 A mixed implementation issue may use deterministic placeholders when final
-authored visual assets are secondary and the current execution environment
+authored assets are secondary and the current execution environment
 lacks the capability to produce them. This is allowed only when the placeholder
 preserves an independently meaningful primary outcome and the issue's existing
 acceptance contract permits the final asset to be deferred. It does not make an
