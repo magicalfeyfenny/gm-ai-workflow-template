@@ -118,11 +118,13 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "production-code",
                 "source-structure",
                 "gamemaker-structured-data",
+                "manual-and-live-validation-availability",
             },
         )
         self.assertEqual(
             assets,
             {
+                "asset-completion-and-authority",
                 "derived-assets",
                 "placeholder-backed-mixed-work",
             },
@@ -132,8 +134,11 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "issue-authority",
                 "branches",
                 "unit-of-work",
+                "asset-completion-and-authority",
                 "placeholder-backed-mixed-work",
+                "scheduled-continuation",
                 "validation-coverage-allocation",
+                "manual-and-live-validation-availability",
                 "validation-evidence",
                 "milestone-commits-and-draft-publication",
                 "human-created-changes",
@@ -211,7 +216,13 @@ class GovernanceRoutingTests(unittest.TestCase):
             ROOT / "templates/codex/project-steward.txt"
         )
 
-        self.assertIn("scheduled-claim-eligibility", governed)
+        self.assertTrue(
+            {
+                "scheduled-claim-eligibility",
+                "scheduled-continuation",
+                "manual-and-live-validation-availability",
+            }.issubset(governed)
+        )
         self.assertNotIn("scheduled-claim-eligibility", steward)
 
 

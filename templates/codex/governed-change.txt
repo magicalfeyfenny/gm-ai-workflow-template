@@ -3,10 +3,16 @@ Use the governed-change skill for this repository.
 This is a scheduled run. The skill's direct-request issue-creation permission
 does not apply.
 
-Before modifying repository state, inspect live open GitHub issues and select
-at most one eligible issue under
+Before modifying repository state, inspect live open GitHub issues and any
+existing incomplete governed work. Before selecting a new issue, first inspect
+for an existing valid continuation and resume it under
+[Scheduled continuation](../../GOVERNANCE.md#scheduled-continuation). If a
+valid continuation exists, do not select new work in the same run.
+
+If no valid continuation exists, select at most one new eligible issue under
 [Scheduled claim eligibility](../../GOVERNANCE.md#scheduled-claim-eligibility).
-An issue is eligible only when:
+
+For a new selection, an issue is eligible only when:
 
 - it defines one independently meaningful product or repository outcome under
   Issue authority, with actionable acceptance criteria and bounded scope;
@@ -28,11 +34,23 @@ condition. If a branch, pull request, blocker, dependency, assignment,
 ownership, or authority requirement has changed, report that the candidate is
 no longer eligible and stop without modifying repository state.
 
-If no eligible issue exists, do not create a replacement issue or modify
-repository state. Report that no candidate was available and stop.
+For a continuation, recheck the matching open issue, issue-numbered work branch,
+draft pull request, current ownership, blockers, dependencies, remaining
+capability, and human authority under
+[Scheduled continuation](../../GOVERNANCE.md#scheduled-continuation) before
+resuming it.
 
-After selecting and rechecking one issue, execute only that issue with the
+If no valid continuation and no eligible issue exists, do not create a
+replacement issue or modify repository state. Report that no candidate was
+available and stop.
+
+After selecting or resuming one work item, execute only that issue with the
 skill and its routed Governance sections. Do not absorb unrelated fixes.
+
+If required manual or live evidence is unavailable after practical preflight,
+follow [Manual and live validation availability](../../GOVERNANCE.md#manual-and-live-validation-availability):
+continue only with coherent implementation and available automated evidence,
+then leave the draft incomplete and report the missing observation.
 
 Return:
 
@@ -40,4 +58,4 @@ Return:
 - branch;
 - draft pull request;
 - validation state;
-- remaining blocker or required human action.
+- remaining blocker, missing manual or live evidence, or required human action.
