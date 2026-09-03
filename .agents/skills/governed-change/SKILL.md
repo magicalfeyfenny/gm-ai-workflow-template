@@ -50,7 +50,7 @@ characterization, or future extension.
 
 For a scheduled run, follow its template and the
 [Scheduled continuation](../../../GOVERNANCE.md#scheduled-continuation) route:
-direct-request creation does not apply, and no eligible issue or valid
+direct-request creation does not apply, and no eligible issue or actionable
 continuation means no repository mutation.
 
 Deferred work is not automatically backlog work. Create a follow-up issue
@@ -68,7 +68,9 @@ that the placeholder satisfies authored-asset acceptance.
    recheck the issue match, ownership, authority, branch, and PR; for scheduled
    work, apply scheduled continuation before selecting new work and recheck
    every applicable template eligibility condition.
-2. Refresh `origin/dev` and create the governed issue branch.
+2. Refresh `origin/dev`. For new work, create the governed issue branch. For a
+   continuation, use the existing matching issue branch and draft pull request;
+   do not recreate the branch.
 3. Implement only the issue scope in coherent milestones through any additional
    task route above, allocating automated and manual or live validation through
    the Governance route above. If required manual or live evidence is

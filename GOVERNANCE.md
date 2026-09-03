@@ -192,17 +192,23 @@ completion path instead of being resumed as incomplete work.
 
 When a valid continuation exists, resume its next incomplete implementation or
 validation milestone on that branch and draft pull request before selecting
-new work. This includes work that stopped only because required manual or live
-evidence, or an interactive desktop needed to obtain it, was unavailable. A
-continuation does not make an asset-primary issue eligible when its remaining
-primary deliverable still needs an unavailable capability. If only the
-required manual or live observation remains, resume it when that observation
-becomes available and then follow the ordinary completion transition.
+new work only when the current environment can make meaningful progress on at
+least one remaining implementation or validation milestone. A continuation
+that can only wait for unavailable manual or live evidence, an unavailable
+interactive desktop, or required human action is pending rather than
+actionable; leave it pending and allow the run to select at most one new
+eligible issue. Do not repeatedly retry an unavailable GUI or alter the
+pending continuation just to make progress appear possible.
 
-Do not create a replacement issue or begin a new issue in the same scheduled
-run when a valid continuation is available. If no valid continuation exists,
-the run may select at most one new eligible issue under the ordinary scheduled
-claim rules.
+A continuation does not make an asset-primary issue eligible when its remaining
+primary deliverable still needs an unavailable capability. When the required
+environment becomes available, or the required human action is resolved, the
+continuation becomes actionable and takes priority again. Resume the missing
+manual or live observation and then follow the ordinary completion transition.
+
+Do not create a replacement issue for a pending continuation. If no actionable
+continuation exists, the run may select at most one new eligible issue under
+the ordinary scheduled claim rules.
 
 ## Asset completion and authority
 
