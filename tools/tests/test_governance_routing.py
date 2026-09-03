@@ -116,6 +116,7 @@ class GovernanceRoutingTests(unittest.TestCase):
             production,
             {
                 "production-code",
+                "compatibility-obligations",
                 "source-structure",
                 "gamemaker-structured-data",
                 "manual-and-live-validation-availability",
@@ -136,6 +137,7 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "unit-of-work",
                 "asset-completion-and-authority",
                 "placeholder-backed-mixed-work",
+                "compatibility-obligations",
                 "scheduled-continuation",
                 "validation-coverage-allocation",
                 "manual-and-live-validation-availability",
@@ -160,6 +162,7 @@ class GovernanceRoutingTests(unittest.TestCase):
             steward,
             {
                 "issue-authority",
+                "compatibility-obligations",
                 "validation-coverage-allocation",
                 "human-created-changes",
             },
