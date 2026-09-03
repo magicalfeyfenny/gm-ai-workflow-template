@@ -10,7 +10,7 @@ only the routes matching the files and behavior in scope:
 
 | Work | Required route |
 | --- | --- |
-| Repository-owned production code | [Production code](../../../GOVERNANCE.md#production-code), [Source structure](../../../GOVERNANCE.md#source-structure), and `[structure]` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
+| Repository-owned production code | [Production code](../../../GOVERNANCE.md#production-code), [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations), [Source structure](../../../GOVERNANCE.md#source-structure), and `[structure]` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
 | GameMaker structured data | [GameMaker structured data](../../../GOVERNANCE.md#gamemaker-structured-data) and `assets.content_root` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
 
 Imported-library source follows the exception in Source structure, not the
@@ -51,8 +51,9 @@ exists, don't add it.
 migration layers, canonical normalization, hashes, fixed-point representations,
 deterministic serialization and fail-closed cross-language validation should
 protect a concrete persistence, compatibility, replay, reproducibility,
-external-authoring, or trust requirement. Don't add them simply because they
-are theoretically nice.
+external-authoring, or trust requirement. A claimed compatibility requirement
+must satisfy [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations).
+Don't add these mechanisms simply because they are theoretically nice.
 6. Validation follows real boundaries. Do not invent a representation and then
 use the need to validate that representation as justification for more
 architecture. Tests should primarily establish requested behavior and important
