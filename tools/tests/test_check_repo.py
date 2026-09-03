@@ -37,9 +37,36 @@ class RepositoryPolicyTests(unittest.TestCase):
                 "runtime_root": "assets/runtime",
                 "manifest": "assets/exports.json",
                 "plain_runtime_svg": True,
-                "pipelines": {},
+                "pipelines": {
+                    "raster": {
+                        "source_extensions": [".kra"],
+                        "runtime_extensions": [".png"],
+                    },
+                },
             }
         }
+
+    def validate_fixture_manifest(self, entry: dict) -> list[str]:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = Path("assets/source/test.kra")
+            runtime = Path("assets/runtime/test.png")
+            (root / source).parent.mkdir(parents=True)
+            (root / runtime).parent.mkdir(parents=True)
+            (root / source).write_bytes(b"source")
+            (root / runtime).write_bytes(b"runtime")
+            (root / "assets/exports.json").write_text(
+                json.dumps({"version": 1, "exports": [entry]}),
+                encoding="utf-8",
+            )
+            errors: list[str] = []
+            validate_assets(
+                root,
+                self.asset_policy(),
+                [Path("assets/exports.json"), source, runtime],
+                errors,
+            )
+            return errors
 
     def test_inherited_errors_do_not_block(self):
         inherited = "source/legacy.gml: 900 lines exceeds limit 800"
@@ -200,6 +227,39 @@ class RepositoryPolicyTests(unittest.TestCase):
 
         self.assertEqual(len(errors), 1)
         self.assertTrue(errors[0].startswith("assets/exports.json:"))
+
+    def test_asset_validation_accepts_each_governance_completion_level(self):
+        entry = {
+            "kind": "raster",
+            "sources": ["assets/source/test.kra"],
+            "runtime": ["assets/runtime/test.png"],
+        }
+
+        for completion in (
+            "deterministic-placeholder",
+            "authored-placeholder",
+            "final",
+        ):
+            with self.subTest(completion=completion):
+                candidate = {**entry, "completion": completion}
+                self.assertEqual(self.validate_fixture_manifest(candidate), [])
+
+    def test_asset_validation_rejects_missing_or_unknown_completion_level(self):
+        entry = {
+            "kind": "raster",
+            "sources": ["assets/source/test.kra"],
+            "runtime": ["assets/runtime/test.png"],
+        }
+
+        for completion in (None, "unreviewed"):
+            with self.subTest(completion=completion):
+                candidate = {
+                    **entry,
+                    **({} if completion is None else {"completion": completion}),
+                }
+                errors = self.validate_fixture_manifest(candidate)
+                self.assertEqual(len(errors), 1)
+                self.assertIn("invalid completion level", errors[0])
 
     def test_missing_manifest_error_is_root_independent(self):
         results: list[list[str]] = []
