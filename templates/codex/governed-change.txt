@@ -36,7 +36,7 @@ no longer eligible and stop without modifying repository state.
 
 For a continuation, recheck the matching open issue, issue-numbered work branch,
 draft pull request, current ownership, blockers, dependencies, remaining
-capability, and human authority under
+capability, absence of completion metadata, and human authority under
 [Scheduled continuation](../../GOVERNANCE.md#scheduled-continuation) before
 resuming it.
 

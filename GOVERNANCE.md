@@ -186,6 +186,9 @@ remaining primary non-degradable deliverable; an unavailable environment
 needed only for required manual or live evidence is handled by the validation
 availability rule and does not invalidate the continuation. A human-created
 branch or pull request and a `work:blocked` change are never continuations.
+The draft pull request must not already have a completion line or completion
+label; a `work:complete` or `work:review-ready` pull request follows its normal
+completion path instead of being resumed as incomplete work.
 
 When a valid continuation exists, resume its next incomplete implementation or
 validation milestone on that branch and draft pull request before selecting
