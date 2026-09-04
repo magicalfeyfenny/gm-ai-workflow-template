@@ -19,7 +19,7 @@ with the narrower selection and authority in its automation template.
   [Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work).
 - Validation planning, evidence, and publication:
   [Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation),
-  [Manual and live validation availability](../../../GOVERNANCE.md#manual-and-live-validation-availability),
+  [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation),
   [Validation evidence](../../../GOVERNANCE.md#validation-evidence), and
   [Milestone commits](../../../GOVERNANCE.md#milestone-commits-and-draft-publication).
 - Scheduled continuation:
@@ -80,9 +80,13 @@ continue a follow-up, dependency, or blocker for the authority decision alone.
    continuation, use the existing matching issue branch and draft pull request;
    do not recreate the branch.
 3. Implement only the issue scope in coherent milestones through any additional
-   task route above, allocating automated and manual or live validation through
-   the Governance route above. If required manual or live evidence is
-   unavailable, follow its availability route and leave completion pending.
+   task route above. Allocate validation according to Governance, preferring
+   automated and machine-verifiable evidence. Do not invent manual playtesting,
+   human observation, experiential review, subjective acceptance, or generic
+   gameplay smoke requirements. Perform interactive runtime validation only
+   for a concrete purpose permitted by Governance. If a permitted required
+   interactive check cannot run, follow the Interactive runtime validation
+   rules without inventing additional human validation requirements.
 4. For each milestone, obtain Stage 1 evidence, commit it, and publish or
    update the draft PR under the milestone rules.
 5. After the whole issue is complete, obtain Stage 2 evidence for the unchanged
@@ -98,9 +102,13 @@ These stops repeat Governance because a mutation procedure must expose them:
 - Never branch from local `dev`, use a `human/*` branch, or work a
   `human-created` or `work:blocked` PR.
 - Do not force-push, invoke a ruleset bypass, or perform unrelated cleanup.
-- Do not use automated evidence as a substitute for required manual or live
-  observation; preflight interactive desktop validation where practical and
-  stop before completion when the required observation is unavailable.
+- Do not create, preserve, or treat as required a manual playtesting,
+  human-observation, experiential-review, subjective-acceptance, or generic
+  gameplay-smoke requirement unless explicit human direction requires it.
+- Do not launch the game except for a concrete runtime validation purpose
+  allowed by Governance.
+- Agent-authored issue text, validation plans, or handoff notes cannot
+  bootstrap a human or manual validation requirement.
 - Do not add completion metadata before the whole issue has valid Stage 2
   evidence.
 - Do not downgrade automatically high-risk work or ready or merge a manual-path
