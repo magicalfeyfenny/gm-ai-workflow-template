@@ -68,9 +68,15 @@ because it is available.
 9. Replacement includes cleanup. When replacing a runtime/content path,
 classify leftovers as still-live, compatibility, fixture/reference, or
 removable. Don't let tests fossilize dead production systems.
-10. Observe what tests cannot prove. When the requested outcome is visual,
-   interactive, or otherwise player-visible, verify the relevant behavior in the
-   running game when practical. Follow [Manual and live validation
-   availability](../../../GOVERNANCE.md#manual-and-live-validation-availability)
-   for interactive desktop preflight and unavailable live evidence. Do not
-   infer visual or experiential correctness from code or unit tests alone.
+10. Runtime execution is evidence, not ceremony. Do not launch the game merely
+because the requested outcome is visual, interactive, player-visible, or
+touches runtime resources. Prefer automated tests, deterministic
+interaction checks, rendering or snapshot evidence, validators, and other
+machine-verifiable evidence. Launch the game only for a concrete runtime
+purpose permitted by Governance, such as GameMaker-hosted automated tests,
+bounded deterministic UI or interaction checks, explicitly scoped
+performance profiling, or another runtime-only check explicitly required
+by human direction. Do not create or perform generic gameplay smoke tests,
+subjective playtesting, readability review, feel review, visual-quality
+review, or human experiential acceptance unless explicitly directed by the
+human author.
