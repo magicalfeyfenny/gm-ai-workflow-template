@@ -13,6 +13,10 @@ only the routes matching the files and behavior in scope:
 | Repository-owned production code | [Production code](../../../GOVERNANCE.md#production-code), [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations), [Source structure](../../../GOVERNANCE.md#source-structure), and `[structure]` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
 | GameMaker structured data | [GameMaker structured data](../../../GOVERNANCE.md#gamemaker-structured-data) and `assets.content_root` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
 
+Validation follows
+[Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation)
+and [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation).
+
 Imported-library source follows the exception in Source structure, not the
 repository-owned production-code style rules.
 
