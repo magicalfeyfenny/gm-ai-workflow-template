@@ -44,8 +44,8 @@ release work.
 
 For a direct request, use or create only the atomic issue or linked issue set
 authorized by Issue authority, then execute one atomic implementation issue at
-a time. Use or create the minimum issue set necessary to represent the 
-requested outcomes. Prefer one vertical implementation issue when multiple 
+a time. Use or create the minimum issue set necessary to represent the
+requested outcomes. Prefer one vertical implementation issue when multiple
 technical layers are jointly necessary for one outcome. Do not create 
 downstream issues merely for potential generalization, hardening, versioning,
 characterization, or future extension.
@@ -86,7 +86,8 @@ continue a follow-up, dependency, or blocker for the authority decision alone.
    gameplay smoke requirements. Perform interactive runtime validation only
    for a concrete purpose permitted by Governance. If a permitted required
    interactive check cannot run, follow the Interactive runtime validation
-   rules without inventing additional human validation requirements.
+   rules without inventing additional human validation requirements. Human
+   review and merge gates allocate authority, not extra verification work.
 4. For each milestone, obtain Stage 1 evidence, commit it, and publish or
    update the draft PR under the milestone rules.
 5. After the whole issue is complete, obtain Stage 2 evidence for the unchanged

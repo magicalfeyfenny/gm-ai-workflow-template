@@ -10,8 +10,8 @@ for an existing continuation and resume it under
 continuation is actionable because the current environment can make meaningful
 progress on at least one remaining implementation or validation milestone, do
 not select new work in the same run. If it is pending only for unavailable
-manual or live evidence, an unavailable interactive desktop, or required human
-action, leave it pending and allow new-issue selection for this run.
+required runtime evidence, an unavailable interactive environment, or explicit
+human action, leave it pending and allow new-issue selection for this run.
 
 If no actionable continuation exists, select at most one new eligible issue under
 [Scheduled claim eligibility](../../GOVERNANCE.md#scheduled-claim-eligibility).
@@ -55,10 +55,17 @@ create the governed issue branch. For a continuation, use the existing matching
 issue branch and draft pull request; do not recreate the branch. Do not absorb
 unrelated fixes.
 
-If required manual or live evidence is unavailable after practical preflight,
-follow [Manual and live validation availability](../../GOVERNANCE.md#manual-and-live-validation-availability):
-continue only with coherent implementation and available automated evidence,
-then leave the draft incomplete and report the missing observation.
+Allocate evidence under
+[Validation coverage allocation](../../GOVERNANCE.md#validation-coverage-allocation).
+If a required interactive machine-verifiable check cannot run, follow
+[Interactive runtime validation](../../GOVERNANCE.md#interactive-runtime-validation)
+and report the missing capability against the actual completion contract.
+Do not invent generic gameplay smoke testing, manual playtesting, subjective
+review, human observation, readability or feel review, or experiential
+acceptance requirements unless explicit human direction requires that specific
+judgment. Missing runtime capability does not authorize a human-observation
+substitute. Human merge or publication authority does not create verification
+work.
 
 Return:
 
@@ -66,4 +73,4 @@ Return:
 - branch;
 - draft pull request;
 - validation state;
-- remaining blocker, missing manual or live evidence, or required human action.
+- remaining blocker, missing required evidence, or required human action.

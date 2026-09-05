@@ -6,6 +6,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_LINK = re.compile(r"\[[^]]+\]\(([^)]+)\)")
 HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
+VALIDATION_SURFACES = (
+    ROOT / "GOVERNANCE.md",
+    ROOT / ".agents/skills/gamemaker-production/SKILL.md",
+    ROOT / ".agents/skills/governed-change/SKILL.md",
+    ROOT / ".agents/skills/project-steward/SKILL.md",
+    ROOT / ".github/ISSUE_TEMPLATE/work-item.yml",
+    ROOT / "templates/codex/governed-change.txt",
+    ROOT / "templates/codex/project-steward.txt",
+)
+SUPERSEDED_VALIDATION_PATTERNS = (
+    re.compile(r"manual-and-live-validation-availability", re.IGNORECASE),
+    re.compile(r"manual\s+and\s+live\s+validation", re.IGNORECASE),
+    re.compile(
+        r"manual\s+or\s+live\s+(?:validation|evidence|play(?:test)?)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"manual/live\s+(?:validation|evidence)", re.IGNORECASE),
+    re.compile(r"interactive\s+desktop", re.IGNORECASE),
+    re.compile(r"manually\s+verified", re.IGNORECASE),
+)
 
 
 def markdown_anchor(heading):
@@ -58,6 +78,7 @@ class GovernanceRoutingTests(unittest.TestCase):
             ROOT / ".agents/skills/gamemaker-production/SKILL.md",
             ROOT / ".agents/skills/governed-change/SKILL.md",
             ROOT / ".agents/skills/project-steward/SKILL.md",
+            ROOT / ".github/ISSUE_TEMPLATE/work-item.yml",
             ROOT / "templates/codex/governed-change.txt",
         )
 
@@ -82,6 +103,9 @@ class GovernanceRoutingTests(unittest.TestCase):
         )
         steward = governance_fragments(
             ROOT / ".agents/skills/project-steward/SKILL.md"
+        )
+        issue_template = governance_fragments(
+            ROOT / ".github/ISSUE_TEMPLATE/work-item.yml"
         )
 
         agent_targets = {
@@ -119,7 +143,8 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "compatibility-obligations",
                 "source-structure",
                 "gamemaker-structured-data",
-                "manual-and-live-validation-availability",
+                "validation-coverage-allocation",
+                "interactive-runtime-validation",
             },
         )
         self.assertEqual(
@@ -140,7 +165,7 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "compatibility-obligations",
                 "scheduled-continuation",
                 "validation-coverage-allocation",
-                "manual-and-live-validation-availability",
+                "interactive-runtime-validation",
                 "validation-evidence",
                 "milestone-commits-and-draft-publication",
                 "human-created-changes",
@@ -166,7 +191,15 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "placeholder-backed-mixed-work",
                 "compatibility-obligations",
                 "validation-coverage-allocation",
+                "interactive-runtime-validation",
                 "human-created-changes",
+            },
+        )
+        self.assertEqual(
+            issue_template,
+            {
+                "validation-coverage-allocation",
+                "interactive-runtime-validation",
             },
         )
 
@@ -225,10 +258,36 @@ class GovernanceRoutingTests(unittest.TestCase):
             {
                 "scheduled-claim-eligibility",
                 "scheduled-continuation",
-                "manual-and-live-validation-availability",
+                "interactive-runtime-validation",
             }.issubset(governed)
         )
         self.assertNotIn("scheduled-claim-eligibility", steward)
+
+    def test_active_validation_surfaces_reject_superseded_policy(self):
+        """Prevent generic manual/live validation policy from returning."""
+        for surface in VALIDATION_SURFACES:
+            text = surface.read_text(encoding="utf-8")
+            for pattern in SUPERSEDED_VALIDATION_PATTERNS:
+                with self.subTest(surface=surface, pattern=pattern.pattern):
+                    self.assertIsNone(pattern.search(text))
+
+    def test_release_verification_names_concrete_machine_evidence(self):
+        """Keep release verification tied to source, artifacts, and integrity."""
+        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
+        release = governance.split("## Releases", 1)[1].split(
+            "## Derived assets", 1
+        )[0].casefold()
+
+        for marker in (
+            "source commit",
+            "source tree",
+            "build provenance",
+            "artifact contents",
+            "artifact digests",
+            "machine-verifiable evidence",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, release)
 
 
 if __name__ == "__main__":

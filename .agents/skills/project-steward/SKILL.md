@@ -9,7 +9,8 @@ This is an audit and evidence-backed tracking procedure, not an implementation
 workflow. Use [Issue authority](../../../GOVERNANCE.md#issue-authority) for
 shared issue fields and assignment. When authoring or auditing feature-specific
 validation, use
-[Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation).
+[Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation)
+and [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation).
 Use
 [Human-created changes](../../../GOVERNANCE.md#human-created-changes) when
 interpreting human-owned work.
@@ -44,8 +45,8 @@ Inspect live issues and PRs, then report only:
   pre-work evidence for the consumer or durable contract they preserve
 - agent-authored manual playtesting, generic gameplay smoke testing, human
   observation, experiential acceptance, readability or feel review, or
-  subjective visual-review requirements that lack explicit human source
-  authority
+  subjective visual-review requirements that lack explicit human direction
+  requiring that specific judgment
 
 Create an issue only from:
 
@@ -79,4 +80,5 @@ run.
 - Player-visible, runtime-affecting, visual, interactive, or high-risk work
   alone is not evidence that manual or human-observed validation is required.
 - Prefer machine-verifiable validation requirements when authoring or auditing
-  issues.
+  issues. Missing runner capability and human merge or publication gates do
+  not authorize substitute human verification requirements.
