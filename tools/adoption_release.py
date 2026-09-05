@@ -62,7 +62,7 @@ def _published_at(release: Evidence) -> datetime | None:
     return value if value.tzinfo is not None else None
 
 
-def _select_release(releases: list[Evidence], tag: str | None) -> Evidence:
+def select_release(releases: list[Evidence], tag: str | None) -> Evidence:
     """Select an exact published tag or one uniquely latest stable release."""
     eligible = [
         release for release in releases
@@ -234,7 +234,7 @@ def verify_release(
     Missing optional artifacts remain visible but do not prevent source
     verification; known mismatches always do.
     """
-    selection = _select_release(releases, tag)
+    selection = select_release(releases, tag)
     result: Evidence = {
         "status": selection["status"],
         "selection": {key: value for key, value in selection.items() if key != "release"},

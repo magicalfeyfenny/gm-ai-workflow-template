@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import quote
 
 from tools.adoption_git import collect_git_evidence
-from tools.adoption_release import verify_release
+from tools.adoption_release import select_release, verify_release
 from tools.setup_github import (
     ApiCall, REQUIRED_LABELS, RENAMED_LABELS, REPOSITORY_SETTINGS,
     RULESET_PATHS, SetupError, github_api, load_rulesets, repository_name,
@@ -93,7 +93,8 @@ def protection_evidence(reader: Observations, prefix: str, branches: dict) -> di
 
 
 def proposed_settings(repo: str, metadata: dict | None, labels: list | None,
-                      protection: dict, recipes: list, decisions: list) -> list:
+                      branches: dict, protection: dict, recipes: list,
+                      decisions: list) -> list:
     """Describe exact optional adoption operations; never execute them."""
     prefix = f"repos/{repo}"
     changes = []
@@ -107,6 +108,15 @@ def proposed_settings(repo: str, metadata: dict | None, labels: list | None,
     if metadata is not None:
         payload = {key: value for key, value in REPOSITORY_SETTINGS.items()
                    if metadata.get(key) != value}
+        target = payload.get("default_branch")
+        target_status = branches.get(target, {}).get("status", "unavailable")
+        if target is not None and target_status != "observed":
+            del payload["default_branch"]
+            decisions.append({
+                "kind": "default_branch_target", "branch": target,
+                "status": target_status,
+                "reason": "Default-branch change withheld until the live target branch is observed.",
+            })
         if payload:
             add("PATCH", prefix, payload,
                 {key: metadata.get(key) for key in payload})
@@ -169,25 +179,30 @@ def create_plan(repo: str, root: Path, *, api: ApiCall = github_api,
     protection = protection_evidence(reader, prefix, branches)
     labels = reader.pages(f"{prefix}/labels")
     issues = reader.pages(f"{prefix}/issues?state=open")
+    if issues is not None:
+        issues = [item for item in issues if "pull_request" not in item]
     pulls = reader.pages(f"{prefix}/pulls?state=open")
     releases = reader.pages(f"{prefix}/releases")
-    for release in releases or []:
-        tag = release.get("tag_name")
-        if tag:
-            release["tag_ref"] = reader.get(f"{prefix}/git/ref/tags/{quote(tag, safe='')}")
+    # Historical releases remain metadata inventory; only the selected anchor
+    # needs tag/asset reads and local ancestry or tree/LFS inspection.
+    release_selection = select_release(releases or [], release_tag)
+    selected_release = release_selection.get("release")
+    if selected_release is not None:
+        tag = selected_release["tag_name"]
+        selected_release["tag_ref"] = reader.get(f"{prefix}/git/ref/tags/{quote(tag, safe='')}")
         # Release asset lists can be longer than the embedded inventory.
-        if release.get("id") is not None:
-            assets = reader.pages(f"{prefix}/releases/{release['id']}/assets")
-            release["assets"] = assets if assets is not None else []
-            release["assets_unavailable"] = assets is None
+        if selected_release.get("id") is not None:
+            assets = reader.pages(f"{prefix}/releases/{selected_release['id']}/assets")
+            selected_release["assets"] = assets if assets is not None else []
+            selected_release["assets_unavailable"] = assets is None
 
     local_refs = set(refs or []) | {candidate_ref}
     for name, branch in branches.items():
         local_refs.update({f"refs/heads/{name}", f"refs/remotes/origin/{name}"})
         if branch.get("commit"):
             local_refs.add(branch["commit"])
-    local_refs.update(f"refs/tags/{release['tag_name']}" for release in releases or []
-                      if release.get("tag_name"))
+    if selected_release is not None:
+        local_refs.add(f"refs/tags/{selected_release['tag_name']}")
     if lineage:
         local_refs.add(lineage)
     git = collect_git_evidence(root, sorted(local_refs))
@@ -218,7 +233,7 @@ def create_plan(repo: str, root: Path, *, api: ApiCall = github_api,
     for name, branch in branches.items():
         if branch["status"] != "observed":
             decisions.append({"kind": "branch_anchor", "branch": name, "status": branch["status"]})
-    changes = proposed_settings(repo, metadata, labels, protection,
+    changes = proposed_settings(repo, metadata, labels, branches, protection,
                                 load_rulesets(ruleset_paths), decisions)
     return {
         "mode": "plan", "observed_at": datetime.now(timezone.utc).isoformat(),

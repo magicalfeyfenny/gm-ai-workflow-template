@@ -31,9 +31,10 @@ The report separates observations, missing evidence, unresolved decisions, and
 proposed operations:
 
 - `remote` records archive/default-branch state, settings, live `main`, `dev`,
-  and default-branch commit/tree identities; their comparisons; labels; open
-  issues and PRs; published releases and tag identities; inherited and custom
-  rulesets; active branch rules; and classic branch protection. Inventories
+  and default-branch commit/tree identities; their comparisons; labels; distinct
+  open issue and PR inventories; release metadata and the selected release's
+  tag identity and asset inventory; inherited and custom rulesets; active branch
+  rules; and classic branch protection. Inventories
   are paginated. A failed inventory read is unavailable rather than an empty
   inventory. A protection 404 cannot always distinguish absence from lack of
   access, so it stays an evidence limitation.
@@ -42,6 +43,11 @@ proposed operations:
   tracked LFS configuration, pointer metadata, and local LFS object availability.
   Missing objects and shallow history limit what can be established. Local
   tracking refs remain separate from the observed live branch identities.
+  Ancestry and tree/LFS inspection cover `main`, `dev`, the default branch,
+  explicit `--ref` selections, the selected lineage, the candidate source, and
+  the selected release tag. Historical release metadata alone does not add
+  ancestry comparisons, tree scans, or tag/asset API lookups. Missing or
+  ambiguous release selection does not trigger historical tag inspection.
 - `release_verification` records source-tree comparison and artifact evidence
   separately from commit provenance. A successful tree comparison does not
   establish that any artifact was built from that source.
@@ -51,6 +57,8 @@ proposed operations:
   Existing custom and inherited protection is retained as evidence. Replacing
   a differing named ruleset requires a decision about its current differences.
   Additional custom labels and rulesets are not proposed for deletion.
+  A proposed default-branch change is withheld while its live target branch is
+  missing or cannot be verified; independent settings changes remain proposed.
 - `unavailable_evidence` and `unresolved_decisions` identify what the available
   snapshot cannot settle. Missing branch anchors need an explicit branch plan;
   there are no implicit branch creation, movement, or deletion proposals.

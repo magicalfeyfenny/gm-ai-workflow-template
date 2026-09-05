@@ -9,11 +9,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
+from tools import adoption_git, adoption_release
 from tools.adoption_plan import Observations, create_plan, main
 from tools.setup_github import REQUIRED_LABELS, REPOSITORY_SETTINGS, ROOT, SetupError
 
@@ -31,6 +33,11 @@ class ReadOnlyApi:
         self.details = {}
         self.issues = [{"number": 7, "title": "Recover selected outcome", "labels": []}]
         self.pulls = [{"number": 8, "head": {"ref": "work/7-recovery"}, "draft": True}]
+        self.releases = [{"id": 1, "tag_name": "v1", "draft": False, "prerelease": False,
+                          "published_at": "2026-01-01T00:00:00Z", "assets": []}]
+        self.release_assets = {1: []}
+        self.tag_refs = {"v1": {"ref": "refs/tags/v1",
+                                "object": {"type": "commit", "sha": self.commit}}}
 
     def __call__(self, method, endpoint, payload=None):
         self.calls.append((method, endpoint, deepcopy(payload)))
@@ -62,16 +69,16 @@ class ReadOnlyApi:
         if path.endswith("/protection"):
             return {"required_status_checks": {"contexts": ["Classic check"]}}
         if path == "/issues":
-            return deepcopy(self.issues)
+            return deepcopy(self.issues[(page - 1) * 100:page * 100])
         if path == "/pulls":
-            return deepcopy(self.pulls)
+            return deepcopy(self.pulls[(page - 1) * 100:page * 100])
         if path == "/releases":
-            return [{"id": 1, "tag_name": "v1", "draft": False, "prerelease": False,
-                     "published_at": "2026-01-01T00:00:00Z", "assets": []}]
-        if path == "/releases/1/assets":
-            return []
-        if path == "/git/ref/tags/v1":
-            return {"ref": "refs/tags/v1", "object": {"type": "commit", "sha": self.commit}}
+            return deepcopy(self.releases[(page - 1) * 100:page * 100])
+        if path.startswith("/releases/") and path.endswith("/assets"):
+            assets = self.release_assets.get(int(path.split("/")[2]), [])
+            return deepcopy(assets[(page - 1) * 100:page * 100])
+        if path.startswith("/git/ref/tags/"):
+            return deepcopy(self.tag_refs[unquote(path.removeprefix("/git/ref/tags/"))])
         if path.startswith("/compare/"):
             return {"status": "identical", "merge_base_commit": {"sha": self.commit}}
         raise AssertionError(f"Unexpected read: {endpoint}")
@@ -94,9 +101,9 @@ class AdoptionPlanTests(unittest.TestCase):
         self.tree = self.git("rev-parse", "HEAD^{tree}")
         self.api = ReadOnlyApi(self.commit, self.tree)
 
-    def git(self, *args):
+    def git(self, *args, input=None):
         result = subprocess.run(["git", *args], cwd=self.root, check=True,
-                                text=True, capture_output=True)
+                                text=True, capture_output=True, input=input)
         return result.stdout.strip()
 
     def snapshot(self):
@@ -105,6 +112,177 @@ class AdoptionPlanTests(unittest.TestCase):
 
     def plan(self, **kwargs):
         return create_plan("owner/game", self.root, api=self.api, **kwargs)
+
+    def historical_releases(self, count):
+        """Provide real historical refs with a distinct source tree in one batch."""
+        blob = self.git("hash-object", "-w", "--stdin", input="older source\n")
+        tree = self.git("mktree", input=f"100644 blob {blob}\tgame.txt\n")
+        commit = self.git("commit-tree", tree, "-m", "Historical source")
+        releases = [
+            {"id": index + 2, "tag_name": f"history-{index}", "draft": False,
+             "prerelease": False, "published_at": "2025-01-01T00:00:00Z", "assets": []}
+            for index in range(count)
+        ]
+        self.git("update-ref", "--stdin", input="".join(
+            f"create refs/tags/{release['tag_name']} {commit}\n" for release in releases))
+        self.api.tag_refs.update({
+            release["tag_name"]: {"ref": f"refs/tags/{release['tag_name']}",
+                                  "object": {"type": "commit", "sha": commit}}
+            for release in releases
+        })
+        return releases
+
+    def release_detail_reads(self):
+        """Count hydration work independently of release inventory pagination."""
+        paths = [urlsplit(endpoint).path for _, endpoint, _ in self.api.calls]
+        return Counter(path for path in paths
+                       if "/git/ref/tags/" in path
+                       or "/releases/" in path and path.endswith("/assets"))
+
+    def measured_plan(self, **kwargs):
+        """Run real local evidence collection while counting its expensive work."""
+        self.api.calls.clear()
+        with contextlib.ExitStack() as stack:
+            spies = {
+                name: stack.enter_context(patch.object(adoption_git, name,
+                                                      wraps=getattr(adoption_git, name)))
+                for name in ("_resolve_ref", "_ancestry", "_snapshot", "_git")
+            }
+            release_git = stack.enter_context(patch.object(
+                adoption_release, "_git", wraps=adoption_release._git))
+            plan = self.plan(**kwargs)
+        work = {name: spy.call_count for name, spy in spies.items()}
+        work["merge_base"] = sum(call.args[1] == "merge-base"
+                                 for call in spies["_git"].call_args_list)
+        work["release_git"] = release_git.call_count
+        return plan, self.release_detail_reads(), work
+
+    def test_release_history_growth_does_not_expand_selected_evidence_work(self):
+        history = self.historical_releases(200)
+        recovery = self.git("commit-tree", self.tree, "-p", self.commit, "-m", "Recovery lineage")
+        self.git("branch", "recovery", recovery)
+        initial, initial_reads, initial_work = self.measured_plan(refs=["refs/heads/recovery"])
+        self.api.releases.extend(history)
+        expanded, expanded_reads, expanded_work = self.measured_plan(refs=["refs/heads/recovery"])
+        self.assertEqual(initial_reads, expanded_reads)
+        self.assertEqual(set(expanded_reads), {
+            "repos/owner/game/git/ref/tags/v1", "repos/owner/game/releases/1/assets",
+        })
+        self.assertEqual(initial_work, expanded_work)
+        self.assertTrue(all(count > 0 for count in expanded_work.values()))
+        self.assertEqual(expanded["release_verification"]["status"], "pass")
+        self.assertEqual(expanded["local"]["refs"], initial["local"]["refs"])
+        self.assertEqual(expanded["local"]["ancestry"], initial["local"]["ancestry"])
+        self.assertEqual(expanded["local"]["snapshots"], initial["local"]["snapshots"])
+        observed = {release["id"]: release for release in expanded["remote"]["releases"]}
+        for release in history:
+            self.assertEqual(observed[release["id"]], release)
+        self.assertTrue(any(urlsplit(endpoint).path.endswith("/releases")
+                            and int(parse_qs(urlsplit(endpoint).query)["page"][0]) > 1
+                            for _, endpoint, _ in self.api.calls))
+
+    def test_explicit_historical_release_hydrates_its_exact_tag_and_all_assets(self):
+        history = self.historical_releases(3)
+        self.api.releases.extend(history)
+        selected = history[0]
+        assets = [{"id": index, "name": f"build-{index}.zip"} for index in range(102)]
+        self.api.release_assets[selected["id"]] = assets
+        ref = f"refs/tags/{selected['tag_name']}"
+        plan = self.plan(release_tag=selected["tag_name"], candidate_ref=ref)
+        self.assertEqual(set(self.release_detail_reads()), {
+            f"repos/owner/game/git/ref/tags/{selected['tag_name']}",
+            f"repos/owner/game/releases/{selected['id']}/assets",
+        })
+        verification = plan["release_verification"]
+        self.assertEqual(verification["status"], "pass")
+        self.assertEqual(verification["release"]["id"], selected["id"])
+        self.assertEqual({asset["id"] for asset in verification["published_artifacts"]},
+                         {asset["id"] for asset in assets})
+        self.assertEqual({item["requested"] for item in plan["local"]["refs"]
+                          if item["requested"].startswith("refs/tags/")}, {ref})
+
+    def test_automatic_selection_ignores_newer_drafts_and_prereleases(self):
+        for index, (draft, prerelease) in enumerate(((True, False), (False, True)), start=2):
+            self.api.releases.append({
+                "id": index, "tag_name": f"preview-{index}", "draft": draft,
+                "prerelease": prerelease, "published_at": "2026-02-01T00:00:00Z",
+                "assets": [],
+            })
+        plan = self.plan()
+        self.assertEqual(plan["release_verification"]["release"]["tag_name"], "v1")
+        self.assertEqual(set(self.release_detail_reads()), {
+            "repos/owner/game/git/ref/tags/v1", "repos/owner/game/releases/1/assets",
+        })
+
+    def test_unresolved_release_selection_does_not_hydrate_historical_releases(self):
+        history = self.historical_releases(2)
+        stable = deepcopy(self.api.releases[0])
+        scenarios = [
+            ([stable, {**history[0], "published_at": stable["published_at"]}],
+             None, "ambiguous"),
+            ([stable, *history], "absent-tag", "unavailable"),
+            ([stable, {**stable, "id": 99}], "v1", "ambiguous"),
+            ([{**stable, "published_at": None}, *history], None, "unavailable"),
+            ([], None, "unavailable"),
+        ]
+        for releases, requested, status in scenarios:
+            with self.subTest(tag=requested, status=status, releases=releases):
+                self.api.releases = releases
+                self.api.calls.clear()
+                plan = self.plan(release_tag=requested)
+                self.assertEqual(plan["release_verification"]["status"], status)
+                self.assertFalse(self.release_detail_reads())
+                self.assertFalse(any(item["requested"].startswith("refs/tags/")
+                                     for item in plan["local"]["refs"]))
+
+    def test_missing_or_unavailable_dev_defers_only_default_branch_setting(self):
+        self.api.metadata.update(default_branch="legacy", allow_squash_merge=False)
+        for status in ("missing", "unavailable"):
+            with self.subTest(status=status):
+                self.api.missing = {"dev"} if status == "missing" else set()
+                self.api.fail = {"/git/matching-refs/heads/dev"} if status == "unavailable" else set()
+                plan = self.plan()
+                self.assertEqual(plan["remote"]["branches"]["dev"]["status"], status)
+                settings = next(item for item in plan["proposed_mutations"]
+                                if item["endpoint"] == "repos/owner/game")
+                self.assertEqual(settings["payload"], {"allow_squash_merge": True})
+                self.assertEqual(settings["before"], {"allow_squash_merge": False})
+                self.assertTrue(any(item["kind"] == "branch_anchor"
+                                    and item["branch"] == "dev" and item["status"] == status
+                                    for item in plan["unresolved_decisions"]))
+
+    def test_observed_dev_permits_reviewable_default_branch_setting(self):
+        self.api.metadata["default_branch"] = "legacy"
+        plan = self.plan()
+        settings = next(item for item in plan["proposed_mutations"]
+                        if item["endpoint"] == "repos/owner/game")
+        self.assertEqual(plan["remote"]["branches"]["dev"]["status"], "observed")
+        self.assertEqual(settings["payload"], {"default_branch": "dev"})
+        self.assertEqual(settings["before"], {"default_branch": "legacy"})
+
+    def test_rest_issue_inventory_excludes_pull_request_items_across_pages(self):
+        issues = [{"number": index, "title": f"Outcome {index}", "labels": []}
+                  for index in range(100, 202)]
+        pull_items = [
+            {"number": 8, "title": "Draft PR", "pull_request": {"url": "https://example.invalid/8"}},
+            {"number": 9, "title": "PR with empty metadata", "pull_request": {}},
+            {"number": 10, "title": "PR with unavailable metadata", "pull_request": None},
+        ]
+        self.api.issues = [pull_items[0], *issues[:98], *pull_items[1:], *issues[98:]]
+        before = deepcopy((self.api.issues, self.api.pulls))
+        plan = self.plan()
+        self.assertEqual({item["number"]: item for item in plan["remote"]["issues"]},
+                         {item["number"]: item for item in issues})
+        self.assertEqual(plan["remote"]["pull_requests"], self.api.pulls)
+        self.assertEqual((self.api.issues, self.api.pulls), before)
+
+    def test_unavailable_issue_inventory_remains_unknown(self):
+        self.api.fail.add("/issues")
+        plan = self.plan()
+        self.assertIsNone(plan["remote"]["issues"])
+        self.assertEqual(plan["remote"]["pull_requests"], self.api.pulls)
+        self.assertTrue(any(urlsplit(item["endpoint"]).path.endswith("/issues")
+                            for item in plan["unavailable_evidence"]))
 
     def test_default_planning_preserves_content_refs_settings_and_tracking(self):
         before = self.snapshot()
