@@ -3,6 +3,11 @@
 Use this checklist for a repository generated from this GameMaker workflow
 template.
 
+For an existing repository, start with the read-only
+[adoption and recovery plan](ADOPTION.md). That route inventories current
+state and verifies an existing release before proposing separately authorized
+changes. Do not run the generated-repository bootstrap as an adoption probe.
+
 This document owns setup procedure. Repository-change lifecycle policy remains
 in [GOVERNANCE.md](../GOVERNANCE.md#authority).
 
