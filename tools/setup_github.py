@@ -422,9 +422,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
 
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "adopt-existing":
+        # Planning must not create import caches in the inspected repository.
+        sys.dont_write_bytecode = True
+        # Direct script execution starts sys.path in tools, not the repository.
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from tools.adoption_plan import main as adoption_main
+
+        return adoption_main(argv[1:])
+
     parser = argparse.ArgumentParser(
         description=(
-            "Configure a repository created from this template."
+            "Configure a repository created from this template. "
+            "For an existing repository use adopt-existing --help."
         )
     )
     parser.add_argument(
