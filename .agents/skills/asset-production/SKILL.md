@@ -11,6 +11,11 @@ authored assets.
 Follow [Derived assets](../../../GOVERNANCE.md#derived-assets) and the affected
 `[assets]` and `[assets.pipelines.*]` tables in
 [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml).
+Choose runtime representation under
+[Runtime asset representation](../../../GOVERNANCE.md#runtime-asset-representation)
+and apply
+[Native GameMaker functionality](../../../GOVERNANCE.md#native-gamemaker-functionality)
+to native-resource and custom-loader decisions.
 Before creating, changing, or replacing an authored asset, follow
 [Asset completion and authority](../../../GOVERNANCE.md#asset-completion-and-authority).
 For placeholders supporting a mixed implementation issue, also follow
@@ -42,7 +47,10 @@ the current contract does not require.
 2. Preserve editable sources when derivation is useful.
    When a runtime asset is exported, converted, baked, compressed, or otherwise
    derived from an authored asset, keep the practical editable source and record
-   the configured source-to-runtime relationship.
+   the configured source-to-runtime relationship. Identify the editable source,
+   exported artifact, and runtime destination separately. Prefer an adequate
+   native GameMaker resource; external authoring does not justify Included Files.
+   Record a concrete file-based runtime reason when selecting that destination.
 
 3. Prefer open, widely supported source formats.
    Use an open or interoperable format when it adequately preserves the asset

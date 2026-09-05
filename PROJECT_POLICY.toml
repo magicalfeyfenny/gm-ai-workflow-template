@@ -31,33 +31,50 @@ forbidden_generic_stems = [
 large_file_exceptions = []
 
 [assets]
-source_root = "assets/source"
-runtime_root = "assets/runtime"
 manifest = "assets/exports.json"
 content_root = "content"
 plain_runtime_svg = true
 
+# Roots belong to each pipeline. Dedicated runtime roots require complete export
+# coverage; native resource roots are shared and validate only listed exports.
+# Extension lists allow alternatives. Add required_source_extensions or
+# required_runtime_extensions only for concrete companion-deliverable contracts.
 [assets.pipelines.vector]
+source_roots = ["assets/source"]
+runtime_roots = ["assets/runtime"]
+native_resource_roots = []
 source_extensions = [".svg"]
 runtime_extensions = [".svg"]
 
 [assets.pipelines.raster]
+source_roots = ["assets/source"]
+runtime_roots = ["assets/runtime"]
+native_resource_roots = []
 source_extensions = [".kra"]
 runtime_extensions = [".png"]
 
 [assets.pipelines.music]
+source_roots = ["assets/source"]
+runtime_roots = ["assets/runtime"]
+native_resource_roots = []
 source_extensions = [".mid", ".logicx"]
 runtime_extensions = [".flac"]
 sample_rate = 48000
 channels = 2
 
 [assets.pipelines.sound_effect]
+source_roots = ["assets/source"]
+runtime_roots = ["assets/runtime"]
+native_resource_roots = []
 source_extensions = [".logicx"]
 runtime_extensions = [".wav"]
 sample_rate = 48000
 channels = 2
 
 [assets.pipelines.model_3d]
+source_roots = ["assets/source"]
+runtime_roots = ["assets/runtime"]
+native_resource_roots = []
 source_extensions = [".blend", ".obj", ".mtl"]
 runtime_extensions = [".vbuff"]
 
