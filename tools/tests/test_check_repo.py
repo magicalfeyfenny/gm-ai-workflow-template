@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from tools.ci.check_repo import (
+    baseline_policy_errors,
     new_policy_errors,
     validate_assets,
     validate_structure,
@@ -16,6 +17,24 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RepositoryPolicyTests(unittest.TestCase):
+    def test_baseline_uses_its_own_checker_and_policy_contract(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            checker = root / "tools/ci/check_repo.py"
+            checker.parent.mkdir(parents=True)
+            checker.write_text(
+                "import json\n"
+                "def collect_errors(root):\n"
+                "    policy = json.loads((root / 'historical-policy.json').read_text())\n"
+                "    return policy['diagnostics']\n",
+                encoding="utf-8",
+            )
+            expected = ["historical.txt: existing violation"]
+            (root / "historical-policy.json").write_text(
+                json.dumps({"diagnostics": expected}), encoding="utf-8"
+            )
+            self.assertEqual(baseline_policy_errors(root), expected)
+
     @staticmethod
     def structure_policy(
         exceptions: list[str] | None = None,
@@ -33,12 +52,13 @@ class RepositoryPolicyTests(unittest.TestCase):
     def asset_policy() -> dict:
         return {
             "assets": {
-                "source_root": "assets/source",
-                "runtime_root": "assets/runtime",
                 "manifest": "assets/exports.json",
                 "plain_runtime_svg": True,
                 "pipelines": {
                     "raster": {
+                        "source_roots": ["assets/source"],
+                        "runtime_roots": ["assets/runtime"],
+                        "native_resource_roots": ["project/sprites"],
                         "source_extensions": [".kra"],
                         "runtime_extensions": [".png"],
                     },
@@ -233,6 +253,10 @@ class RepositoryPolicyTests(unittest.TestCase):
             "kind": "raster",
             "sources": ["assets/source/test.kra"],
             "runtime": ["assets/runtime/test.png"],
+            "destination": {
+                "kind": "included-file",
+                "file_contract": "Runtime enumerates user-replaceable images.",
+            },
         }
 
         for completion in (
@@ -249,6 +273,10 @@ class RepositoryPolicyTests(unittest.TestCase):
             "kind": "raster",
             "sources": ["assets/source/test.kra"],
             "runtime": ["assets/runtime/test.png"],
+            "destination": {
+                "kind": "included-file",
+                "file_contract": "Runtime enumerates user-replaceable images.",
+            },
         }
 
         for completion in (None, "unreviewed"):

@@ -11,6 +11,7 @@ only the routes matching the files and behavior in scope:
 | Work | Required route |
 | --- | --- |
 | Repository-owned production code | [Production code](../../../GOVERNANCE.md#production-code), [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations), [Source structure](../../../GOVERNANCE.md#source-structure), and `[structure]` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
+| Authored or derived assets | [Asset production skill](../asset-production/SKILL.md) |
 | GameMaker structured data | [GameMaker structured data](../../../GOVERNANCE.md#gamemaker-structured-data) and `assets.content_root` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
 
 Validation follows
@@ -21,6 +22,13 @@ Imported-library source follows the exception in Source structure, not the
 repository-owned production-code style rules.
 
 ## Production procedure
+
+Before creating or preserving custom machinery, follow
+[Native GameMaker functionality](../../../GOVERNANCE.md#native-gamemaker-functionality):
+identify applicable native facilities, establish their semantics, and compare
+them with the required outcome. Use a sufficient native facility. A custom
+substitute needs a specific unmet requirement; repository precedent alone is
+insufficient. Record the evidence and decision before implementing it.
 
 When reusing an older project:
 
@@ -34,10 +42,8 @@ changed by the work.
 
 ## Production defaults
 
-1. GameMaker-native first. Use ordinary objects, instances, rooms, layers,
-sequences, sprites, instance variables, structs and GML before creating a
-parallel authoring/runtime model. Preserve direct manipulation in the GameMaker
-IDE when practical.
+1. Apply the native capability decision above to both new and existing paths.
+Preserve direct manipulation in the GameMaker IDE when practical.
 2. Build the smallest end-to-end behavior first. For gameplay/content work,
 prefer a runnable consumer over defining a representation in isolation. Do not
 create a canonical schema ahead of its first consumer unless the schema itself

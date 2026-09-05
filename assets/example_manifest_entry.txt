@@ -1,15 +1,56 @@
-as a .json:
+Entries in the exports list of the configured canonical JSON manifest:
+
+External editable artwork exported into a native GameMaker Sprite resource:
 
 {
-  "kind": "music",
+  "kind": "raster",
   "completion": "authored-placeholder",
-  "sources": [
-    "assets/source/music/example.mid",
-    "assets/source/music/example.logicx"
-  ],
-  "runtime": [
-    "assets/runtime/music/example.flac"
-  ]
+  "sources": ["assets/source/interface/panel.kra"],
+  "runtime": ["game/sprites/spr_panel/frame.png"],
+  "destination": {
+    "kind": "native-resource",
+    "resource": "game/sprites/spr_panel/spr_panel.yy"
+  }
 }
 
-"kind" may be "vector", "raster", "music", "sound_effect", or "model_3d"
+Configure the raster pipeline's native_resource_roots to include
+"game/sprites". The descriptor must exist and be tracked. Exported artifacts
+belong within that native resource's directory; the descriptor itself can be
+an exported artifact when the pipeline permits its extension. Other native
+resources in the configured directory do not become manifest-owned assets.
+
+An export with an actual runtime file-access contract:
+
+{
+  "kind": "model_3d",
+  "completion": "authored-placeholder",
+  "sources": [
+    "assets/source/models/example.blend"
+  ],
+  "runtime": [
+    "assets/runtime/models/example.vbuff"
+  ],
+  "destination": {
+    "kind": "included-file",
+    "file_contract": "The runtime reads the exported vertex-buffer bytes for the model pipeline."
+  }
+}
+
+The default pipeline kinds are vector, raster, music, sound_effect, and model_3d.
+Each pipeline configures source_roots, runtime_roots, native_resource_roots,
+source_extensions, and runtime_extensions. Roots and paths are repository
+relative. A pipeline can list multiple locations, and different pipelines can
+use different locations. Dedicated runtime_roots require complete manifest
+coverage. Source packages may be directories with tracked descendants.
+
+Extensions are permitted alternatives, not a requirement to produce every
+format. A pipeline may declare required_source_extensions or
+required_runtime_extensions when a concrete contract requires companion
+deliverables. Configure the extensions and locations required by the project;
+these examples do not restrict file-based runtime contracts to one format.
+
+Exactly one destination is required. External authorship or a manifest entry
+does not establish a file contract. Prefer an adequate native GameMaker
+resource under Governance; use included-file only for a specific runtime
+file-access requirement. The checker requires an explicit nonempty reason;
+it does not decide whether arbitrary natural-language explanations are valid.

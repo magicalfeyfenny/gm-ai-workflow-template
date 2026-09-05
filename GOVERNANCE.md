@@ -689,17 +689,127 @@ Tags, release builds, merges into `main`, and publication are never automatic.
 
 After the first release, `main` changes only through release PRs.
 
+## Native GameMaker functionality
+
+Before designing, retaining, repairing, extending, or replacing custom
+repository-owned machinery for behavior GameMaker may provide, determine
+whether applicable native functionality satisfies the current product and
+engineering contract. This requirement applies to existing implementations
+as well as new work.
+
+### Establish engine semantics
+
+When an implementation decision depends on a named GameMaker feature or
+engine abstraction, establish its actual semantics before deciding to preserve
+or redesign a custom substitute. Inspect the applicable native contract or
+documentation for the project's engine version and targets, or establish the
+behavior through direct, relevant engine evidence. Record the source and the
+conclusion at the implementation decision boundary. Runtime evidence follows
+[Validation coverage allocation](#validation-coverage-allocation) and
+[Interactive runtime validation](#interactive-runtime-validation).
+
+This applies, for example, to nine-slice sprites, scaling, tilemaps, sequences,
+surfaces, cameras, animation, collision, particles, audio, paths, fonts,
+resource loading, and buffer APIs. The examples are not an exhaustive list.
+Function names, comments, the number or arrangement of helper calls, and
+superficial resemblance to a feature do not establish the engine contract.
+Repository precedent is evidence of what exists, not authority over what
+GameMaker means.
+
+### Custom implementation requirements
+
+If native functionality satisfies the required outcome, use it. Do not
+introduce redundant custom machinery. Remove or simplify redundant machinery
+when that cleanup is within the authorized outcome. Do not disable, bypass,
+or degrade a native facility merely to preserve a custom implementation whose
+independent necessity has not been established.
+
+A custom implementation requires a concrete current requirement the native
+facility cannot satisfy. Identify the unmet requirement and the evidence for
+the limitation. Behavior, determinism, portability, runtime data access,
+tooling, performance, compatibility, integration, authoring workflow, or
+another current contract boundary can justify the custom path. A compatibility
+claim also follows [Compatibility obligations](#compatibility-obligations).
+
+Existing code, history, architectural precedent, tests written around the
+custom mechanism, and the fact that it already works are insufficient evidence
+of necessity. Update repository-owned consumers atomically when the authorized
+outcome replaces their mechanism. Native functionality is the default when
+sufficient; a demonstrated unmet requirement remains a valid exception.
+
+### Native adoption scope
+
+Apply the decision to current requested work and independently established
+contracts. Existing custom systems or external runtime assets alone do not
+authorize cleanup, an implementation issue, or a retained backlog obligation.
+An audit may report an unsupported decision without inventing implementation
+work. A current requested outcome, current issue, or independently established
+contract must actually require the change.
+
 ## Derived assets
 
 The `[assets]` and `[assets.pipelines.*]` tables in
 [PROJECT_POLICY.toml](PROJECT_POLICY.toml) define the executable roots,
 manifest path, supported source and runtime formats, and audio parameters.
 
-Editable assets belong under the configured source root. Generated or
-exported assets belong under the configured runtime root, and every tracked
-derived runtime asset is mapped in the configured export manifest.
+### Runtime asset representation
 
-Each asset follows its named pipeline.
+Distinguish the editable authoring source, the exported artifact, and its
+runtime GameMaker representation. External authorship does not imply external
+runtime loading. An external editable source may export an artifact that is
+integrated into a native GameMaker resource; the artifact may live directly
+inside that resource without a duplicate staging copy.
+
+Use an appropriate native GameMaker runtime resource when it adequately
+represents the asset under the current contract. Typical destinations include
+Sprite resources for sprite images, Sound resources for audio, Font resources
+for fonts, Sprite and Tile Set resources for tile graphics, and Sequence
+resources for applicable sequence content. Preserve a useful canonical
+editable source outside GameMaker when the authoring workflow calls for it.
+Assets authored directly in GameMaker need no artificial external source.
+
+Included Files require an actual file-based runtime contract or content that
+no appropriate native resource adequately represents. Examples include JSON
+game data, custom model or buffer data such as `.vbuff`, runtime-enumerated
+content, user-modifiable or mod data, and other formats requiring file access.
+These examples do not restrict valid files to particular extensions. Record
+the concrete runtime reason; being externally generated, manifest-listed, or
+part of an export pipeline is insufficient. A supported export format does
+not by itself justify a runtime representation.
+
+Apply [Native GameMaker functionality](#native-gamemaker-functionality) to
+resource and loader choices, including its semantics, exception, and scope
+rules. Keep source authority, ownership, provenance, completion metadata, and
+applicable storage requirements independent of runtime representation.
+
+### Export topology
+
+Each derived asset follows its named pipeline and one entry in the configured
+canonical export manifest. Pipeline `source_roots` permit editable-source
+locations, including directory-backed source packages. Pipeline
+`runtime_roots` are dedicated file-export locations: every tracked runtime
+asset there needs manifest coverage. Pipeline `native_resource_roots` are
+shared GameMaker locations: validate manifest-owned outputs without treating
+unrelated native resources as derived exports.
+
+The manifest's `sources` identify editable sources and `runtime` identifies
+the exported artifacts at their runtime destinations. Each entry declares one
+`destination`: `native-resource` names the tracked `.yy` resource containing
+its outputs; `included-file` records a nonempty `file_contract` reason for
+runtime file access. This declaration does not replace GameMaker resource
+metadata or prove that the stated reason is sufficient. Verify the actual
+resource or packaging relationships changed by the work. See the
+[manifest examples](assets/example_manifest_entry.txt).
+
+Allowed source and runtime extensions are alternatives. Require companion
+formats only through a pipeline's explicit `required_source_extensions` or
+`required_runtime_extensions` when its actual contract requires them.
+Preserve existence, tracking, unique runtime ownership, export coverage, and
+completion metadata. Directory sources require tracked existing descendants;
+recognize valid nested LFS pointers as storage representations rather than
+parsing them as literal asset content. Materialized content remains subject to
+applicable content checks; pointer presence alone does not prove export
+fidelity or packaging.
 
 ## GameMaker structured data
 
