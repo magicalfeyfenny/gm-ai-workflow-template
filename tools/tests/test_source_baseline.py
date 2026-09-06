@@ -1,5 +1,7 @@
 import json
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,7 +13,10 @@ from tools.ci.check_repo import (
 )
 
 
-class SourceBaselineTests(unittest.TestCase):
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class SourceBaselineFixture(unittest.TestCase):
     def setUp(self):
         """Collect inherited violations from real tracked source files."""
         self.temporary = tempfile.TemporaryDirectory()
@@ -58,6 +63,8 @@ plain_runtime_svg = true
         """Select the one supported ordered violation by its concrete type."""
         return [error for error in errors if isinstance(error, SourceLineViolation)]
 
+
+class SourceBaselineTests(SourceBaselineFixture):
     def test_collection_exposes_source_identity_threshold_and_count(self):
         self.assertEqual(
             self.baseline,
@@ -200,6 +207,131 @@ plain_runtime_svg = true
             ),
             [inherited],
         )
+
+
+class SourceBaselineCliTests(SourceBaselineFixture):
+    def setUp(self):
+        """Exercise the real entrypoint and historical checkouts in a small repo."""
+        super().setUp()
+        self.checker = self.root / "tools/ci/check_repo.py"
+        self.checker.parent.mkdir(parents=True)
+        shutil.copy2(ROOT / "tools/ci/check_repo.py", self.checker)
+        self.commit_baseline()
+
+    def commit_baseline(self):
+        """Record fixture policy without depending on the developer's Git identity."""
+        self.track()
+        subprocess.run(
+            [
+                "git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test",
+                "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Fixture baseline",
+            ],
+            cwd=self.root,
+            check=True,
+        )
+
+    def run_checker(self, baseline="HEAD"):
+        """Run the unmodified command path, including baseline-ref resolution."""
+        return subprocess.run(
+            [sys.executable, str(self.checker), "--baseline-ref", baseline],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def assert_rejected(self, result, path):
+        """A policy rejection must name its offending subject, not fail baseline setup."""
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn(path, result.stderr)
+
+    def test_source_changes_use_semantic_comparison_through_cli(self):
+        for count in (4006, 3900, 800, 0):
+            with self.subTest(count=count):
+                self.write_source(self.source, count, content="edited")
+                result = self.run_checker()
+                self.assertEqual(result.returncode, 0, result.stderr)
+        self.write_source(self.source, 4007)
+        self.assert_rejected(self.run_checker(), self.source)
+
+    def test_new_violation_and_removed_source_through_cli(self):
+        (self.root / self.source).unlink()
+        self.track()
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        added = "source/new.gml"
+        self.write_source(added, 801)
+        self.track()
+        self.assert_rejected(self.run_checker(), added)
+
+    def test_invalid_baseline_still_fails_when_candidate_has_no_errors(self):
+        self.write_source(self.source, 0)
+        result = self.run_checker("missing-baseline-ref")
+        self.assertEqual(result.returncode, 2)
+        self.assertTrue(result.stderr)
+
+    def test_policy_edit_requires_exact_inherited_diagnostics_or_resolution(self):
+        policy = self.root / "PROJECT_POLICY.toml"
+        policy.write_text(policy.read_text() + "\n# Policy contract edit\n")
+        for count, expected in ((4006, 0), (3900, 1), (4007, 1), (800, 0)):
+            with self.subTest(count=count):
+                self.write_source(self.source, count)
+                result = self.run_checker()
+                self.assertEqual(result.returncode, expected, result.stderr)
+                if expected:
+                    self.assertIn(self.source, result.stderr)
+
+    def test_relaxed_policy_cannot_hide_growth_or_new_source(self):
+        self.write_policy(5000)
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.write_source(self.source, 4007)
+        self.assert_rejected(self.run_checker(), self.source)
+        self.write_source(self.source, 4006)
+        added = "source/new.gml"
+        self.write_source(added, 801)
+        self.track()
+        self.assert_rejected(self.run_checker(), added)
+
+    def test_stricter_policy_introduces_a_new_obligation(self):
+        self.write_source(self.source, 750)
+        self.commit_baseline()
+        self.write_policy(700)
+        self.assert_rejected(self.run_checker(), self.source)
+
+    def test_checker_edit_requires_exact_inherited_diagnostics(self):
+        self.checker.write_text(self.checker.read_text() + "\n# Checker contract edit\n")
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.write_source(self.source, 3900)
+        self.assert_rejected(self.run_checker(), self.source)
+
+    def disable_current_structure_check(self):
+        """Simulate a checker change that would otherwise suppress old obligations."""
+        self.checker.write_text(
+            self.checker.read_text().replace(
+                '\nif __name__ == "__main__":',
+                '\ndef validate_structure(root, policy, files, errors):\n'
+                '    pass\n\nif __name__ == "__main__":',
+            ),
+            encoding="utf-8",
+        )
+
+    def test_removed_checker_rule_cannot_hide_source_growth(self):
+        self.disable_current_structure_check()
+        self.write_source(self.source, 4007)
+        self.assert_rejected(self.run_checker(), self.source)
+
+    def test_historical_rules_also_inspect_changed_checker_source(self):
+        policy = self.root / "PROJECT_POLICY.toml"
+        policy.write_text(
+            policy.read_text().replace('source_extensions = [".gml"]',
+                                       'source_extensions = [".gml", ".py"]')
+        )
+        self.commit_baseline()
+        self.disable_current_structure_check()
+        self.checker.write_text(self.checker.read_text() + "\n# More checker source\n" * 100)
+        self.assert_rejected(self.run_checker(), "tools/ci/check_repo.py")
 
 
 if __name__ == "__main__":
