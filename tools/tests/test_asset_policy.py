@@ -472,7 +472,7 @@ runtime_extensions = [".png"]
         candidate = self.validate()
         self.assert_rejected(candidate)
         self.assertEqual(
-            new_policy_errors(candidate, baseline, {"PROJECT_POLICY.toml"}, strict=True),
+            new_policy_errors(candidate, baseline, strict=True),
             candidate,
         )
 
