@@ -227,6 +227,27 @@ class CandidateGitTests(unittest.TestCase):
                 self.assertIsNone(parse_lfs_pointer(invalid))
                 self.assertFalse(is_lfs_pointer(invalid))
 
+    def test_alternate_path_is_plain_absolute_text_for_git_lfs_scanners(self):
+        """Git LFS's alternate reader requires literal paths, including spaces."""
+        oid = self.stage("stored.txt", b"stored blob")
+        with candidate_snapshot(self.root) as candidate:
+            alternate = (candidate.root / ".git/objects/info/alternates").read_text()
+            object_store = Path(alternate.removesuffix("\n"))
+            self.assertTrue(object_store.is_absolute())
+            self.assertTrue(object_store.is_dir())
+            self.assertIn(" ", str(object_store))
+            self.assertTrue((object_store / oid[:2] / oid[2:]).is_file())
+
+    def test_alternate_paths_with_newlines_fail_explicitly(self):
+        """Unsupported alternate delimiters cannot silently change object resolution."""
+        self.stage("stored.txt", b"stored blob")
+        renamed = self.root.with_name("source\nnewline")
+        self.root.rename(renamed)
+        self.root = renamed
+        with self.assertRaisesRegex(ValueError, "object directories.*newlines"):
+            with candidate_snapshot(self.root):
+                self.fail("A newline-bearing alternate path must fail before use")
+
 
 if __name__ == "__main__":
     unittest.main()

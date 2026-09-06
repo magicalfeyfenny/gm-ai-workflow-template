@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
@@ -241,12 +240,15 @@ def candidate_snapshot(root: Path, ref: str | None = None) -> Iterator[GitCandid
         root, "rev-parse", "--path-format=absolute", "--git-path", "objects",
         environment=environment,
     ).stdout).strip()
+    if "\n" in objects or "\r" in objects:
+        raise ValueError("Git object directories containing newlines are unsupported")
     with tempfile.TemporaryDirectory(prefix="git-candidate-") as temporary:
         checkout = Path(temporary) / "candidate"
         _initialize(checkout, object_format, environment)
-        # Git accepts C-quoted alternate paths, including whitespace and newlines.
+        # A plain absolute line also works with Git LFS's native object scanner.
+        # Spaces are literal here; its parser does not support Git's C quoting.
         (checkout / ".git/objects/info/alternates").write_text(
-            json.dumps(objects, ensure_ascii=False) + "\n", encoding="utf-8",
+            objects + "\n", encoding="utf-8",
         )
         _git(checkout, "read-tree", tree, environment=environment)
         entries = _entries(checkout, tree, environment)

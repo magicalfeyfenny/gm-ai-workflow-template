@@ -19,10 +19,14 @@ from typing import Iterator
 # Historical checker execution supplies this directory through sys.path as well.
 if __package__:
     from .candidate_git import candidate_snapshot, is_lfs_pointer
-    from .storage_policy import collect_storage_errors, storage_policy_errors
+    from .storage_policy import (
+        collect_storage_errors, historical_storage_errors, storage_policy_errors,
+    )
 else:
     from candidate_git import candidate_snapshot, is_lfs_pointer
-    from storage_policy import collect_storage_errors, storage_policy_errors
+    from storage_policy import (
+        collect_storage_errors, historical_storage_errors, storage_policy_errors,
+    )
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSET_COMPLETION_LEVELS = frozenset(
@@ -703,6 +707,8 @@ def main() -> int:
                         errors, collect_errors(baseline, include_storage=False)
                     )
             errors.extend(storage_policy_errors(ROOT, args.baseline_ref, candidate.tree))
+            if args.baseline_ref and changed & CHECKER_CONTRACT_PATHS:
+                errors.extend(historical_storage_errors(ROOT, baseline_sha, candidate.tree))
     except (OSError, subprocess.CalledProcessError, ValueError, KeyError) as exc:
         print(
             "repository-policy: candidate or baseline is unavailable or could not "

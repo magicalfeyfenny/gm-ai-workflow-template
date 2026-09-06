@@ -595,8 +595,9 @@ Other violations have no inferred severity order: only identical diagnostics
 may remain inherited, with each baseline occurrence used at most once. Changed
 JSON error details or asset entry identities are not normalized away.
 
-Changes to `PROJECT_POLICY.toml` or `tools/ci/check_repo.py` disable the ordered
-allowance. The candidate must introduce no changed or new diagnostics against
+Changes to `PROJECT_POLICY.toml`, `tools/ci/check_repo.py`, or its candidate and
+storage helper modules disable the ordered allowance. The candidate must
+introduce no changed or new content diagnostics against
 the historical checker and policy, both under its current rules and with its
 tracked files evaluated under the historical rules. This conservative
 path permits unchanged inherited diagnostics and full corrections, but rejects
@@ -608,6 +609,10 @@ or policy changes. An unavailable or invalid baseline fails closed.
 Remaining inherited violations are repository state, not completion conditions
 or an automatic cleanup backlog. Baseline failures identify only new, changed,
 or worsened violations for the proposed change.
+
+Storage rules use the separate comparison in
+[Candidate storage](#candidate-storage), including when enforcement is first
+enabled. They do not acquire the source-line ordering.
 
 Human-authored work may be followed by a bounded repository-compliance issue.
 That issue may normalize structure, validation, assets, tests, and repository
@@ -918,6 +923,56 @@ The setting does not bypass checks outside source-structure validation.
 Changing the limit or adding an exception is high risk. Keep each imported
 library pinned and read-only; update its version and exception paths together
 as separate governed work.
+
+## Candidate storage
+
+`[storage]` and `[storage.lfs]` in
+[PROJECT_POLICY.toml](PROJECT_POLICY.toml) configure tracked-ignore hygiene,
+prohibited artifacts, exact file exceptions, stored LFS pointers, optional
+raw-blob size classes, and LFS object-integrity evidence. Storage exceptions
+are independent of imported-source exceptions and exempt only the exact
+declared file from storage-policy diagnostics.
+
+Storage validation identifies one Git tree and uses its tracked paths, stored
+blobs, repository ignore rules, and effective attributes. Nested Git rules,
+negations, and attribute overrides apply. Untracked files, working-tree
+smudging, machine-wide rules, local Git info rules, and unrelated branches do
+not determine its verdict. The default local command examines the staged
+index for storage and the working tree for existing content checks; stage the
+intended candidate first. `--candidate-ref` selects a stored tree for both.
+CI selects its checked-out PR merge candidate explicitly.
+
+Paths with effective `filter=lfs` require canonical LFS pointers when pointer
+enforcement is enabled. Pointer recognition is shared with asset validation;
+it identifies a storage representation, not asset content or export fidelity.
+Additional raw-size classes exist only through configured `raw_patterns`.
+Patterns use Git ignore syntax, independently of repository ignore rules.
+The size cap rejects raw blobs strictly larger than its byte boundary; optional
+binary-only filtering detects a NUL within the first 8000 bytes. No filename
+class acquires an implicit LFS requirement.
+
+Storage baselining evaluates both selected trees under the candidate storage
+policy, allowing newly enabled checks to identify unchanged inherited state
+without creating cleanup obligations. Only the same violation at the exact
+path, mode, and stored blob may remain inherited. Changed, renamed, or newly
+violating blobs fail; a reduction in blob size is not a universal improvement.
+When storage settings change, the old-policy comparison also remains required
+so relaxing a setting cannot hide a changed violation. Checker-contract edits
+also run the historical storage helper, when present, against the exact stored
+trees under its historical policy. This preserves old enforcement without
+re-adding or cleaning the candidate's blobs. Candidate ignore and attribute
+changes take effect in their own trees.
+
+Object-integrity evidence is separate from pointer syntax and inherited-state
+diagnostics. Applicable CI runs `git lfs fsck --objects` for the identified
+candidate, checks declared object sizes, and records its result. Integrity
+failure or missing required capability/evidence cannot pass. Optional mode
+permits only explicitly reported unsupported capability; a supported check
+with missing or corrupt objects still fails. Disabled checks and candidates
+with no canonical pointers are reported explicitly. Integrity checks use an
+isolated LFS store so Git LFS quarantine cannot modify the author's objects;
+CI fetches only the selected candidate's objects into that store. There is no
+automatic cleanup, history scan, or LFS migration.
 
 ## CI
 

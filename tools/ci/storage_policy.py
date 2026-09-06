@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import tomllib
 from collections import Counter
 from pathlib import Path, PurePosixPath
@@ -177,3 +180,47 @@ def storage_policy_errors(
                     )
                 )
             return errors
+
+
+def historical_storage_errors(
+    root: Path, baseline_ref: str, candidate_ref: str,
+) -> list[str]:
+    """Retain historical storage enforcement when its implementation changes.
+
+    Run the old helper and old policy against exact stored trees in the original
+    object database. Re-adding materialized files could apply clean filters and
+    accidentally repair the very raw-blob violation being measured.
+    """
+    with candidate_snapshot(root, baseline_ref) as baseline:
+        helper_path = "tools/ci/storage_policy.py"
+        if helper_path not in baseline.entries:
+            return []
+        policy = candidate_policy(baseline)
+        if not storage_rules(policy)["enabled"]:
+            return []
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "import json, runpy, sys\n"
+             "from pathlib import Path\n"
+             "sys.path.insert(0, str(Path(sys.argv[1]).parent))\n"
+             "collect = runpy.run_path(sys.argv[1])['collect_storage_errors']\n"
+             "data = json.load(sys.stdin)\n"
+             "print(json.dumps({name: collect(Path(data['root']), ref=data[name],\n"
+             "    policy=data['policy']) for name in ('candidate', 'baseline')}))\n",
+             str(baseline.root / helper_path)],
+            input=json.dumps({
+                "root": str(root), "policy": policy,
+                "candidate": candidate_ref, "baseline": baseline.tree,
+            }),
+            capture_output=True, text=True, check=True,
+        )
+        evidence = json.loads(result.stdout)
+        if not isinstance(evidence, dict) or set(evidence) != {"candidate", "baseline"}:
+            raise ValueError("historical storage checker returned invalid evidence")
+        for errors in evidence.values():
+            if not isinstance(errors, list) or any(not isinstance(item, str) for item in errors):
+                raise ValueError("historical storage checker returned invalid diagnostics")
+        return [
+            f"under baseline storage checker and policy: {error}"
+            for error in introduced_errors(evidence["candidate"], evidence["baseline"])
+        ]
