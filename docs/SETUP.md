@@ -125,6 +125,14 @@ Register the exception as bounded governed work, then run the validation below.
 
 ## Validate the generated repository
 
+Create a local virtual environment and install the pinned test dependencies:
+
+```sh
+python3.12 -m venv .venv
+source .venv/bin/activate
+python3.12 -m pip install -r tools/tests/requirements.txt
+```
+
 Stage the intended files first. From the generated repository root, run:
 
 ```sh
@@ -173,8 +181,9 @@ human-owned steps:
    actionable issue work, while Governed Change executes one existing
    agent-workable issue.
 4. Add any game-specific hosted runner configuration or secrets needed by the
-   GameMaker tests. Do not infer visual or runtime success from the Python
-   policy checks.
+   GameMaker tests, then connect the suite through the
+   [required Tests extension procedure](CI.md). Do not infer visual or runtime
+   success from the Python policy checks.
 
 If the bootstrap tool completes successfully, no manual GitHub branch,
 default-branch, merge-strategy, label, or ruleset configuration remains.

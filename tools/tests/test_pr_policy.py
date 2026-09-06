@@ -6,6 +6,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 from tools.ci.pr_policy import (
     POLICY,
     auto_merge_eligible,
@@ -30,6 +32,14 @@ def workflow_job(text: str, name: str) -> str:
     if match is None:
         raise AssertionError(f"workflow job is missing: {name}")
     return match.group(1)
+
+
+def action_steps(job: dict, action: str) -> list[dict]:
+    """Find an action by repository independently of its pinned revision."""
+    return [
+        step for step in job["steps"]
+        if step.get("uses", "").partition("@")[0] == action
+    ]
 
 
 class PrPolicyTests(unittest.TestCase):
@@ -465,58 +475,44 @@ class WorkflowPolicyTests(unittest.TestCase):
         """Keep App credentials scoped and separate from the ambient token."""
         path = ROOT / ".github/workflows/low-risk-auto-merge.yml"
         text = path.read_text(encoding="utf-8")
-        workflow_header, _, _ = text.partition("\njobs:\n")
-        cancel_job = workflow_job(text, "cancel")
-        merge_job = workflow_job(text, "merge")
-        merge_permissions = merge_job.split("\n    steps:\n", 1)[0]
-        token_match = re.search(
-            r"(?ms)^      - (?:name:.*\n)?"
-            r"        uses: actions/create-github-app-token@v3\n"
-            r"(.*?)(?=^      - name:|\Z)",
-            merge_job,
-        )
-        self.assertIsNotNone(token_match)
-        token_step = token_match.group(1)
+        workflow = yaml.load(text, Loader=yaml.BaseLoader)
+        cancel_job = workflow["jobs"]["cancel"]
+        merge_job = workflow["jobs"]["merge"]
+        token_steps = action_steps(merge_job, "actions/create-github-app-token")
 
-        self.assertIn("permissions: {}", workflow_header)
-        self.assertNotIn("issues:", cancel_job)
-        self.assertIn("actions: read", merge_permissions)
-        self.assertIn("contents: write", merge_permissions)
-        self.assertIn("pull-requests: write", merge_permissions)
-        self.assertNotIn("contents: read", merge_permissions)
-        self.assertNotIn("issues:", merge_permissions)
+        self.assertEqual(workflow["permissions"], {})
+        self.assertNotIn("issues", cancel_job["permissions"])
         self.assertEqual(
-            len(re.findall(
-                r"^\s+uses: actions/create-github-app-token@v3$",
-                merge_job,
-                re.MULTILINE,
-            )),
-            1,
+            merge_job["permissions"],
+            {"actions": "read", "contents": "write", "pull-requests": "write"},
         )
-
-        for required in (
-            "client-id: ${{ vars.GOVERNED_MERGE_APP_CLIENT_ID }}",
-            "private-key: "
-            "${{ secrets.GOVERNED_MERGE_APP_PRIVATE_KEY }}",
-            "permission-contents: write",
-            "permission-issues: write",
-            "permission-pull-requests: write",
-        ):
-            with self.subTest(required=required):
-                self.assertIn(required, token_step)
-
-        self.assertNotIn("owner:", token_step)
-        self.assertNotIn("repositories:", token_step)
-        self.assertIn(
-            "MERGE_TOKEN: "
-            "${{ steps.governed-merge-token.outputs.token }}",
-            merge_job,
+        self.assertEqual(len(token_steps), 1)
+        self.assertEqual(
+            action_steps(cancel_job, "actions/create-github-app-token"), [],
         )
-        self.assertIn(
-            "python3 -m tools.ci.low_risk_merge merge",
-            merge_job,
+        token_step = token_steps[0]
+        self.assertEqual(
+            token_step["with"],
+            {
+                "client-id": "${{ vars.GOVERNED_MERGE_APP_CLIENT_ID }}",
+                "private-key": "${{ secrets.GOVERNED_MERGE_APP_PRIVATE_KEY }}",
+                "permission-contents": "write",
+                "permission-issues": "write",
+                "permission-pull-requests": "write",
+            },
         )
-        self.assertNotIn('GH_TOKEN="$MERGE_TOKEN"', merge_job)
+        merge_steps = [
+            step for step in merge_job["steps"]
+            if "python3 -m tools.ci.low_risk_merge merge" in step.get("run", "")
+        ]
+        self.assertEqual(len(merge_steps), 1)
+        merge_step = merge_steps[0]
+        self.assertEqual(merge_step["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertEqual(
+            merge_step["env"]["MERGE_TOKEN"],
+            "${{ steps." + token_step["id"] + ".outputs.token }}",
+        )
+        self.assertNotIn('GH_TOKEN="$MERGE_TOKEN"', merge_step["run"])
 
     def test_auto_merge_relies_on_native_issue_closure(self):
         """Keep issue completion native to the merge instead of scripting it."""
@@ -543,18 +539,32 @@ class WorkflowPolicyTests(unittest.TestCase):
         merge_text = (
             ROOT / ".github/workflows/low-risk-auto-merge.yml"
         ).read_text(encoding="utf-8")
+        workflow = yaml.load(ci_text, Loader=yaml.BaseLoader)
+        policy_job = workflow["jobs"]["pr-policy"]
+        artifact_name = "pr-metadata-${{ github.run_id }}-${{ github.run_attempt }}"
+        metadata_uploads = [
+            step for step in action_steps(policy_job, "actions/upload-artifact")
+            if step.get("with", {}).get("name") == artifact_name
+        ]
 
         self.assertIn("$GITHUB_EVENT_PATH", ci_text)
-        self.assertIn("actions/upload-artifact@v4", ci_text)
-        self.assertIn("retention-days: 30", ci_text)
-        self.assertIn(
-            "pr-metadata-${{ github.run_id }}-"
-            "${{ github.run_attempt }}",
-            ci_text,
-        )
+        self.assertEqual(len(metadata_uploads), 1)
+        upload = metadata_uploads[0]
+        for key, value in {
+            "path": "${{ runner.temp }}/pr-metadata.json",
+            "if-no-files-found": "error",
+            "retention-days": "30",
+        }.items():
+            with self.subTest(artifact_input=key):
+                self.assertEqual(upload["with"][key], value)
+        policy_steps = [
+            step for step in policy_job["steps"]
+            if "python3 tools/ci/pr_policy.py" in step.get("run", "")
+        ]
+        self.assertEqual(len(policy_steps), 1)
         self.assertLess(
-            ci_text.index("actions/upload-artifact@v4"),
-            ci_text.index("python3 tools/ci/pr_policy.py"),
+            policy_job["steps"].index(upload),
+            policy_job["steps"].index(policy_steps[0]),
         )
 
         self.assertIn("actions: read", merge_text)
