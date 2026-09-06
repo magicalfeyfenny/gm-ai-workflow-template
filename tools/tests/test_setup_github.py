@@ -11,6 +11,7 @@ from tools.setup_github import (
     RULESET_PATHS,
     SetupError,
     configure_repository,
+    ensure_labels,
     github_api,
     load_rulesets,
     repository_name,
@@ -184,6 +185,78 @@ class RulesetRecipeTests(unittest.TestCase):
             self.assertIsInstance(value, dict)
 
 
+class EnsureLabelsTests(unittest.TestCase):
+    def test_applies_inventory_across_ordering_and_json_formatting(self):
+        fixture_labels = (
+            {
+                "name": "fixture:present",
+                "color": "123456",
+                "description": "Update this existing fixture label.",
+            },
+            {
+                "name": "fixture:missing",
+                "color": "abcdef",
+                "description": "Create this missing fixture label.",
+            },
+        )
+
+        for inventory in (REQUIRED_LABELS, fixture_labels):
+            expected = {
+                label["name"]: {
+                    "color": label["color"],
+                    "description": label["description"],
+                }
+                for label in inventory
+            }
+            existing_names = {inventory[0]["name"]}
+            representations = {
+                "original": inventory,
+                "reordered": tuple(reversed(inventory)),
+                "formatted_json": json.loads(
+                    json.dumps(inventory, sort_keys=True, indent=4)
+                ),
+            }
+
+            for representation, labels in representations.items():
+                with self.subTest(
+                    inventory=set(expected),
+                    representation=representation,
+                ):
+                    api = FakeApi(labels=existing_names)
+                    with patch("tools.setup_github.REQUIRED_LABELS", labels):
+                        ensure_labels(api, "owner/game")
+
+                    created = {
+                        payload["name"]: {
+                            "color": payload["color"],
+                            "description": payload["description"],
+                        }
+                        for method, endpoint, payload in api.calls
+                        if method == "POST"
+                        and endpoint == "repos/owner/game/labels"
+                    }
+                    updated = {
+                        payload["new_name"]: {
+                            "color": payload["color"],
+                            "description": payload["description"],
+                        }
+                        for method, endpoint, payload in api.calls
+                        if method == "PATCH" and "/labels/" in endpoint
+                    }
+                    self.assertEqual(
+                        created,
+                        {
+                            name: fields
+                            for name, fields in expected.items()
+                            if name not in existing_names
+                        },
+                    )
+                    self.assertEqual(
+                        updated,
+                        {name: expected[name] for name in existing_names},
+                    )
+
+
 class ConfigureRepositoryTests(unittest.TestCase):
     def test_creates_main_and_applies_exact_settings(self):
         api = FakeApi()
@@ -321,13 +394,17 @@ class ConfigureRepositoryTests(unittest.TestCase):
                 for method, endpoint, _ in api.calls
             )
         )
-        self.assertEqual(
-            sum(
-                method == "PATCH"
-                and "/labels/" in endpoint
-                for method, endpoint, _ in api.calls
-            ),
-            len(REQUIRED_LABELS),
+        self.assertCountEqual(
+            [
+                {
+                    "name": payload["new_name"],
+                    "color": payload["color"],
+                    "description": payload["description"],
+                }
+                for method, endpoint, payload in api.calls
+                if method == "PATCH" and "/labels/" in endpoint
+            ],
+            list(REQUIRED_LABELS),
         )
         self.assertTrue(
             any(

@@ -54,7 +54,8 @@ labels.
 The tool requires an explicit repository name. It creates `main` from the
 current `dev` commit only when `main` is absent, makes `dev` the default,
 enables squash merging and auto-merge, disables merge commits, rebase merges,
-and automatic branch deletion, ensures the eight governance labels, and
+and automatic branch deletion, ensures the governance labels defined by
+`REQUIRED_LABELS` in the [bootstrap tool](../tools/setup_github.py), and
 installs the active `dev-protection` and `main-release` rulesets.
 
 The tool creates the labels used by the Governance
@@ -62,7 +63,9 @@ The tool creates the labels used by the Governance
 [manual](../GOVERNANCE.md#manual-and-high-risk-changes), and
 [blocked-work](../GOVERNANCE.md#milestone-commits-and-draft-publication) paths.
 It renames a legacy `blocked` label to `work:blocked`, preserving assignments
-when the new name is absent.
+when the new name is absent. See
+[Inventory authority](../GOVERNANCE.md#inventory-authority) for the shared
+inventory rule.
 
 Both rulesets grant repository administrators pull-request-only bypass.
 [Human-created changes](../GOVERNANCE.md#human-created-changes) owns the limits
