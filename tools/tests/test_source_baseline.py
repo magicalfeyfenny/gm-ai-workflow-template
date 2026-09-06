@@ -215,7 +215,8 @@ class SourceBaselineCliTests(SourceBaselineFixture):
         super().setUp()
         self.checker = self.root / "tools/ci/check_repo.py"
         self.checker.parent.mkdir(parents=True)
-        shutil.copy2(ROOT / "tools/ci/check_repo.py", self.checker)
+        for name in ("check_repo.py", "candidate_git.py", "storage_policy.py"):
+            shutil.copy2(ROOT / "tools/ci" / name, self.checker.parent / name)
         self.commit_baseline()
 
     def commit_baseline(self):
