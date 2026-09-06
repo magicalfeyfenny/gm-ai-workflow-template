@@ -125,13 +125,30 @@ Register the exception as bounded governed work, then run the validation below.
 
 ## Validate the generated repository
 
-From the generated repository root, run:
+Stage the intended files first. From the generated repository root, run:
 
 ```sh
 python3.12 tools/ci/check_repo.py
 python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
 git diff --check
 ```
+
+The checker reports the staged storage tree. Existing content checks read the
+working tree; use `--candidate-ref HEAD` to inspect a committed candidate for
+both. Configure hygiene, exact file exceptions, and any additional raw-size
+classes in `[storage]` and `[storage.lfs]`; see
+[Candidate storage](../GOVERNANCE.md#candidate-storage).
+
+For a committed candidate, obtain separate object-integrity evidence with:
+
+```sh
+python3.12 tools/ci/check_lfs_integrity.py --candidate-ref HEAD
+```
+
+Use `--fetch-remote origin` when the candidate's LFS objects must be fetched
+into the check's temporary store. The JSON result distinguishes successful
+evidence, disabled or inapplicable checks, unsupported capability, and failure.
+It does not modify the author's LFS objects or migrate repository history.
 
 ## Remaining manual setup
 

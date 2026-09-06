@@ -5,17 +5,28 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import tomllib
 from collections import Counter, defaultdict
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
+
+# Historical checker execution supplies this directory through sys.path as well.
+if __package__:
+    from .candidate_git import candidate_snapshot, is_lfs_pointer
+    from .storage_policy import (
+        collect_storage_errors, historical_storage_errors, storage_policy_errors,
+    )
+else:
+    from candidate_git import candidate_snapshot, is_lfs_pointer
+    from storage_policy import (
+        collect_storage_errors, historical_storage_errors, storage_policy_errors,
+    )
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSET_COMPLETION_LEVELS = frozenset(
@@ -41,7 +52,10 @@ class SourceLineViolation:
 
 
 PolicyError = str | SourceLineViolation
-CHECKER_CONTRACT_PATHS = frozenset({"PROJECT_POLICY.toml", "tools/ci/check_repo.py"})
+CHECKER_CONTRACT_PATHS = frozenset({
+    "PROJECT_POLICY.toml", "tools/ci/check_repo.py", "tools/ci/candidate_git.py",
+    "tools/ci/storage_policy.py",
+})
 
 
 def load_policy(root: Path) -> dict:
@@ -71,27 +85,6 @@ def is_under(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
-
-
-def is_lfs_pointer(text: str) -> bool:
-    """Recognize stored pointers before interpreting materialized asset content."""
-    # Current v1 encoding and extension records: git-lfs/docs/spec.md and
-    # git-lfs/docs/extensions.md. This recognizes content, not storage policy.
-    if len(text.encode("utf-8")) >= 1024:
-        return False
-    match = re.fullmatch(
-        r"version https://git-lfs.github.com/spec/v1\n"
-        r"(?P<extensions>(?:ext-(?:0|[1-9][0-9]*)-[a-z0-9.-]+ "
-        r"sha256:[0-9a-f]{64}\n)*)"
-        r"oid sha256:[0-9a-f]{64}\n"
-        r"size (?:0|[1-9][0-9]*)\n",
-        text,
-    )
-    if match is None:
-        return False
-    keys = [line.split(" ", 1)[0] for line in match["extensions"].splitlines()]
-    priorities = [key.split("-", 2)[1] for key in keys]
-    return keys == sorted(keys) and len(priorities) == len(set(priorities))
 
 
 def validate_structure(
@@ -481,7 +474,7 @@ def validate_assets(
             )
 
 
-def collect_errors(root: Path) -> list[PolicyError]:
+def collect_errors(root: Path, include_storage: bool = True) -> list[PolicyError]:
     """Collect typed line violations and exact, unordered diagnostics."""
     policy = load_policy(root)
     files = tracked_files(root)
@@ -490,6 +483,8 @@ def collect_errors(root: Path) -> list[PolicyError]:
     validate_structure(root, policy, files, errors)
     validate_json(root, files, errors)
     validate_assets(root, policy, files, errors)
+    if include_storage:
+        errors.extend(collect_storage_errors(root))
 
     return errors
 
@@ -500,10 +495,14 @@ def baseline_policy_errors(root: Path, checker_root: Path | None = None) -> list
         [
             sys.executable,
             "-c",
-            "import json, runpy, sys\n"
+            "import inspect, json, runpy, sys\n"
             "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path(sys.argv[1]).parent))\n"
             "checker = runpy.run_path(sys.argv[1])\n"
-            "errors = checker['collect_errors'](Path.cwd())\n"
+            "collect = checker['collect_errors']\n"
+            "options = ({'include_storage': False} if 'include_storage' in\n"
+            "           inspect.signature(collect).parameters else {})\n"
+            "errors = collect(Path.cwd(), **options)\n"
             "line_type = checker.get('SourceLineViolation')\n"
             "if not isinstance(errors, list) or any(\n"
             "    not isinstance(error, str) and not (\n"
@@ -640,7 +639,7 @@ def detached_checkout(ref: str) -> Iterator[tuple[Path, str]]:
         yield checkout, resolved
 
 
-def changed_files(ref: str) -> set[str]:
+def changed_files(ref: str, candidate_ref: str | None = None) -> set[str]:
     result = subprocess.run(
         [
             "git",
@@ -648,6 +647,7 @@ def changed_files(ref: str) -> set[str]:
             "--name-only",
             "-z",
             ref,
+            *([candidate_ref] if candidate_ref is not None else []),
             "--",
         ],
         cwd=ROOT,
@@ -671,56 +671,59 @@ def parse_args() -> argparse.Namespace:
             "at this Git ref"
         ),
     )
+    parser.add_argument(
+        "--candidate-ref",
+        help="inspect all content from this stored Git tree (storage defaults to the index)",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
+    """Check local content or an explicit stored candidate with bounded baselines."""
     args = parse_args()
-    errors = collect_errors(ROOT)
-
-    if args.baseline_ref:
-        try:
-            with detached_checkout(args.baseline_ref) as (
-                baseline,
-                baseline_sha,
-            ):
-                changed = changed_files(baseline_sha)
+    try:
+        with ExitStack() as contexts:
+            candidate = contexts.enter_context(candidate_snapshot(ROOT, args.candidate_ref))
+            # Local content checks retain their authoring workflow. Storage always
+            # uses the frozen index; CI explicitly selects its stored merge candidate.
+            content_root = candidate.root if args.candidate_ref else ROOT
+            print(f"repository-policy: storage candidate tree {candidate.tree}")
+            errors = collect_errors(content_root, include_storage=False)
+            if args.baseline_ref:
+                baseline, baseline_sha = contexts.enter_context(detached_checkout(args.baseline_ref))
+                changed = changed_files(baseline_sha, args.candidate_ref)
                 if changed & CHECKER_CONTRACT_PATHS:
                     baseline_errors = baseline_policy_errors(baseline)
                     errors = new_policy_errors(errors, baseline_errors, strict=True)
-                    historical_errors = new_policy_errors(
-                        historical_candidate_errors(baseline, ROOT),
-                        baseline_errors,
-                        strict=True,
-                    )
                     errors.extend(
                         f"under baseline checker and policy: {error}"
-                        for error in historical_errors
+                        for error in new_policy_errors(
+                            historical_candidate_errors(baseline, content_root),
+                            baseline_errors, strict=True,
+                        )
                     )
                 else:
-                    errors = new_policy_errors(errors, collect_errors(baseline))
-        except (OSError, subprocess.CalledProcessError, ValueError):
-            print(
-                "repository-policy: baseline is unavailable or could not be validated: "
-                f"{args.baseline_ref}",
-                file=sys.stderr,
-            )
-            return 2
+                    errors = new_policy_errors(
+                        errors, collect_errors(baseline, include_storage=False)
+                    )
+            errors.extend(storage_policy_errors(ROOT, args.baseline_ref, candidate.tree))
+            if args.baseline_ref and changed & CHECKER_CONTRACT_PATHS:
+                errors.extend(historical_storage_errors(ROOT, baseline_sha, candidate.tree))
+    except (OSError, subprocess.CalledProcessError, ValueError, KeyError) as exc:
+        print(
+            "repository-policy: candidate or baseline is unavailable or could not "
+            f"be validated: {exc}", file=sys.stderr,
+        )
+        return 2
 
     if errors:
         prefix = "new or worsened violation: " if args.baseline_ref else ""
         for error in errors:
-            print(
-                f"repository-policy: {prefix}{error}",
-                file=sys.stderr,
-            )
-
+            print(f"repository-policy: {prefix}{error}", file=sys.stderr)
         return 1
-
-    if args.baseline_ref:
-        print("repository policy passed: no new or worsened violations")
-    else:
-        print("repository policy passed")
+    print("repository policy passed" + (
+        ": no new or worsened violations" if args.baseline_ref else ""
+    ))
     return 0
 
 

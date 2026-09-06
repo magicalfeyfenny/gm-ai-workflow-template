@@ -109,7 +109,25 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           python3 tools/ci/check_repo.py \
-            --baseline-ref "$BASE_SHA"
+            --baseline-ref "$BASE_SHA" \
+            --candidate-ref "$GITHUB_SHA"
+
+      - name: Check candidate LFS object integrity
+        id: lfs-integrity
+        run: |
+          python3 tools/ci/check_lfs_integrity.py \
+            --candidate-ref "$GITHUB_SHA" \
+            --fetch-remote origin \
+            --output "$RUNNER_TEMP/lfs-integrity.json"
+
+      - name: Upload candidate LFS integrity evidence
+        if: always() && steps.lfs-integrity.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lfs-integrity-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/lfs-integrity.json
+          if-no-files-found: error
+          retention-days: 30
 
   tests:
     name: Tests

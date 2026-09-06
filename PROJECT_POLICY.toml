@@ -30,6 +30,27 @@ forbidden_generic_stems = [
 # and do not match directories, prefixes, or neighboring files.
 large_file_exceptions = []
 
+[storage]
+enabled = true
+check_tracked_ignored = true
+# Git ignore patterns, evaluated separately from tracked .gitignore files.
+prohibited_patterns = [
+    ".DS_Store", "Thumbs.db", "__pycache__/", "*.pyc", ".pytest_cache/",
+    ".venv/", "build/", "dist/", "tmp/", ".cache/",
+]
+# Exact repository-relative files only; separate from source-library exceptions.
+exceptions = []
+
+[storage.lfs]
+enforce_pointers = true
+# Optional additional classes subject to a raw-blob size cap. No implicit class.
+raw_patterns = []
+max_raw_bytes = 10485760
+# Git's content heuristic: a NUL in the first 8000 stored bytes.
+binary_only = true
+# required | optional (unsupported capability only) | off
+fsck = "required"
+
 [assets]
 manifest = "assets/exports.json"
 content_root = "content"
