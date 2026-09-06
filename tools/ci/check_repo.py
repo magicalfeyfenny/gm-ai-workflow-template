@@ -6,12 +6,14 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import tomllib
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
@@ -23,6 +25,23 @@ ASSET_COMPLETION_LEVELS = frozenset(
         "final",
     }
 )
+
+
+@dataclass(frozen=True)
+class SourceLineViolation:
+    """Only source line counts have an established non-worsening order."""
+
+    path: str
+    limit: int
+    count: int
+
+    def __str__(self) -> str:
+        """Keep the human diagnostic separate from its comparison fields."""
+        return f"{self.path}: {self.count} lines exceeds limit {self.limit}"
+
+
+PolicyError = str | SourceLineViolation
+CHECKER_CONTRACT_PATHS = frozenset({"PROJECT_POLICY.toml", "tools/ci/check_repo.py"})
 
 
 def load_policy(root: Path) -> dict:
@@ -79,8 +98,9 @@ def validate_structure(
     root: Path,
     policy: dict,
     files: list[Path],
-    errors: list[str],
+    errors: list[PolicyError],
 ) -> None:
+    """Collect line measurements without inferring severity from diagnostics."""
     rules = policy["structure"]
 
     extensions = set(rules["source_extensions"])
@@ -113,9 +133,7 @@ def validate_structure(
         count = len(text.splitlines())
 
         if count > max_lines:
-            errors.append(
-                f"{path}: {count} lines exceeds limit {max_lines}"
-            )
+            errors.append(SourceLineViolation(key, max_lines, count))
 
 
 def validate_json(
@@ -463,10 +481,11 @@ def validate_assets(
             )
 
 
-def collect_errors(root: Path) -> list[str]:
+def collect_errors(root: Path) -> list[PolicyError]:
+    """Collect typed line violations and exact, unordered diagnostics."""
     policy = load_policy(root)
     files = tracked_files(root)
-    errors: list[str] = []
+    errors: list[PolicyError] = []
 
     validate_structure(root, policy, files, errors)
     validate_json(root, files, errors)
@@ -475,15 +494,25 @@ def collect_errors(root: Path) -> list[str]:
     return errors
 
 
-def baseline_policy_errors(root: Path) -> list[str]:
-    """Evaluate a historical tree with the checker and policy it actually owned."""
+def baseline_policy_errors(root: Path, checker_root: Path | None = None) -> list[str]:
+    """Run the historical checker against its tree or a candidate data snapshot."""
     result = subprocess.run(
         [
             sys.executable,
             "-c",
-            "import json, runpy; from pathlib import Path; "
-            "checker = runpy.run_path('tools/ci/check_repo.py'); "
-            "print(json.dumps(checker['collect_errors'](Path.cwd())))",
+            "import json, runpy, sys\n"
+            "from pathlib import Path\n"
+            "checker = runpy.run_path(sys.argv[1])\n"
+            "errors = checker['collect_errors'](Path.cwd())\n"
+            "line_type = checker.get('SourceLineViolation')\n"
+            "if not isinstance(errors, list) or any(\n"
+            "    not isinstance(error, str) and not (\n"
+            "        isinstance(line_type, type) and type(error) is line_type\n"
+            "    ) for error in errors\n"
+            "):\n"
+            "    raise ValueError('invalid baseline diagnostics')\n"
+            "print(json.dumps([str(error) for error in errors]))",
+            str((checker_root or root) / "tools/ci/check_repo.py"),
         ],
         cwd=root,
         check=True,
@@ -496,59 +525,65 @@ def baseline_policy_errors(root: Path) -> list[str]:
     return errors
 
 
+def historical_candidate_errors(baseline: Path, candidate: Path) -> list[str]:
+    """Check candidate data under old rules so contract edits cannot hide growth.
+
+    Execute the historical checker separately from the data it inspects, so
+    even edits to the candidate checker source remain subject to the old rules.
+    """
+    with tempfile.TemporaryDirectory(prefix="repository-policy-candidate-") as temporary:
+        snapshot = Path(temporary)
+        for path in tracked_files(candidate):
+            source = baseline if path.as_posix() == "PROJECT_POLICY.toml" else candidate
+            target = snapshot / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source / path, target)
+        for command in (["git", "init", "--quiet"], ["git", "add", "--all", "--force"]):
+            subprocess.run(command, cwd=snapshot, check=True, capture_output=True)
+        return baseline_policy_errors(snapshot, checker_root=baseline)
+
+
 def new_policy_errors(
-    errors: list[str],
-    baseline_errors: list[str],
-    changed_paths: set[str] | None = None,
+    errors: list[PolicyError],
+    baseline_errors: list[PolicyError],
     strict: bool = False,
-) -> list[str]:
-    changed = changed_paths or set()
-
-    def key(error: str) -> str:
-        subject = error.split(":", 1)[0]
-
-        if strict or subject in changed:
-            return error
-
-        return policy_error_key(error)
-
+) -> list[PolicyError]:
+    """Match inherited occurrences once; only the same line rule may improve."""
     inherited = Counter(
-        key(error)
+        str(error) if strict else error
         for error in baseline_errors
+        if strict or isinstance(error, str)
     )
-    introduced: list[str] = []
+    line_counts: dict[tuple[str, int], list[int]] = defaultdict(list)
+    if not strict:
+        for error in baseline_errors:
+            if isinstance(error, SourceLineViolation):
+                line_counts[(error.path, error.limit)].append(error.count)
+        for counts in line_counts.values():
+            counts.sort()
 
-    for error in errors:
-        identity = key(error)
-
-        if inherited[identity]:
-            inherited[identity] -= 1
+    # Match the largest counts first so duplicate accounting is order-independent.
+    ordered = sorted(
+        enumerate(errors),
+        key=lambda item: item[1].count if isinstance(item[1], SourceLineViolation) else 0,
+        reverse=True,
+    )
+    introduced: set[int] = set()
+    for index, error in ordered:
+        if not strict and isinstance(error, SourceLineViolation):
+            counts = line_counts[(error.path, error.limit)]
+            if counts and error.count <= counts[-1]:
+                counts.pop()
+            else:
+                introduced.add(index)
         else:
-            introduced.append(error)
+            identity = str(error) if strict else error
+            if inherited[identity]:
+                inherited[identity] -= 1
+            else:
+                introduced.add(index)
 
-    return introduced
-
-
-def policy_error_key(error: str) -> str:
-    normalized = re.sub(
-        r"(: export )\d+",
-        r"\1#",
-        error,
-    )
-    normalized = re.sub(
-        r": \d+ lines exceeds limit \d+$",
-        ": source line limit exceeded",
-        normalized,
-    )
-
-    for marker in (
-        ": invalid JSON:",
-        ": invalid manifest:",
-    ):
-        if marker in normalized:
-            return normalized.split(marker, 1)[0] + marker[:-1]
-
-    return normalized
+    return [error for index, error in enumerate(errors) if index in introduced]
 
 
 @contextmanager
@@ -649,9 +684,22 @@ def main() -> int:
                 baseline,
                 baseline_sha,
             ):
-                baseline_errors = baseline_policy_errors(baseline)
-            changed = changed_files(baseline_sha)
-        except (subprocess.CalledProcessError, ValueError):
+                changed = changed_files(baseline_sha)
+                if changed & CHECKER_CONTRACT_PATHS:
+                    baseline_errors = baseline_policy_errors(baseline)
+                    errors = new_policy_errors(errors, baseline_errors, strict=True)
+                    historical_errors = new_policy_errors(
+                        historical_candidate_errors(baseline, ROOT),
+                        baseline_errors,
+                        strict=True,
+                    )
+                    errors.extend(
+                        f"under baseline checker and policy: {error}"
+                        for error in historical_errors
+                    )
+                else:
+                    errors = new_policy_errors(errors, collect_errors(baseline))
+        except (OSError, subprocess.CalledProcessError, ValueError):
             print(
                 "repository-policy: baseline is unavailable or could not be validated: "
                 f"{args.baseline_ref}",
@@ -659,32 +707,18 @@ def main() -> int:
             )
             return 2
 
-        if errors:
-            strict = bool(
-                changed
-                & {
-                    "PROJECT_POLICY.toml",
-                    "tools/ci/check_repo.py",
-                }
-            )
-            errors = new_policy_errors(
-                errors,
-                baseline_errors,
-                changed,
-                strict,
-            )
-
     if errors:
+        prefix = "new or worsened violation: " if args.baseline_ref else ""
         for error in errors:
             print(
-                f"repository-policy: {error}",
+                f"repository-policy: {prefix}{error}",
                 file=sys.stderr,
             )
 
         return 1
 
     if args.baseline_ref:
-        print("repository policy passed: no new violations")
+        print("repository policy passed: no new or worsened violations")
     else:
         print("repository policy passed")
     return 0

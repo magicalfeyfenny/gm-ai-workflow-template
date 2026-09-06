@@ -587,6 +587,28 @@ standards is not automatically a defect. The result may inform desired patterns
 or algorithms. Existing policy violations are treated as the repository
 baseline and do not block unrelated agent changes.
 
+With `check_repo.py --baseline-ref`, an inherited source-line violation may
+remain unchanged, shrink while still over the limit, or be fully corrected.
+The comparison binds the source-line rule to the exact repository-relative
+file path and configured limit. A larger count or a new over-limit file fails.
+Other violations have no inferred severity order: only identical diagnostics
+may remain inherited, with each baseline occurrence used at most once. Changed
+JSON error details or asset entry identities are not normalized away.
+
+Changes to `PROJECT_POLICY.toml` or `tools/ci/check_repo.py` disable the ordered
+allowance. The candidate must introduce no changed or new diagnostics against
+the historical checker and policy, both under its current rules and with its
+tracked files evaluated under the historical rules. This conservative
+path permits unchanged inherited diagnostics and full corrections, but rejects
+partial reductions alongside contract edits. Changed thresholds create distinct
+obligations; relaxing a threshold or removing a check cannot hide growth that
+still violates the old rules. Make partial reductions separately from checker
+or policy changes. An unavailable or invalid baseline fails closed.
+
+Remaining inherited violations are repository state, not completion conditions
+or an automatic cleanup backlog. Baseline failures identify only new, changed,
+or worsened violations for the proposed change.
+
 Human-authored work may be followed by a bounded repository-compliance issue.
 That issue may normalize structure, validation, assets, tests, and repository
 conventions without changing intended behavior. It uses the normal risk policy.
