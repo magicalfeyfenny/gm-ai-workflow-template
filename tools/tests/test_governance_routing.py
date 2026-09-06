@@ -247,6 +247,19 @@ class GovernanceRoutingTests(unittest.TestCase):
 
         self.assertTrue(expected.issubset(setup_targets))
 
+    def test_setup_label_inventory_routes_to_its_authorities(self):
+        """Link setup to the shared rule and executable label inventory."""
+        setup = ROOT / "docs/SETUP.md"
+        self.assertIn("inventory-authority", governance_fragments(setup))
+        self.assertIn(
+            "inventory-authority",
+            heading_anchors(ROOT / "GOVERNANCE.md"),
+        )
+        self.assertIn(
+            (ROOT / "tools/setup_github.py").resolve(),
+            {target for target, _ in local_destinations(setup)},
+        )
+
     def test_scheduled_claim_policy_has_one_implementation_owner(self):
         """Route scheduled claims through Governed Change, not stewardship."""
         governed = governance_fragments(

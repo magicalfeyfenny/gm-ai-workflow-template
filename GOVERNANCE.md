@@ -18,6 +18,20 @@ Except for a critical stop that must be exposed before mutation, entrypoints
 link here instead of restating shared rules. A repeated stop is a safety
 reminder, not a second source of authority.
 
+### Inventory authority
+
+Volatile test, asset, capture, resource, label, and similar inventory totals
+must not be duplicated as normative prose unless every normative copy is
+generated from or mechanically checked against one authoritative source.
+Prefer the required semantic set or behavior and link to its authority instead
+of maintaining an incidental numeric total. Ordinary inventory changes should
+not silently stale a second normative count.
+
+This rule does not remove true numeric contracts such as configured limits,
+fixed identifiers, or protocol requirements. Dated historical evidence and
+non-normative reports may record observed totals; those measurements do not
+become ongoing inventory requirements.
+
 ## Issue authority
 
 Every issue created by an agent contains a summary, acceptance criteria,
