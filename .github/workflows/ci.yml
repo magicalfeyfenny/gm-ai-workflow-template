@@ -23,12 +23,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
@@ -42,7 +42,7 @@ jobs:
             --run-attempt "$GITHUB_RUN_ATTEMPT"
 
       - name: Upload CI PR metadata
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pr-metadata-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pr-metadata.json
@@ -96,11 +96,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
@@ -122,35 +122,60 @@ jobs:
 
       - name: Upload candidate LFS integrity evidence
         if: always() && steps.lfs-integrity.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: lfs-integrity-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/lfs-integrity.json
           if-no-files-found: error
           retention-days: 30
 
-  tests:
-    name: Tests
+  template-tests:
+    name: Template tests
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python3 -m pip install -r tools/tests/requirements.txt
 
       - run: |
           python3 -m unittest discover \
             -s tools/tests \
             -p 'test_*.py'
 
+  # Add each required project job to both needs and REQUIRED_TEST_JOBS.
+  # See docs/CI.md. Every dependency must provide successful evidence.
+  tests:
+    name: Tests
+    if: ${{ always() }}
+    needs: [template-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      REQUIRED_TEST_JOBS: '["template-tests"]'
+      TEST_JOB_RESULTS: ${{ toJSON(needs) }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Require all test job results
+        run: python3 tools/ci/aggregate_tests.py
+
   format:
     name: Format
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0

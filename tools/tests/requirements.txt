@@ -1,0 +1,2 @@
+# Parse workflow structure in semantic CI contract tests.
+PyYAML==6.0.3

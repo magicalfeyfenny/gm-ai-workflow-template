@@ -988,7 +988,15 @@ test framework for GameMaker projects. When initializing a project, download
 and pin its latest release. Do not update that pinned version without specific
 human instruction.
 
-Game-specific test suites are added to `Tests` as they become available.
+`Tests` is the required aggregate result for the template Python suite and
+explicitly configured project test jobs. It succeeds only when every required
+constituent succeeds; failed, cancelled, skipped, or missing required evidence
+cannot pass. Retain the template suite when adding project jobs through the
+[CI extension procedure](docs/CI.md). Missing execution capability is an
+automated evidence limitation, not a new human playtesting requirement.
+
+External GitHub Actions in workflows and extension examples must be pinned to
+verified immutable full commit SHAs with readable version comments.
 
 Tests should protect contracts, not incidental representations. Do not use
 exact-text, exact-order, or exact-count assertions when a semantic assertion
