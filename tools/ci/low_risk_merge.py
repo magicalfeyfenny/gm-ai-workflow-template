@@ -7,16 +7,18 @@ repository App token is passed only to the final exact-head native merge call.
 
 An eligible candidate deliberately has two PR reads around one complete file
 fetch. The first read opens the ownership window; the second proves that the
-attested metadata, base/head OIDs, and diff counts did not change while files
-were fetched. Policy is evaluated once from that composite snapshot. A ready
-PR needs one such window. Marking a draft ready is an external mutation, so it
-requires a fresh complete window before merge configuration.
+attested metadata, governing issue contract, base/head OIDs, and diff counts
+did not change while files were fetched. Policy is evaluated once from that
+composite snapshot. A ready PR needs one such window. Marking a draft ready is
+an external mutation, so it requires a fresh complete window before merge
+configuration.
 
 A failed CI run needs one metadata read to distinguish current evidence from a
 stale run. Revocation keeps its final read even when the pre-read found no
 request, because another worker could install one inside that window. Stale
-evidence never mutates newer PR state. If a request appears between revocation
-reads, one bounded retry disables it and verifies the result.
+PR evidence never mutates newer PR state. Issue drift on an otherwise matching
+PR rejects that candidate and revokes its pending request. If a request appears
+between revocation reads, one bounded retry disables it and verifies the result.
 """
 
 from __future__ import annotations
@@ -30,12 +32,14 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from tools.ci.issue_contract import fetch_issue, governing_issue
 from tools.ci.pr_metadata import (
     INVALID,
     MATCH,
     STALE,
     MetadataError,
     compare_attestation,
+    current_metadata_state,
     read_json_evidence,
 )
 from tools.ci.pr_policy import (
@@ -175,6 +179,14 @@ class GitHubClient:
         except ValueError as exc:
             raise ValueError("changed-file response is not valid JSON") from exc
 
+    def issue_snapshot(self, snapshot: object) -> object:
+        """Re-fetch the governing issue using the ordinary read token."""
+        state = current_metadata_state(snapshot, self.repository)
+        number = governing_issue(state)
+        if number is None:
+            return None
+        return fetch_issue(self.repository, number, run_gh=self._run_gh)
+
     def download_attestation(
         self,
         run_id: int,
@@ -277,9 +289,18 @@ def _metadata_status(
     attestation: object,
     attestation_attempt: int,
     snapshot: object,
+    github: GitHubClient,
 ) -> tuple[int, str]:
-    """Classify current PR metadata against the triggering CI evidence."""
-    return compare_attestation(
+    """Compare live PR and issue state with this run's accepted evidence."""
+    issue_was_read = False
+
+    def read_issue() -> object:
+        """Only inspect the issue after the PR matches this CI run."""
+        nonlocal issue_was_read
+        issue_was_read = True
+        return github.issue_snapshot(snapshot)
+
+    status, reason = compare_attestation(
         attestation,
         snapshot,
         repository=context.repository,
@@ -288,7 +309,13 @@ def _metadata_status(
         run_id=context.run_id,
         run_attempt=context.run_attempt,
         attestation_run_attempt=attestation_attempt,
+        issue_reader=read_issue,
     )
+    # A newer PR belongs to its own CI run. An unchanged PR with a changed
+    # issue must instead revoke any merge request still relying on old scope.
+    if status == STALE and issue_was_read:
+        return INVALID, reason
+    return status, reason
 
 
 def _diff_identity(snapshot: dict[str, object]) -> tuple[object, ...]:
@@ -384,6 +411,7 @@ def _eligible_snapshot(
             attestation,
             attestation_attempt,
             before,
+            github,
         )
 
         if before_status != MATCH:
@@ -396,6 +424,7 @@ def _eligible_snapshot(
             attestation,
             attestation_attempt,
             after,
+            github,
         )
 
         if after_status != MATCH:
@@ -510,6 +539,7 @@ def run_low_risk_merge(
             attestation,
             attestation_attempt,
             current,
+            github,
         )
 
         if status == STALE:

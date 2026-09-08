@@ -175,6 +175,7 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "human-created-changes",
                 "risk",
                 "completion-transition",
+                "issue-contract-evidence",
                 "low-risk-changes",
                 "manual-and-high-risk-changes",
             }.issubset(governed)

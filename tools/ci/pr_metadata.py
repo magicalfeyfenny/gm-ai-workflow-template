@@ -8,9 +8,23 @@ import hmac
 import json
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+# Support both the documented direct CLI and package imports.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from tools.ci.issue_contract import (
+    ContractError,
+    canonical_contract,
+    completion_contract,
+    contract_digest,
+    fetch_issue,
+    governing_issue,
+)
+
+SCHEMA_VERSION = 2
 MAX_JSON_BYTES = 2 * 1024 * 1024
 
 MATCH = 0
@@ -247,7 +261,10 @@ def build_attestation(
     repository: str,
     run_id: int,
     run_attempt: int,
+    *,
+    issue: object = None,
 ) -> dict[str, object]:
+    """Bind this run to PR metadata and the accepted completion contract."""
     run_id = _positive_integer(run_id, "workflow run id")
     run_attempt = _positive_integer(
         run_attempt,
@@ -270,6 +287,7 @@ def build_attestation(
             "head_sha": state["head_sha"],
         },
         "metadata_sha256": metadata_digest(state),
+        "issue_contract": completion_contract(state, issue),
     }
 
 
@@ -285,6 +303,7 @@ def _attestation_values(
             "repository",
             "pull_request",
             "metadata_sha256",
+            "issue_contract",
         },
         "attestation",
     )
@@ -293,6 +312,15 @@ def _attestation_values(
         raise MetadataError(
             f"attestation schema_version must be {SCHEMA_VERSION}"
         )
+
+    contract = root["issue_contract"]
+    if contract is not None:
+        contract = _object(contract, "attestation.issue_contract")
+        _exact_keys(contract, {"number", "sha256"}, "attestation.issue_contract")
+        _positive_integer(contract.get("number"), "attestation.issue_contract.number")
+        digest = _string(contract.get("sha256"), "attestation.issue_contract.sha256")
+        if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise MetadataError("issue contract revision must be lowercase SHA-256")
 
     workflow_run = _object(
         root.get("workflow_run"),
@@ -357,7 +385,10 @@ def compare_attestation(
     run_id: int,
     run_attempt: int,
     attestation_run_attempt: int | None = None,
+    current_issue: object = None,
+    issue_reader: Callable[[], object] | None = None,
 ) -> tuple[int, str]:
+    """Require the live PR and governing issue to match the accepted evidence."""
     try:
         repository = _string(repository, "repository")
         pull_request_number = _positive_integer(
@@ -442,7 +473,27 @@ def compare_attestation(
     ):
         return STALE, "current PR metadata differs from validated CI"
 
-    return MATCH, "current PR metadata matches validated CI"
+    try:
+        number = governing_issue(current_state)
+        recorded_contract = attestation["issue_contract"]
+        if number is None:
+            if recorded_contract is not None:
+                raise MetadataError("non-completion evidence has an issue contract")
+        else:
+            if recorded_contract is None or recorded_contract["number"] != number:
+                raise MetadataError("completion evidence lacks its governing issue")
+            if issue_reader is not None:
+                current_issue = issue_reader()
+            current_contract = canonical_contract(current_issue, repository, number)
+            if not hmac.compare_digest(
+                recorded_contract["sha256"], contract_digest(current_contract)
+            ):
+                return STALE, "current issue contract differs from validated CI"
+            completion_contract(current_state, current_issue)
+    except (MetadataError, ContractError, OSError, RuntimeError) as exc:
+        return INVALID, str(exc)
+
+    return MATCH, "current PR metadata and issue contract match validated CI"
 
 
 def read_json_evidence(
@@ -518,6 +569,7 @@ def parse_args(
         required=True,
     )
     capture.add_argument("--repository", required=True)
+    capture.add_argument("--issue-path", type=Path)
     capture.add_argument(
         "--run-id",
         type=_positive_argument,
@@ -541,6 +593,7 @@ def parse_args(
         required=True,
     )
     compare.add_argument("--repository", required=True)
+    compare.add_argument("--current-issue-path", type=Path)
     compare.add_argument(
         "--pull-request-number",
         type=_positive_argument,
@@ -568,17 +621,26 @@ def parse_args(
 def main(
     argv: list[str] | None = None,
 ) -> int:
-    """Capture or compare bounded pull-request metadata evidence."""
+    """Capture or compare PR evidence, re-fetching the issue at each boundary."""
     args = parse_args(argv)
 
     try:
         if args.command == "capture":
             event = read_json_evidence(args.event_path)
+            state = event_metadata_state(event, args.repository)
+            number = governing_issue(state)
+            issue = None
+            if number is not None:
+                issue = (
+                    read_json_evidence(args.issue_path) if args.issue_path
+                    else fetch_issue(args.repository, number)
+                )
             attestation = build_attestation(
                 event,
                 args.repository,
                 args.run_id,
                 args.run_attempt,
+                issue=issue,
             )
             _write_json(args.output, attestation)
             print("pr-metadata: captured CI metadata attestation")
@@ -588,7 +650,15 @@ def main(
         current_pull_request = read_json_evidence(
             args.current_pr_path
         )
-    except (MetadataError, OSError) as exc:
+        state = current_metadata_state(current_pull_request, args.repository)
+        number = governing_issue(state)
+        current_issue = None
+        if number is not None:
+            current_issue = (
+                read_json_evidence(args.current_issue_path) if args.current_issue_path
+                else fetch_issue(args.repository, number)
+            )
+    except (MetadataError, ContractError, OSError, RuntimeError) as exc:
         print(f"pr-metadata: invalid evidence: {exc}", file=sys.stderr)
         return INVALID
 
@@ -601,6 +671,7 @@ def main(
         run_id=args.run_id,
         run_attempt=args.run_attempt,
         attestation_run_attempt=args.attestation_run_attempt,
+        current_issue=current_issue,
     )
     destination = sys.stdout if status == MATCH else sys.stderr
     print(f"pr-metadata: {message}", file=destination)

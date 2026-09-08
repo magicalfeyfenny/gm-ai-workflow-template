@@ -484,7 +484,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertNotIn("issues", cancel_job["permissions"])
         self.assertEqual(
             merge_job["permissions"],
-            {"actions": "read", "contents": "write", "pull-requests": "write"},
+            {"actions": "read", "contents": "write", "issues": "read", "pull-requests": "write"},
         )
         self.assertEqual(len(token_steps), 1)
         self.assertEqual(
@@ -541,6 +541,13 @@ class WorkflowPolicyTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         workflow = yaml.load(ci_text, Loader=yaml.BaseLoader)
         policy_job = workflow["jobs"]["pr-policy"]
+        self.assertEqual(workflow["permissions"]["issues"], "read")
+        capture_steps = [
+            step for step in policy_job["steps"]
+            if "pr_metadata.py capture" in step.get("run", "")
+        ]
+        self.assertEqual(len(capture_steps), 1)
+        self.assertEqual(capture_steps[0]["env"]["GH_TOKEN"], "${{ github.token }}")
         artifact_name = "pr-metadata-${{ github.run_id }}-${{ github.run_attempt }}"
         metadata_uploads = [
             step for step in action_steps(policy_job, "actions/upload-artifact")
