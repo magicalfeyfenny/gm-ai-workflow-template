@@ -21,6 +21,7 @@ Before modifying the repository, follow only the routes relevant to the task:
 | Issue and PR audit | Use the [Project Steward skill](.agents/skills/project-steward/SKILL.md) and [Issue authority](GOVERNANCE.md#issue-authority). |
 | Release | Only when explicitly authorized, read [Releases](GOVERNANCE.md#releases) and the governed lifecycle routes. |
 | Repository setup | Follow [docs/SETUP.md](docs/SETUP.md). |
+| Update previously adopted upstream policy | Follow the [policy-update procedure](docs/POLICY_UPDATE.md) through governed-change. |
 
 Do not load unrelated governance sections merely because the repository is
 governed.

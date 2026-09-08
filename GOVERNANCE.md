@@ -32,6 +32,37 @@ fixed identifiers, or protocol requirements. Dated historical evidence and
 non-normative reports may record observed totals; those measurements do not
 become ongoing inventory requirements.
 
+### Policy updates
+
+An adoption/update PR taking a newer upstream policy revision records the
+upstream repository, the previously adopted and newly selected immutable
+commit IDs, and the prior adoption evidence supporting the old revision.
+If the old revision is uncertain, identify that gap and resolve the bounded
+comparison basis from available adoption evidence before claiming the update
+complete; do not infer adoption from textual similarity.
+
+Bound the update to the changed upstream policy and the repository-owned
+consumers that actually encode it. Record the affected instruction, routing,
+enforcement, and validation surfaces, why each is affected, its disposition,
+and the evidence for the resulting behavior. Apply required consumer changes
+atomically in the same adoption PR, including consumers with different local
+paths or wording; record evidence for consumers that already satisfy the rule.
+A filename diff alone does not establish the affected set.
+
+Identify intentionally preserved project-specific differences and the
+independent project authority supporting them. Neither historical template
+state nor an older local implementation establishes a preservation obligation;
+apply [Compatibility obligations](#compatibility-obligations) where relevant.
+Unrelated project/template differences remain outside the update scope. When
+the changed policy has no affected downstream consumer, record the examined
+boundary and supporting evidence without manufacturing changes or follow-ups.
+
+The adoption PR is the update record. Reuse its existing evidence and the
+[bounded policy-update procedure](docs/POLICY_UPDATE.md); do not require a
+separate migration registry, policy snapshot, synchronization service, or
+standing cleanup backlog. This route uses the existing issue, validation, and
+risk lifecycle and grants no additional mutation or merge authority.
+
 ## Issue authority
 
 Every issue created by an agent contains a summary, acceptance criteria,

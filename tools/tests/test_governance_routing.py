@@ -74,6 +74,8 @@ class GovernanceRoutingTests(unittest.TestCase):
             ROOT / "GOVERNANCE.md",
             ROOT / "README.md",
             ROOT / "docs/SETUP.md",
+            ROOT / "docs/ADOPTION.md",
+            ROOT / "docs/POLICY_UPDATE.md",
             ROOT / ".agents/skills/asset-production/SKILL.md",
             ROOT / ".agents/skills/gamemaker-production/SKILL.md",
             ROOT / ".agents/skills/governed-change/SKILL.md",
@@ -246,6 +248,34 @@ class GovernanceRoutingTests(unittest.TestCase):
         }
 
         self.assertTrue(expected.issubset(setup_targets))
+
+    def test_policy_update_route_reaches_existing_authority_and_evidence(self):
+        """Check update-route reachability, without interpreting policy prose."""
+        procedure = (ROOT / "docs/POLICY_UPDATE.md").resolve()
+        for source in (
+            ROOT / "AGENTS.md",
+            ROOT / "docs/SETUP.md",
+            ROOT / "docs/ADOPTION.md",
+            ROOT / ".agents/skills/governed-change/SKILL.md",
+        ):
+            with self.subTest(source=source):
+                self.assertIn(
+                    procedure, {target for target, _ in local_destinations(source)},
+                )
+
+        self.assertIn(
+            "policy-updates",
+            governance_fragments(ROOT / ".agents/skills/governed-change/SKILL.md"),
+        )
+        self.assertTrue({
+            "policy-updates", "compatibility-obligations",
+            "validation-coverage-allocation",
+        }.issubset(governance_fragments(procedure)))
+        targets = {target for target, _ in local_destinations(procedure)}
+        self.assertTrue({
+            (ROOT / "docs/ADOPTION.md").resolve(),
+            (ROOT / ".agents/skills/governed-change/SKILL.md").resolve(),
+        }.issubset(targets))
 
     def test_setup_label_inventory_routes_to_its_authorities(self):
         """Link setup to the shared rule and executable label inventory."""

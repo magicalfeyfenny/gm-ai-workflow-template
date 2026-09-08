@@ -8,6 +8,9 @@ For an existing repository, start with the read-only
 state and verifies an existing release before proposing separately authorized
 changes. Do not run the generated-repository bootstrap as an adoption probe.
 
+To update policy in an already-adopted repository, use the
+[bounded policy-update procedure](POLICY_UPDATE.md).
+
 This document owns setup procedure. Repository-change lifecycle policy remains
 in [GOVERNANCE.md](../GOVERNANCE.md#authority).
 

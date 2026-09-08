@@ -1,5 +1,9 @@
 # Plan adoption or recovery of an existing repository
 
+For a repository that has already adopted the template and needs a newer
+upstream policy revision, use the [bounded policy-update procedure](POLICY_UPDATE.md).
+Use this planner for relevant state or recovery questions identified there.
+
 Start from an available local clone and GitHub read access. Use Python 3.12,
 Git, and authenticated GitHub CLI (`gh`). Git LFS improves local object
 availability evidence. The planning tool does not require administrator write
