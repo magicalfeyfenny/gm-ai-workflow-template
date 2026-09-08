@@ -81,6 +81,7 @@ class GovernanceRoutingTests(unittest.TestCase):
             ROOT / ".agents/skills/governed-change/SKILL.md",
             ROOT / ".agents/skills/project-steward/SKILL.md",
             ROOT / ".github/ISSUE_TEMPLATE/work-item.yml",
+            ROOT / ".github/pull_request_template.md",
             ROOT / "templates/codex/governed-change.txt",
         )
 
@@ -276,6 +277,18 @@ class GovernanceRoutingTests(unittest.TestCase):
             (ROOT / "docs/ADOPTION.md").resolve(),
             (ROOT / ".agents/skills/governed-change/SKILL.md").resolve(),
         }.issubset(targets))
+
+    def test_policy_correction_evidence_is_reachable_from_work_and_pr_routes(self):
+        """Check authority reachability, not interpretation or future obedience."""
+        for source in (
+            ROOT / ".agents/skills/governed-change/SKILL.md",
+            ROOT / ".github/pull_request_template.md",
+        ):
+            with self.subTest(source=source):
+                self.assertIn(
+                    "policy-correction-boundary-evidence",
+                    governance_fragments(source),
+                )
 
     def test_setup_label_inventory_routes_to_its_authorities(self):
         """Link setup to the shared rule and executable label inventory."""

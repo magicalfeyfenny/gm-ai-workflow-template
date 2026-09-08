@@ -509,6 +509,38 @@ Interactive execution is appropriate only when it has a concrete
 machine-verifiable purpose that cannot be established adequately through
 ordinary static or automated evidence.
 
+#### Policy correction boundary evidence
+
+For an interpretive governance correction motivated by an observed failure,
+include in the existing issue or PR validation/review evidence the original
+prohibited scenario and, when a meaningful neighboring case exists, at least
+one legitimate case that must remain allowed. Explain the policy boundary
+that distinguishes their decisions; an arbitrary happy-path example is not
+enough. Prefer the actual failure and real permitted behavior when available.
+
+Use executable semantic fixtures where the policy is mechanically enforceable
+and such fixtures are practical. For non-mechanical interpretation, a bounded
+scenario decision in the existing issue or PR evidence is sufficient. Identify
+the relevant facts, allowed or prohibited outcome, and governing authority
+without inventing a prose parser or asserting exact policy wording.
+
+Purely mechanical changes, wording-only routing fixes, and rules with no
+meaningful neighboring exception do not require an artificial counterexample.
+This is not a universal two-fixture CI gate, policy-case registry, mandatory
+manual review script, or retrospective requirement to rewrite historical PRs.
+Use the existing validation and risk lifecycle; this rule adds no human or
+delegated review requirement.
+
+A scenario cannot create a compatibility, cleanup, asset-production, or other
+obligation. Any obligation used to justify the permitted case must already
+have independent evidence under the applicable authority, such as
+[Compatibility obligations](#compatibility-obligations) or
+[Placeholder-backed mixed work](#placeholder-backed-mixed-work).
+
+Routing tests establish only routing and authority reachability. They do not
+prove future agent obedience or interpretation; keep those claims separate
+from the scenario decisions above.
+
 ### Interactive runtime validation
 
 Launching the game is exceptional validation, not a default completion stage.
