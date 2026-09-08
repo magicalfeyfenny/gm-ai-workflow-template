@@ -22,6 +22,8 @@ with the narrower selection and authority in its automation template.
   [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation),
   [Validation evidence](../../../GOVERNANCE.md#validation-evidence), and
   [Milestone commits](../../../GOVERNANCE.md#milestone-commits-and-draft-publication).
+- Interpretive governance corrections:
+  [Policy correction boundary evidence](../../../GOVERNANCE.md#policy-correction-boundary-evidence).
 - Scheduled continuation:
   [Scheduled continuation](../../../GOVERNANCE.md#scheduled-continuation).
 - Completion: [Risk](../../../GOVERNANCE.md#risk),
