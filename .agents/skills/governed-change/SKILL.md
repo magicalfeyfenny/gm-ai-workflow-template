@@ -32,6 +32,9 @@ with the narrower selection and authority in its automation template.
   [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml).
 - Renames, replacement, and compatibility:
   [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations).
+- Updating previously adopted upstream policy:
+  [Policy updates](../../../GOVERNANCE.md#policy-updates) and the
+  [bounded update procedure](../../../docs/POLICY_UPDATE.md).
 
 For production code, assets, or GameMaker data, also use the
 [GameMaker production skill](../gamemaker-production/SKILL.md). If live state
