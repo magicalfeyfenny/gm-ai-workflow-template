@@ -152,3 +152,65 @@ cannot report success without executing its required checks. After publishing
 the candidate PR, verify fresh `Tests` evidence alongside the unchanged
 required PR policy, Repository policy, and Format checks. The governed
 [validation stages](../GOVERNANCE.md#validation-evidence) still apply.
+
+## Issue contract attestation
+
+[Issue contract evidence](../GOVERNANCE.md#issue-contract-evidence) owns the
+completion rule. Before Stage 2, read the governing issue with the existing
+GitHub CLI login or a token with issue read access:
+
+```sh
+python3.12 -m tools.ci.issue_contract \
+  --repository OWNER/REPO --issue-number NUMBER
+```
+
+The JSON output contains the canonical contract, its `sha256`, and an
+`acceptance_marker`. Reconcile the displayed contract with the authorized work
+and preserve its revision with the PR's validation evidence. Re-run the command
+before the completion transition. If the revision still matches that evidence,
+copy the exact marker into the PR body alongside the existing closing line and
+completion label. The marker has this fixed protocol grammar:
+
+```text
+<!-- issue-contract:v1 #NUMBER sha256:LOWERCASE_SHA256 -->
+```
+
+`pr_metadata.py capture` re-fetches the issue for completed agent-governed PRs
+and refuses to attest a different revision, a missing marker, a closed issue,
+or unresolved blockers. It does not require issue evidence for intermediate
+milestones or human-created changes. Native dependencies come from GitHub's
+[issue relationships](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-issue-dependencies),
+with complete paginated reads; dependency prose is retained within the issue
+body without interpreting it as a separate dependency graph.
+
+The existing `pr-metadata-RUN-ATTEMPT` artifact now uses schema version 2 and
+includes `issue_contract` (`number` and `sha256`, or null for exempt states).
+Old schema artifacts cannot establish this binding and require fresh CI.
+Rerunning CI alone cannot accept an issue change: first reconcile the changed
+contract and its evidence, then replace the marker. Unchanged mechanical
+results may remain useful as described in Governance. Comments and reactions
+do not change the revision; harmless edits to title/body may change it without
+constituting a semantic defect.
+
+For a manual handoff, download the final run's metadata artifact and save a
+fresh structured PR read using `gh pr view --json
+number,baseRefName,headRefName,headRepository,headRefOid,body,labels`. Then run:
+
+```sh
+python3.12 tools/ci/pr_metadata.py compare \
+  --attestation-path PATH/TO/pr-metadata.json \
+  --current-pr-path PATH/TO/current-pr.json \
+  --repository OWNER/REPO --pull-request-number PR_NUMBER \
+  --head-sha HEAD_SHA --run-id RUN_ID --run-attempt RUN_ATTEMPT
+```
+
+Comparison re-fetches the governing issue. Exit 0 means the live PR and issue
+match; exit 3 means stale evidence; invalid, missing, or unavailable evidence
+fails closed. Optional `capture --issue-path` and `compare
+--current-issue-path` inputs support synthetic fixtures; a saved fixture is not
+a live completion check. Low-risk automation uses its read token to re-fetch
+the issue in both existing PR/file windows, including after readiness. These
+reads reject issue drift and revoke a pending merge request when the PR still
+matches the attested metadata. Older runs leave newer PR metadata alone. These
+checks do not continuously invalidate GitHub check badges or watch an already
+queued native merge; recheck the issue before a later manual action.

@@ -21,6 +21,9 @@ from tools.ci.pr_metadata import (
 )
 
 
+from tools.tests.test_pr_metadata import completion_body, issue_payload
+
+
 REPOSITORY = "owner/game"
 PR_NUMBER = 42
 HEAD_SHA = "a" * 40
@@ -45,6 +48,11 @@ def pull_request_snapshot(
     auto_merge_request: object | None = None,
 ) -> dict[str, object]:
     """Build one complete PR snapshot used by policy and race checks."""
+    if "human-created" not in labels and (
+        {"work:complete", "work:review-ready"}.intersection(labels)
+        or "Closes #" in body
+    ):
+        body = completion_body(body, issue_payload(PR_NUMBER))
     return {
         "number": PR_NUMBER,
         "baseRefName": "dev",
@@ -87,6 +95,7 @@ def attestation_for(
     *,
     run_id: int = RUN_ID,
     run_attempt: int = RUN_ATTEMPT,
+    issue: dict | None = None,
 ) -> dict[str, object]:
     """Build CI evidence whose metadata exactly matches a PR snapshot."""
     head_repository = snapshot["headRepository"]
@@ -120,6 +129,7 @@ def attestation_for(
         REPOSITORY,
         run_id,
         run_attempt,
+        issue=issue if issue is not None else issue_payload(PR_NUMBER),
     )
 
 
@@ -150,6 +160,7 @@ class FakeGitHub:
         attestation: object | None,
         attestation_attempt: int | None = RUN_ATTEMPT,
         file_windows: list[object] | None = None,
+        issues: list[object] | None = None,
     ) -> None:
         """Store ordered reads; the final supplied value repeats if needed."""
         if not snapshots:
@@ -159,6 +170,8 @@ class FakeGitHub:
         self._file_windows = deepcopy(file_windows or [file_pages()])
         self.attestation = deepcopy(attestation)
         self.attestation_attempt = attestation_attempt
+        self._issues = deepcopy(issues if issues is not None else [issue_payload(PR_NUMBER)])
+        self.issue_calls = 0
         self.snapshot_calls = 0
         self.changed_files_calls = 0
         self.downloads: list[tuple[int, int]] = []
@@ -173,6 +186,15 @@ class FakeGitHub:
         self.snapshot_calls += 1
         self.events.append("snapshot")
         return deepcopy(self._snapshots[index])
+
+    def issue_snapshot(self, snapshot: dict) -> object:
+        """Return an independently changing live issue for each PR read."""
+        index = min(self.issue_calls, len(self._issues) - 1)
+        self.issue_calls += 1
+        value = self._issues[index]
+        if isinstance(value, Exception):
+            raise value
+        return deepcopy(value)
 
     def changed_files(self) -> object:
         """Return complete file pages for the next ownership window."""
@@ -623,6 +645,14 @@ class LowRiskMergeTests(unittest.TestCase):
                         "",
                     )
 
+                if command[1:3] == ["api", "graphql"]:
+                    return subprocess.CompletedProcess(
+                        command, 0,
+                        json.dumps({"data": {"repository": {
+                            "issue": issue_payload(PR_NUMBER),
+                        }}}), "",
+                    )
+
                 if command[1] == "api":
                     return subprocess.CompletedProcess(
                         command,
@@ -664,6 +694,7 @@ class LowRiskMergeTests(unittest.TestCase):
                 ) as run,
             ):
                 self.assertEqual(client.snapshot(), current)
+                self.assertEqual(client.issue_snapshot(current), issue_payload(PR_NUMBER))
                 self.assertEqual(client.changed_files(), file_pages())
                 downloaded, attempt = client.download_attestation(
                     RUN_ID,
@@ -679,7 +710,7 @@ class LowRiskMergeTests(unittest.TestCase):
         self.assertEqual(downloaded, artifact)
         self.assertEqual(attempt, 1)
         calls = run.call_args_list
-        self.assertEqual(len(calls), 7)
+        self.assertEqual(len(calls), 8)
 
         for call in calls[:-1]:
             self.assertEqual(

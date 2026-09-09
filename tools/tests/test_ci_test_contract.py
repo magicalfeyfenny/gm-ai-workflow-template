@@ -150,7 +150,7 @@ class CiTestContractTests(unittest.TestCase):
             "opened", "synchronize", "reopened", "edited", "labeled", "unlabeled"
         }.issubset(trigger["types"]))
         self.assertEqual(self.workflow["permissions"], {
-            "contents": "read", "pull-requests": "read"
+            "contents": "read", "issues": "read", "pull-requests": "read"
         })
         for job in self.jobs.values():
             self.assertNotIn("write", job.get("permissions", {}).values())

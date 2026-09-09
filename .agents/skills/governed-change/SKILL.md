@@ -28,6 +28,7 @@ with the narrower selection and authority in its automation template.
   [Scheduled continuation](../../../GOVERNANCE.md#scheduled-continuation).
 - Completion: [Risk](../../../GOVERNANCE.md#risk),
   [Completion transition](../../../GOVERNANCE.md#completion-transition), and
+  [Issue contract evidence](../../../GOVERNANCE.md#issue-contract-evidence), then
   the applicable [low-risk](../../../GOVERNANCE.md#low-risk-changes) or
   [manual](../../../GOVERNANCE.md#manual-and-high-risk-changes) path.
 - Executable values: only the affected tables in
@@ -95,9 +96,12 @@ continue a follow-up, dependency, or blocker for the authority decision alone.
    review and merge gates allocate authority, not extra verification work.
 4. For each milestone, obtain Stage 1 evidence, commit it, and publish or
    update the draft PR under the milestone rules.
-5. After the whole issue is complete, obtain Stage 2 evidence for the unchanged
-   candidate, perform the applicable completion transition, and obtain fresh
-   Stage 3 evidence.
+5. After the whole issue is complete, re-fetch and reconcile the current issue,
+   record its accepted contract revision with Stage 2 evidence for the unchanged
+   candidate, and recheck that revision before the completion transition. Add
+   its marker to the PR body and obtain fresh Stage 3 evidence. Compare the
+   artifact against fresh PR and issue state before the final handoff; follow
+   Issue contract evidence if the issue changed, including resumed work.
 6. Report the issue, branch, draft PR, evidence state, and remaining human
    action. Leave manual-path readiness and merge to a human.
 

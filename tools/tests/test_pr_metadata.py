@@ -6,6 +6,11 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 
+from tools.ci.issue_contract import (
+    acceptance_marker,
+    canonical_contract,
+    contract_digest,
+)
 from tools.ci.pr_metadata import (
     INVALID,
     MATCH,
@@ -21,6 +26,37 @@ HEAD_SHA = "a" * 40
 RUN_ID = 123456
 RUN_ATTEMPT = 1
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def issue_payload(number: int = PR_NUMBER) -> dict:
+    """Build the issue fields available from a complete native GraphQL read."""
+    return {
+        "id": f"I_{number}",
+        "number": number,
+        "repository": {"nameWithOwner": REPOSITORY},
+        "title": "Bind evidence to the accepted contract",
+        "body": "## Acceptance criteria\n\n- Complete the requested scope.\n",
+        "state": "OPEN",
+        "labels": {"nodes": [], "pageInfo": {"hasNextPage": False}},
+        "blockedBy": {"nodes": [], "pageInfo": {"hasNextPage": False}},
+    }
+
+
+def completion_body(body: str | None, issue: dict) -> str:
+    """Attach the revision accepted by local evidence to a completion body."""
+    number = issue["number"]
+    digest = contract_digest(canonical_contract(issue, REPOSITORY, number))
+    return f"{body or ''}\n{acceptance_marker(number, digest)}\n"
+
+
+def metadata_body(body: str | None, labels: list[str] | None) -> str | None:
+    """Keep metadata fixtures valid while their tests vary PR-only fields."""
+    completion = {"work:complete", "work:review-ready"}.intersection(labels or [])
+    if "human-created" not in (labels or []) and (
+        completion or "Closes #" in (body or "")
+    ):
+        return completion_body(body, issue_payload())
+    return body
 
 
 def event_payload(
@@ -44,7 +80,7 @@ def event_payload(
                     "full_name": REPOSITORY,
                 },
             },
-            "body": body,
+            "body": metadata_body(body, labels),
             "labels": [
                 {"name": name}
                 for name in (
@@ -70,7 +106,7 @@ def current_pull_request(
         "headRepository": {
             "nameWithOwner": REPOSITORY,
         },
-        "body": body,
+        "body": metadata_body(body, labels),
         "labels": [
             {"name": name}
             for name in (
@@ -93,6 +129,7 @@ def compare(
         "head_sha": HEAD_SHA,
         "run_id": RUN_ID,
         "run_attempt": RUN_ATTEMPT,
+        "current_issue": issue_payload(),
     }
     arguments.update(overrides)
 
@@ -118,6 +155,7 @@ class PrMetadataTests(unittest.TestCase):
             REPOSITORY,
             RUN_ID,
             RUN_ATTEMPT,
+            issue=issue_payload(),
         )
 
     def test_exact_metadata_matches_with_canonical_label_order(self):
@@ -143,12 +181,8 @@ class PrMetadataTests(unittest.TestCase):
         self.assertEqual(status, MATCH)
 
     def test_body_bytes_are_preserved(self):
-        attestation = self.attestation(
-            body="Closes #15\n",
-        )
-        current = current_pull_request(
-            body="Closes #15",
-        )
+        attestation = self.attestation(body="Summary\n")
+        current = current_pull_request(body="Summary")
 
         status, _ = compare(attestation, current)
 
@@ -215,12 +249,13 @@ class PrMetadataTests(unittest.TestCase):
                 validated=validated,
                 current=current_labels,
             ):
-                attestation = self.attestation(
-                    labels=validated,
+                body = (
+                    "Closes #15\n"
+                    if {"work:complete", "work:review-ready"}.intersection(validated)
+                    else "Summary\n"
                 )
-                current = current_pull_request(
-                    labels=current_labels,
-                )
+                attestation = self.attestation(body=body, labels=validated)
+                current = current_pull_request(body=body, labels=current_labels)
 
                 status, _ = compare(attestation, current)
 
@@ -308,7 +343,7 @@ class PrMetadataTests(unittest.TestCase):
         cases.append(missing_digest)
 
         wrong_schema = deepcopy(valid)
-        wrong_schema["schema_version"] = 2
+        wrong_schema["schema_version"] = 1
         cases.append(wrong_schema)
 
         malformed_digest = deepcopy(valid)
@@ -340,18 +375,144 @@ class PrMetadataTests(unittest.TestCase):
 
         self.assertEqual(status, INVALID)
 
+    def completion_evidence(self, issue: dict) -> tuple[dict, dict]:
+        """Bind a current completion PR and its hosted evidence to one issue."""
+        event = event_payload()
+        current = current_pull_request()
+        body = completion_body("Closes #15\n", issue)
+        labels = [{"name": "risk:low"}, {"name": "work:complete"}]
+        event["pull_request"].update(body=body, labels=labels)
+        current.update(body=body, labels=labels)
+        return build_attestation(
+            event, REPOSITORY, RUN_ID, RUN_ATTEMPT, issue=issue
+        ), current
+
+    def test_completion_binds_the_accepted_contract_revision(self):
+        """Scope edits stale evidence even when every PR field is unchanged."""
+        accepted = issue_payload()
+        evidence, current = self.completion_evidence(accepted)
+        self.assertEqual(compare(evidence, current)[0], MATCH)
+        self.assertIsInstance(evidence["issue_contract"], dict)
+        for field, replacement in (
+            ("title", "Revised issue scope"),
+            ("body", accepted["body"] + "- Complete another outcome.\n"),
+            ("body", accepted["body"] + "\n"),
+            ("state", "CLOSED"),
+        ):
+            with self.subTest(field=field, replacement=replacement):
+                revised = deepcopy(accepted)
+                revised[field] = replacement
+                self.assertEqual(
+                    compare(evidence, current, current_issue=revised)[0], STALE
+                )
+
+    def test_issue_conversation_activity_keeps_completion_evidence_current(self):
+        """Conversation changes are outside the accepted issue contract."""
+        evidence, current = self.completion_evidence(issue_payload())
+        conversation = issue_payload()
+        conversation.update(
+            comments={"nodes": [{"body": "Discussion after validation."}]},
+            reactions={"totalCount": 8},
+            updatedAt="2026-09-08T01:02:03Z",
+        )
+        conversation["labels"]["nodes"] = [{"name": "discussion"}]
+        self.assertEqual(
+            compare(evidence, current, current_issue=conversation)[0], MATCH
+        )
+
+    def test_new_native_blocker_invalidates_existing_completion(self):
+        """Native unresolved dependencies cannot reuse otherwise matching CI."""
+        evidence, current = self.completion_evidence(issue_payload())
+        for blocked in ("native", "label"):
+            with self.subTest(blocked=blocked):
+                revised = issue_payload()
+                if blocked == "native":
+                    revised["blockedBy"]["nodes"] = [
+                        {"id": "I_29", "state": "OPEN"}
+                    ]
+                else:
+                    revised["labels"]["nodes"] = [{"name": "work:blocked"}]
+                self.assertEqual(
+                    compare(evidence, current, current_issue=revised)[0], STALE
+                )
+
+    def test_changed_contract_can_pass_after_accepted_evidence_refresh(self):
+        """An authorized edit needs a new accepted marker and new hosted CI."""
+        accepted = issue_payload()
+        old_evidence, old_pr = self.completion_evidence(accepted)
+        revised = deepcopy(accepted)
+        revised["body"] += "- Deliver the newly authorized scope.\n"
+        unchanged_event = event_payload()
+        unchanged_event["pull_request"]["body"] = old_pr["body"]
+        unchanged_event["pull_request"]["labels"] = old_pr["labels"]
+        with self.assertRaises(ValueError):
+            build_attestation(
+                unchanged_event, REPOSITORY, RUN_ID, RUN_ATTEMPT, issue=revised
+            )
+        fresh_evidence, refreshed_pr = self.completion_evidence(revised)
+        self.assertEqual(compare(old_evidence, refreshed_pr)[0], STALE)
+        self.assertEqual(
+            compare(fresh_evidence, refreshed_pr, current_issue=revised)[0], MATCH
+        )
+
+    def test_completion_rejects_missing_incomplete_or_wrong_issue_evidence(self):
+        """Missing data must not silently become an empty blocker contract."""
+        evidence, current = self.completion_evidence(issue_payload())
+        incomplete = issue_payload()
+        incomplete["blockedBy"]["pageInfo"]["hasNextPage"] = True
+        wrong_issue = issue_payload(PR_NUMBER + 1)
+        wrong_repository = issue_payload()
+        wrong_repository["repository"]["nameWithOwner"] = "other/game"
+        for issue in (None, {}, incomplete, wrong_issue, wrong_repository):
+            with self.subTest(issue=issue):
+                self.assertEqual(
+                    compare(evidence, current, current_issue=issue)[0], INVALID
+                )
+
+    def test_completion_cannot_capture_without_an_accepted_marker(self):
+        """Capturing live scope alone cannot silently approve a revision."""
+        event = event_payload()
+        event["pull_request"]["body"] = "Closes #15\n"
+        event["pull_request"]["labels"].append({"name": "work:complete"})
+        with self.assertRaises(ValueError):
+            build_attestation(
+                event, REPOSITORY, RUN_ID, RUN_ATTEMPT, issue=issue_payload()
+            )
+
+    def test_milestones_and_human_prs_have_no_contract_requirement(self):
+        """The binding applies to agent completion, preserving human authority."""
+        for labels in (["risk:low"], ["human-created", "work:complete"]):
+            with self.subTest(labels=labels):
+                event = event_payload(labels=labels)
+                evidence = build_attestation(
+                    event, REPOSITORY, RUN_ID, RUN_ATTEMPT
+                )
+                self.assertIsNone(evidence["issue_contract"])
+                self.assertEqual(
+                    compare(
+                        evidence, current_pull_request(labels=labels),
+                        current_issue=None,
+                    )[0], MATCH,
+                )
+
     def test_cli_capture_and_compare_round_trip(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             event_path = root / "event.json"
             attestation_path = root / "attestation.json"
             current_path = root / "current.json"
+            issue_path = root / "issue.json"
+            issue_path.write_text(json.dumps(issue_payload()), encoding="utf-8")
             event_path.write_text(
-                json.dumps(event_payload()),
+                json.dumps(event_payload(
+                    body="Closes #15\n", labels=["risk:low", "work:complete"]
+                )),
                 encoding="utf-8",
             )
             current_path.write_text(
-                json.dumps(current_pull_request()),
+                json.dumps(current_pull_request(
+                    body="Closes #15\n", labels=["risk:low", "work:complete"]
+                )),
                 encoding="utf-8",
             )
 
@@ -360,6 +521,8 @@ class PrMetadataTests(unittest.TestCase):
                     "capture",
                     "--event-path",
                     str(event_path),
+                    "--issue-path",
+                    str(issue_path),
                     "--output",
                     str(attestation_path),
                     "--repository",
@@ -377,6 +540,8 @@ class PrMetadataTests(unittest.TestCase):
                     str(attestation_path),
                     "--current-pr-path",
                     str(current_path),
+                    "--current-issue-path",
+                    str(issue_path),
                     "--repository",
                     REPOSITORY,
                     "--pull-request-number",

@@ -8,6 +8,9 @@ State the completed outcome and what now works or is possible.
 
 What checks were run, if any?
 
+At completion, record the accepted issue revision and marker under
+[Issue contract evidence](../GOVERNANCE.md#issue-contract-evidence).
+
 For an interpretive governance correction, include the applicable
 [policy correction boundary evidence](../GOVERNANCE.md#policy-correction-boundary-evidence).
 
