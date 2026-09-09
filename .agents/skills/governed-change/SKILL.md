@@ -19,9 +19,11 @@ with the narrower selection and authority in its automation template.
   [Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work).
 - Validation planning, evidence, and publication:
   [Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation),
-  [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation),
+  [Contract-oriented validation](../../../GOVERNANCE.md#contract-oriented-validation),
   [Validation evidence](../../../GOVERNANCE.md#validation-evidence), and
   [Milestone commits](../../../GOVERNANCE.md#milestone-commits-and-draft-publication).
+- Before deciding to launch the game or when required runtime evidence is unavailable:
+  [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation).
 - Interpretive governance corrections:
   [Policy correction boundary evidence](../../../GOVERNANCE.md#policy-correction-boundary-evidence).
 - Scheduled continuation:
@@ -39,42 +41,27 @@ with the narrower selection and authority in its automation template.
   [Policy updates](../../../GOVERNANCE.md#policy-updates) and the
   [bounded update procedure](../../../docs/POLICY_UPDATE.md).
 
-For production code, assets, or GameMaker data, also use the
-[GameMaker production skill](../gamemaker-production/SKILL.md). If live state
-is human-owned, follow
+For production code or GameMaker data, also use the
+[GameMaker production skill](../gamemaker-production/SKILL.md). For authored or
+derived assets, use the [Asset production skill](../asset-production/SKILL.md).
+If live state is human-owned, follow
 [Human-created changes](../../../GOVERNANCE.md#human-created-changes) and stop.
 Read [Releases](../../../GOVERNANCE.md#releases) only for explicitly authorized
 release work.
 
 ## Issue selection
 
-For a direct request, use or create only the atomic issue or linked issue set
-authorized by Issue authority, then execute one atomic implementation issue at
-a time. Use or create the minimum issue set necessary to represent the
-requested outcomes. Prefer one vertical implementation issue when multiple
-technical layers are jointly necessary for one outcome. Do not create 
-downstream issues merely for potential generalization, hardening, versioning,
-characterization, or future extension.
+For a direct request, select or create the minimum issue set under
+[Issue authority](../../../GOVERNANCE.md#issue-authority), including its atomicity
+and deferred-work rules. Execute one atomic implementation issue at a time.
 
-For a scheduled run, follow its template and the
-[Scheduled continuation](../../../GOVERNANCE.md#scheduled-continuation) route:
-direct-request creation does not apply, and no eligible issue or actionable
-continuation means no repository mutation.
+For a scheduled run, use its template and
+[Scheduled continuation](../../../GOVERNANCE.md#scheduled-continuation) before
+new-issue selection. Direct-request creation permission does not apply.
 
-Deferred work is not automatically backlog work. Create a follow-up issue
-only for an explicit requested outcome, a concrete defect/risk that should be
-tracked, or a blocker that cannot remain in the current issue.
-
-For placeholder-backed mixed work, identify concrete remaining
-asset-production work and its independent source in explicit human direction
-or a current product or acceptance contract before creating, retaining,
-selecting, or continuing a canonical follow-up. "Human must accept or promote
-this existing authored asset as final" is not sufficient. When concrete work
-remains, resolve its tracking before Stage 2 and record the exact placeholder
-scope, replacement point, and issue link in the draft pull request without
-claiming that the deterministic placeholder satisfies authored-asset
-acceptance. When no concrete work remains, do not create, preserve, select, or
-continue a follow-up, dependency, or blocker for the authority decision alone.
+For placeholder-backed mixed work, resolve tracking and prepare the PR handoff
+under [Placeholder-backed mixed work](../../../GOVERNANCE.md#placeholder-backed-mixed-work)
+before Stage 2.
 
 ## Execute
 
@@ -85,23 +72,17 @@ continue a follow-up, dependency, or blocker for the authority decision alone.
 2. Refresh `origin/dev`. For new work, create the governed issue branch. For a
    continuation, use the existing matching issue branch and draft pull request;
    do not recreate the branch.
-3. Implement only the issue scope in coherent milestones through any additional
-   task route above. Allocate validation according to Governance, preferring
-   automated and machine-verifiable evidence. Do not invent manual playtesting,
-   human observation, experiential review, subjective acceptance, or generic
-   gameplay smoke requirements. Perform interactive runtime validation only
-   for a concrete purpose permitted by Governance. If a permitted required
-   interactive check cannot run, follow the Interactive runtime validation
-   rules without inventing additional human validation requirements. Human
-   review and merge gates allocate authority, not extra verification work.
+3. Implement only the issue scope in coherent milestones through the applicable
+   task routes. Plan evidence using the validation routes above; apply the
+   runtime route before launching the game or handling missing runtime evidence.
 4. For each milestone, obtain Stage 1 evidence, commit it, and publish or
    update the draft PR under the milestone rules.
-5. After the whole issue is complete, re-fetch and reconcile the current issue,
-   record its accepted contract revision with Stage 2 evidence for the unchanged
-   candidate, and recheck that revision before the completion transition. Add
-   its marker to the PR body and obtain fresh Stage 3 evidence. Compare the
-   artifact against fresh PR and issue state before the final handoff; follow
-   Issue contract evidence if the issue changed, including resumed work.
+5. After the whole issue is complete, follow
+   [Issue contract evidence](../../../GOVERNANCE.md#issue-contract-evidence)
+   through Stage 2, the completion transition, fresh Stage 3, and the final
+   live-state comparison. Use its
+   [attestation procedure](../../../docs/CI.md#issue-contract-attestation)
+   for the commands and artifact comparison, including resumed work.
 6. Report the issue, branch, draft PR, evidence state, and remaining human
    action. Leave manual-path readiness and merge to a human.
 

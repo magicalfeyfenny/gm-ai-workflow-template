@@ -18,7 +18,7 @@ Except for a critical stop that must be exposed before mutation, entrypoints
 link here instead of restating shared rules. A repeated stop is a safety
 reminder, not a second source of authority.
 
-### Inventory authority
+## Inventory authority
 
 Volatile test, asset, capture, resource, label, and similar inventory totals
 must not be duplicated as normative prose unless every normative copy is
@@ -32,7 +32,7 @@ fixed identifiers, or protocol requirements. Dated historical evidence and
 non-normative reports may record observed totals; those measurements do not
 become ongoing inventory requirements.
 
-### Policy updates
+## Policy updates
 
 An adoption/update PR taking a newer upstream policy revision records the
 upstream repository, the previously adopted and newly selected immutable
@@ -133,6 +133,10 @@ separately.
 Create the minimum issue set needed for the requested outcome. Do not
 pre-expand speculative downstream work into a backlog.
 
+Deferred work is not automatically backlog work. Create a follow-up issue
+only for an explicit requested outcome, a concrete defect/risk that should be
+tracked, or a blocker that cannot remain in the current issue.
+
 A direct human request for governed repository work authorizes the
 `governed-change` workflow to find or create only the atomic implementation
 issue or linked atomic issue set needed for exactly that requested work. A
@@ -148,7 +152,7 @@ including scheduled audits. Its skill owns the audit-specific evidence and
 per-run constraints. In scheduled operation, Project Steward owns issue
 creation and does not implement issues.
 
-### Compatibility obligations
+## Compatibility obligations
 
 Compatibility is required only when an independently established contract or
 consumer must continue to accept an older representation.
@@ -202,7 +206,7 @@ independent consumer or durable contract that requires it and cite the
 available source evidence. Do not add conditional requirements such as
 "preserve a compatibility alias if needed" without that evidence.
 
-### Scheduled claim eligibility
+## Scheduled claim eligibility
 
 The scheduled Governed Change automation owns selection and claim decisions
 for existing implementation issues. Project Steward continues to own audit,
@@ -240,7 +244,7 @@ condition, including issue atomicity, risk handling, dependency order, and the
 fail-closed recheck immediately before repository mutation. It does not replace
 or relax any of them.
 
-### Placeholder-backed mixed work
+## Placeholder-backed mixed work
 
 A mixed implementation issue may use deterministic placeholders when final
 authored assets are secondary and the current execution environment
@@ -286,7 +290,7 @@ general backlog. A scheduled execution may create it only after claiming that
 issue and only under the rules above. The follow-up uses the normal
 issue-authority, dependency, and risk rules for its own scope.
 
-### Scheduled continuation
+## Scheduled continuation
 
 Before selecting a new issue, a scheduled Governed Change run checks for an
 existing incomplete governed change owned by the current automation user. A
@@ -448,7 +452,7 @@ combine their scopes.
 Keep the change bounded to that issue and do not absorb unrelated cleanup.
 Preserve useful behavior, not obsolete architecture merely because it exists.
 
-### Contract-oriented validation
+## Contract-oriented validation
 
 Tests and automated policy checks should validate required behavior, structure,
 and repository contracts rather than incidental wording or representation.
@@ -469,7 +473,7 @@ A wording, formatting, ordering, or representation change that preserves the
 intended contract should not require unrelated test changes merely to satisfy
 stale textual expectations.
 
-### Validation coverage allocation
+## Validation coverage allocation
 
 Prefer automated validation whenever the required property is
 machine-verifiable.
@@ -509,7 +513,7 @@ Interactive execution is appropriate only when it has a concrete
 machine-verifiable purpose that cannot be established adequately through
 ordinary static or automated evidence.
 
-#### Policy correction boundary evidence
+## Policy correction boundary evidence
 
 For an interpretive governance correction motivated by an observed failure,
 include in the existing issue or PR validation/review evidence the original
@@ -541,7 +545,7 @@ Routing tests establish only routing and authority reachability. They do not
 prove future agent obedience or interpretation; keep those claims separate
 from the scenario decisions above.
 
-### Interactive runtime validation
+## Interactive runtime validation
 
 Launching the game is exceptional validation, not a default completion stage.
 

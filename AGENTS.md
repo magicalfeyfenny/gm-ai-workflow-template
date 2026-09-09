@@ -16,15 +16,17 @@ Before modifying the repository, follow only the routes relevant to the task:
 | Governed repository change | Use the [governed-change skill](.agents/skills/governed-change/SKILL.md), then the Governance sections it names. |
 | Any repository-owned source or imported-library registration | Read [Source structure](GOVERNANCE.md#source-structure) and `[structure]` in `PROJECT_POLICY.toml`. |
 | GameMaker production code | Use the [GameMaker production skill](.agents/skills/gamemaker-production/SKILL.md). The source route above also applies. |
-| Derived asset | Use the [GameMaker production skill](.agents/skills/gamemaker-production/SKILL.md). |
+| Authored or derived asset | Use the [Asset production skill](.agents/skills/asset-production/SKILL.md). |
 | GameMaker structured data | Use the [GameMaker production skill](.agents/skills/gamemaker-production/SKILL.md). |
 | Issue and PR audit | Use the [Project Steward skill](.agents/skills/project-steward/SKILL.md) and [Issue authority](GOVERNANCE.md#issue-authority). |
 | Release | Only when explicitly authorized, read [Releases](GOVERNANCE.md#releases) and the governed lifecycle routes. |
-| Repository setup | Follow [docs/SETUP.md](docs/SETUP.md). |
+| Generated-repository setup | Follow [docs/SETUP.md](docs/SETUP.md). |
+| Existing-repository adoption or recovery | Start with the read-only [adoption procedure](docs/ADOPTION.md). |
 | Update previously adopted upstream policy | Follow the [policy-update procedure](docs/POLICY_UPDATE.md) through governed-change. |
 
-Do not load unrelated governance sections merely because the repository is
-governed.
+Read an anchored section with its subsections; follow sibling sections only
+when the task routes to them. Do not load unrelated governance sections merely
+because the repository is governed.
 
 ## Tooling
 

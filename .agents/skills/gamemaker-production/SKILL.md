@@ -10,13 +10,16 @@ only the routes matching the files and behavior in scope:
 
 | Work | Required route |
 | --- | --- |
-| Repository-owned production code | [Production code](../../../GOVERNANCE.md#production-code), [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations), [Source structure](../../../GOVERNANCE.md#source-structure), and `[structure]` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
+| Repository-owned production code | [Production code](../../../GOVERNANCE.md#production-code), [Source structure](../../../GOVERNANCE.md#source-structure), and `[structure]` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
+| Renames, representation changes, or replacement | [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations) |
 | Authored or derived assets | [Asset production skill](../asset-production/SKILL.md) |
 | GameMaker structured data | [GameMaker structured data](../../../GOVERNANCE.md#gamemaker-structured-data) and `assets.content_root` in [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml) |
 
 Validation follows
-[Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation)
-and [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation).
+[Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation).
+If considering a GameMaker runtime launch, first follow
+[Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation)
+to determine whether it is permitted and needed.
 
 Imported-library source follows the exception in Source structure, not the
 repository-owned production-code style rules.
@@ -24,11 +27,7 @@ repository-owned production-code style rules.
 ## Production procedure
 
 Before creating or preserving custom machinery, follow
-[Native GameMaker functionality](../../../GOVERNANCE.md#native-gamemaker-functionality):
-identify applicable native facilities, establish their semantics, and compare
-them with the required outcome. Use a sufficient native facility. A custom
-substitute needs a specific unmet requirement; repository precedent alone is
-insufficient. Record the evidence and decision before implementing it.
+[Native GameMaker functionality](../../../GOVERNANCE.md#native-gamemaker-functionality).
 
 When reusing an older project:
 
@@ -42,8 +41,7 @@ changed by the work.
 
 ## Production defaults
 
-1. Apply the native capability decision above to both new and existing paths.
-Preserve direct manipulation in the GameMaker IDE when practical.
+1. Preserve direct manipulation in the GameMaker IDE when practical.
 2. Build the smallest end-to-end behavior first. For gameplay/content work,
 prefer a runnable consumer over defining a representation in isolation. Do not
 create a canonical schema ahead of its first consumer unless the schema itself
@@ -78,15 +76,3 @@ because it is available.
 9. Replacement includes cleanup. When replacing a runtime/content path,
 classify leftovers as still-live, compatibility, fixture/reference, or
 removable. Don't let tests fossilize dead production systems.
-10. Runtime execution is evidence, not ceremony. Do not launch the game merely
-because the requested outcome is visual, interactive, player-visible, or
-touches runtime resources. Prefer automated tests, deterministic
-interaction checks, rendering or snapshot evidence, validators, and other
-machine-verifiable evidence. Launch the game only for a concrete runtime
-purpose permitted by Governance, such as GameMaker-hosted automated tests,
-bounded deterministic UI or interaction checks, explicitly scoped
-performance profiling, or another runtime-only check explicitly required
-by human direction. Do not create or perform generic gameplay smoke tests,
-subjective playtesting, readability review, feel review, visual-quality
-review, or human experiential acceptance unless explicitly directed by the
-human author.

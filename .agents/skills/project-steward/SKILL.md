@@ -75,22 +75,16 @@ run.
 - Do not treat an open human-created PR as a governance defect, and do not
   modify, review, validate, label, ready, or merge it.
 - Do not close stale issues automatically or create speculative work.
-- Do not create or retain cleanup work solely because custom systems or external
-  runtime assets exist. Report unsupported decisions with their evidence and
-  current contract context; implementation requires a current requested outcome,
-  current issue, or independently established contract that requires a change.
-- Do not create, recommend retaining, or treat as actionable tracking solely
-  for human review, approval, acceptance, or promotion of an existing authored
-  asset. Report it for human disposition without inventing production work or
-  closing it automatically.
+- For unsupported native/asset decisions, apply
+  [Native adoption scope](../../../GOVERNANCE.md#native-adoption-scope) before
+  proposing work. Report evidence and current contract context.
+- For approval-only asset tracking, apply
+  [Replacement and promotion](../../../GOVERNANCE.md#replacement-and-promotion).
+  Report it for human disposition without inventing production work or closing
+  it automatically.
 - Do not create issues to simplify over-decomposed issue clusters, fix
   over-prescribed technical machinery, or repair stale tracking or language
   unless the issue is explicitly requested.
 - Do not create or retain manual playtesting, subjective review, human
   observation, experiential acceptance, or generic gameplay smoke requirements
   unless explicit human direction requires that specific judgment.
-- Player-visible, runtime-affecting, visual, interactive, or high-risk work
-  alone is not evidence that manual or human-observed validation is required.
-- Prefer machine-verifiable validation requirements when authoring or auditing
-  issues. Missing runner capability and human merge or publication gates do
-  not authorize substitute human verification requirements.
