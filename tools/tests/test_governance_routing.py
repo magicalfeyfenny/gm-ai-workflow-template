@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_LINK = re.compile(r"\[[^]]+\]\(([^)]+)\)")
-HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
+HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$", re.MULTILINE)
 VALIDATION_SURFACES = (
     ROOT / "GOVERNANCE.md",
     ROOT / ".agents/skills/gamemaker-production/SKILL.md",
@@ -53,7 +53,25 @@ def local_destinations(source):
 def heading_anchors(path):
     """Collect the anchors exposed by one Markdown file."""
     text = path.read_text(encoding="utf-8")
-    return {markdown_anchor(heading) for heading in HEADING.findall(text)}
+    return {markdown_anchor(heading) for _, heading in HEADING.findall(text)}
+
+
+def section_descendant_anchors(text, section):
+    """Read a section's nested headings up to its next peer or ancestor."""
+    headings = [
+        (len(level), markdown_anchor(heading))
+        for level, heading in HEADING.findall(text)
+    ]
+    for index, (level, anchor) in enumerate(headings):
+        if anchor != section:
+            continue
+        descendants = set()
+        for child_level, child_anchor in headings[index + 1:]:
+            if child_level <= level:
+                break
+            descendants.add(child_anchor)
+        return descendants
+    raise ValueError(f"Missing Markdown section: {section}")
 
 
 def governance_fragments(source):
@@ -76,6 +94,7 @@ class GovernanceRoutingTests(unittest.TestCase):
             ROOT / "docs/SETUP.md",
             ROOT / "docs/ADOPTION.md",
             ROOT / "docs/POLICY_UPDATE.md",
+            ROOT / "docs/CI.md",
             ROOT / ".agents/skills/asset-production/SKILL.md",
             ROOT / ".agents/skills/gamemaker-production/SKILL.md",
             ROOT / ".agents/skills/governed-change/SKILL.md",
@@ -136,7 +155,9 @@ class GovernanceRoutingTests(unittest.TestCase):
                 ).resolve(),
                 (ROOT / ".agents/skills/governed-change/SKILL.md").resolve(),
                 (ROOT / ".agents/skills/project-steward/SKILL.md").resolve(),
+                (ROOT / ".agents/skills/asset-production/SKILL.md").resolve(),
                 (ROOT / "docs/SETUP.md").resolve(),
+                (ROOT / "docs/ADOPTION.md").resolve(),
             }.issubset(agent_targets)
         )
         self.assertTrue(
@@ -153,10 +174,11 @@ class GovernanceRoutingTests(unittest.TestCase):
         self.assertTrue(
             {
                 "native-gamemaker-functionality",
-                "runtime-asset-representation",
                 "asset-completion-and-authority",
                 "derived-assets",
                 "placeholder-backed-mixed-work",
+                "validation-coverage-allocation",
+                "interactive-runtime-validation",
             }.issubset(assets),
         )
         self.assertTrue(
@@ -168,6 +190,7 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "placeholder-backed-mixed-work",
                 "compatibility-obligations",
                 "scheduled-continuation",
+                "contract-oriented-validation",
                 "validation-coverage-allocation",
                 "interactive-runtime-validation",
                 "validation-evidence",
@@ -220,6 +243,72 @@ class GovernanceRoutingTests(unittest.TestCase):
                     target for target, _ in local_destinations(entrypoint)
                 }
                 self.assertIn(policy, linked_paths)
+
+    def test_section_descendants_stop_at_peers_and_ancestors(self):
+        """Check the boundary helper without depending on repository prose."""
+        text = "\n".join((
+            "# Document", "## First", "### Child", "#### Grandchild",
+            "### Other child", "## Peer", "### Peer child", "# Next root",
+        ))
+        self.assertEqual(
+            section_descendant_anchors(text, "first"),
+            {"child", "grandchild", "other-child"},
+        )
+        self.assertEqual(
+            section_descendant_anchors(text, "other-child"), set(),
+        )
+        self.assertEqual(
+            section_descendant_anchors(text, "peer"), {"peer-child"},
+        )
+
+    def test_common_sections_do_not_contain_specialized_routes(self):
+        """Keep specialist obligations reachable without loading them by default."""
+        governance = ROOT / "GOVERNANCE.md"
+        text = governance.read_text(encoding="utf-8")
+        anchors = heading_anchors(governance)
+        boundaries = {
+            "authority": {"inventory-authority", "policy-updates"},
+            "issue-authority": {
+                "compatibility-obligations", "scheduled-claim-eligibility",
+                "placeholder-backed-mixed-work", "scheduled-continuation",
+            },
+            "unit-of-work": {
+                "contract-oriented-validation", "validation-coverage-allocation",
+                "policy-correction-boundary-evidence",
+                "interactive-runtime-validation",
+            },
+            "validation-coverage-allocation": {
+                "policy-correction-boundary-evidence",
+            },
+        }
+        for section, specialized in boundaries.items():
+            with self.subTest(section=section):
+                self.assertIn(section, anchors)
+                self.assertTrue(specialized.issubset(anchors))
+                self.assertTrue(specialized.isdisjoint(
+                    section_descendant_anchors(text, section),
+                ))
+
+    def test_derived_asset_route_includes_representation_and_export_contracts(self):
+        """Keep the asset route's coupled obligations in its selected section."""
+        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
+        self.assertTrue({
+            "runtime-asset-representation", "export-topology",
+        }.issubset(section_descendant_anchors(governance, "derived-assets")))
+
+    def test_governed_procedure_routes_assets_and_contract_attestation_directly(self):
+        """Reach the relevant procedures without loading unrelated production work."""
+        destinations = local_destinations(
+            ROOT / ".agents/skills/governed-change/SKILL.md"
+        )
+        self.assertIn(
+            ((ROOT / ".agents/skills/asset-production/SKILL.md").resolve(), ""),
+            destinations,
+        )
+        self.assertIn(
+            ((ROOT / "docs/CI.md").resolve(), "issue-contract-attestation"),
+            destinations,
+        )
 
     def test_readme_overview_is_structurally_non_normative(self):
         """Keep README as navigation to the two authority files."""
