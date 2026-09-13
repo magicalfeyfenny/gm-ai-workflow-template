@@ -1,8 +1,10 @@
 # Plan adoption or recovery of an existing repository
 
-For a repository that has already adopted the template and needs a newer
-upstream policy revision, use the [bounded policy-update procedure](POLICY_UPDATE.md).
-Use this planner for relevant state or recovery questions identified there.
+Start by establishing the [framework comparison](#establish-the-framework-comparison)
+under [Framework adoption lineage](../GOVERNANCE.md#framework-adoption-lineage).
+An evidence-backed earlier adoption uses the
+[bounded policy-update procedure](POLICY_UPDATE.md). Use this planner for
+relevant state or recovery questions identified there.
 
 Start from an available local clone and GitHub read access. Use Python 3.12,
 Git, and authenticated GitHub CLI (`gh`). Git LFS improves local object
@@ -72,7 +74,91 @@ alongside ruleset details and classic protection. Active branch rules include
 applicable rules from higher levels; inactive/evaluation rulesets remain useful
 configuration evidence but do not establish active required checks.
 
+## Establish the framework comparison
+
+Apply [Framework adoption lineage](../GOVERNANCE.md#framework-adoption-lineage)
+before editing the target. Record the exact pre-adoption target commit and
+incoming upstream repository and commit in the adoption PR. Inspect relevant
+history, prior adoption/update evidence, existing instructions, Governance,
+policy/checkers, CI, and project contracts within the adoption boundary.
+Explain evidence limitations instead of treating unavailable history as empty.
+The planner supplies observations; it does not classify framework lineage or
+interpret the authority of existing prose.
+
+Select the corresponding comparison in that PR:
+
+| State token | Procedure |
+| --- | --- |
+| `ungoverned` | Record the evidence establishing first adoption in an ungoverned brownfield. Validate against the actual pre-adoption commit using the current candidate rules. |
+| `independent` | Record the evidence establishing independent existing governance and reconcile its relevant authority with incoming rules before editing. State the conflicts, overlaps, gaps, superseded wording, and intentional differences, their authority, and their dispositions. Then validate first adoption against the actual pre-adoption commit. |
+| `update` | Use the [existing old-to-new comparison](POLICY_UPDATE.md#establish-the-bounded-comparison), including the real prior upstream revision and adoption evidence. Repository-policy checks retain historical checker/policy enforcement. |
+| `ambiguous` | Record the available evidence and unresolved comparison/authority question. Resolve it under Governance before selecting a first-adoption or update basis; repository-policy validation rejects this state. |
+
+For independent governance, reconcile repository-owned consumers of affected
+rules, including paths or wording that differ from the template. Record
+preservation, supersession, or already-satisfied decisions and the resulting
+evidence in the PR. Retain useful historical material with its historical role
+clearly identified. Validate concrete preserved project constraints with their
+existing checks or bounded fixtures where mechanically observable. A nonempty
+explanation alone does not establish that the candidate preserves them.
+
+### Pass the comparison to validation
+
+Use one optional fenced `framework-adoption` JSON block in the existing PR
+body. This is a declaration for that PR, not persistent repository policy or
+an adoption registry. For example, after completing independent-governance
+characterization, replace the placeholders with the actual evidence:
+
+````text
+```framework-adoption
+{
+  "state": "independent",
+  "baseline": "FULL_IMMUTABLE_PRE_ADOPTION_TARGET_COMMIT",
+  "evidence": "Inspected history and authority references; incoming upstream repository and immutable revision; evidence that this is first adoption of this framework.",
+  "authority_disposition": "Relevant independent constraints and authority; conflict/overlap/gap decisions; preserved differences and superseded wording with supporting authority and validation."
+}
+```
+````
+
+`state`, `baseline`, and nonempty `evidence` are required in an explicit
+declaration. `independent` additionally requires `authority_disposition`.
+The baseline must be a full immutable commit ID resolving to the exact
+`--baseline-ref` target. A malformed, duplicate, stale, or ambiguous declaration
+fails closed. Similar filenames or missing checker files never select a mode.
+Without a declaration, or with `update`, the existing historical comparison
+remains in force; missing required historical machinery remains a failure.
+
+Save the actual proposed PR body outside the target repository and pass it to
+the ordinary repository-policy check during first-adoption local validation:
+
+```sh
+python3.12 tools/ci/check_repo.py --baseline-ref origin/dev \
+  --pr-body-file /absolute/path/to/adoption-pr-body.md
+```
+
+For a committed candidate, add `--candidate-ref FULL_CANDIDATE_COMMIT`.
+The existing CI workflow passes its event through `--event-path`; the checker
+reads the same PR-body declaration and verifies the event base commit against
+the selected baseline. Use the actual base rather than an invented framework
+snapshot. Updating this declaration changes the PR body and therefore requires
+fresh [Stage 3 evidence](../GOVERNANCE.md#stage-3-hosted-pr-evidence).
+
+The first-adoption comparison evaluates actual pre-adoption files under
+candidate rules supplied in memory, reuses semantic source and storage
+non-worsening checks, and separately checks current candidate coherence.
+It never installs checker/policy files into historical state. It measures
+repository-policy behavior; it cannot prove an evidence narrative's truth or
+interpret independent authority. Complete the semantic reconciliation and
+other applicable [validation stages](../GOVERNANCE.md#validation-evidence),
+[issue-contract evidence](../GOVERNANCE.md#issue-contract-evidence), and
+[risk path](../GOVERNANCE.md#risk) in the same adoption PR. This procedure does
+not turn the planner's release-verification result into an adoption-completion
+claim.
+
 ## Select a recovery lineage
+
+Recovery `--lineage` selects canonical source history. It does not classify
+framework adoption or establish a prior adopted upstream revision.
 
 Use explicit refs or commit IDs for relevant preserved histories. The tool
 does not select a canonical lineage automatically:

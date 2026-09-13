@@ -113,7 +113,8 @@ jobs:
         run: |
           python3 tools/ci/check_repo.py \
             --baseline-ref "$BASE_SHA" \
-            --candidate-ref "$GITHUB_SHA"
+            --candidate-ref "$GITHUB_SHA" \
+            --event-path "$GITHUB_EVENT_PATH"
 
       - name: Check candidate LFS object integrity
         id: lfs-integrity

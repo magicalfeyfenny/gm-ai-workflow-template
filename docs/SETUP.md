@@ -5,8 +5,9 @@ template.
 
 For an existing repository, start with the read-only
 [adoption and recovery plan](ADOPTION.md). That route inventories current
-state and verifies an existing release before proposing separately authorized
-changes. Do not run the generated-repository bootstrap as an adoption probe.
+state, establishes the framework comparison, and verifies an existing release
+before proposing separately authorized changes. Do not run the generated-repository
+bootstrap as an adoption probe.
 
 To update policy in an already-adopted repository, use the
 [bounded policy-update procedure](POLICY_UPDATE.md).

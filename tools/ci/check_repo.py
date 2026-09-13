@@ -18,11 +18,15 @@ from typing import Iterator
 
 # Historical checker execution supplies this directory through sys.path as well.
 if __package__:
+    from .adoption_basis import first_adoption
+    from .asset_manifest import load_manifest
     from .candidate_git import candidate_snapshot, is_lfs_pointer
     from .storage_policy import (
         collect_storage_errors, historical_storage_errors, storage_policy_errors,
     )
 else:
+    from adoption_basis import first_adoption
+    from asset_manifest import load_manifest
     from candidate_git import candidate_snapshot, is_lfs_pointer
     from storage_policy import (
         collect_storage_errors, historical_storage_errors, storage_policy_errors,
@@ -55,6 +59,7 @@ PolicyError = str | SourceLineViolation
 CHECKER_CONTRACT_PATHS = frozenset({
     "PROJECT_POLICY.toml", "tools/ci/check_repo.py", "tools/ci/candidate_git.py",
     "tools/ci/storage_policy.py",
+    "tools/ci/adoption_basis.py", "tools/ci/asset_manifest.py",
 })
 
 
@@ -206,10 +211,17 @@ def validate_destination(
     tracked: set[str],
     subject: str,
     errors: list[str],
+    coherence_errors: list[str] | None = None,
 ) -> list[Path]:
     """Bind exported artifacts to one resource or an explicit runtime file contract."""
+    def invalid(message: str) -> None:
+        """Keep declaration-shape failures separate from inherited asset payloads."""
+        errors.append(message)
+        if coherence_errors is not None:
+            coherence_errors.append(message)
+
     if not isinstance(destination, dict):
-        errors.append(f"{subject}: destination must be an object")
+        invalid(f"{subject}: destination must be an object")
         return []
 
     kind = destination.get("kind")
@@ -220,12 +232,12 @@ def validate_destination(
             or not isinstance(reason, str)
             or not reason.strip()
         ):
-            errors.append(f"{subject}: included-file requires only a file_contract reason")
+            invalid(f"{subject}: included-file requires only a file_contract reason")
             return []
         return configured_roots(pipeline, "runtime_roots")
 
     if kind != "native-resource":
-        errors.append(f"{subject}: unknown destination kind {kind}")
+        invalid(f"{subject}: unknown destination kind {kind}")
         return []
     resource = destination.get("resource")
     if (
@@ -233,7 +245,7 @@ def validate_destination(
         or not isinstance(resource, str)
         or not resource
     ):
-        errors.append(f"{subject}: native-resource requires only a resource path")
+        invalid(f"{subject}: native-resource requires only a resource path")
         return []
 
     path = Path(resource)
@@ -278,7 +290,16 @@ def validate_assets(
     policy: dict,
     files: list[Path],
     errors: list[str],
+    first_adoption_baseline: bool = False,
+    coherence_errors: list[str] | None = None,
 ) -> None:
+    """Validate declarations and payloads, exposing current framework shape errors."""
+    def invalid(message: str) -> None:
+        """Require valid new framework declarations even in independently owned files."""
+        errors.append(message)
+        if coherence_errors is not None:
+            coherence_errors.append(message)
+
     assets = policy["assets"]
 
     manifest_path = Path(assets["manifest"])
@@ -288,44 +309,22 @@ def validate_assets(
         for path in files
     }
 
-    try:
-        manifest = json.loads(
-            (root / manifest_path).read_text(encoding="utf-8")
-        )
-    except OSError:
-        errors.append(
-            f"{manifest_path}: manifest is missing or unreadable"
-        )
-        return
-    except json.JSONDecodeError as exc:
-        errors.append(
-            f"{manifest_path}: invalid manifest: {exc}"
-        )
+    document_errors: list[str] = []
+    manifest = load_manifest(root, manifest_path, document_errors)
+    for error in document_errors:
+        invalid(error)
+    if manifest is None:
+        if first_adoption_baseline:
+            validate_asset_inventory(files, assets["pipelines"], set(), manifest_path, errors)
         return
 
-    if not isinstance(manifest, dict):
-        errors.append(f"{manifest_path}: manifest must be an object")
-        return
-
-    if manifest.get("version") != 1:
-        errors.append(
-            f"{manifest_path}: version must be 1"
-        )
-
-    entries = manifest.get("exports")
-
-    if not isinstance(entries, list):
-        errors.append(
-            f"{manifest_path}: exports must be a list"
-        )
-        return
-
+    entries = manifest["exports"]
     pipelines = assets["pipelines"]
     mapped_runtime: set[str] = set()
 
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
-            errors.append(
+            invalid(
                 f"{manifest_path}: export {index} must be an object"
             )
             continue
@@ -336,13 +335,13 @@ def validate_assets(
         runtime = entry.get("runtime")
 
         if not isinstance(completion, str) or completion not in ASSET_COMPLETION_LEVELS:
-            errors.append(
+            invalid(
                 f"{manifest_path}: export {index} has invalid completion "
                 f"level {completion}"
             )
 
         if not isinstance(kind, str) or kind not in pipelines:
-            errors.append(
+            invalid(
                 f"{manifest_path}: export {index} has unknown kind {kind}"
             )
             continue
@@ -352,7 +351,7 @@ def validate_assets(
             or not sources
             or not all(isinstance(item, str) and item for item in sources)
         ):
-            errors.append(
+            invalid(
                 f"{manifest_path}: export {index} has invalid sources"
             )
             continue
@@ -362,7 +361,7 @@ def validate_assets(
             or not runtime
             or not all(isinstance(item, str) and item for item in runtime)
         ):
-            errors.append(
+            invalid(
                 f"{manifest_path}: export {index} has invalid runtime"
             )
             continue
@@ -381,7 +380,8 @@ def validate_assets(
         subject = f"{manifest_path}: export {index}"
         source_roots = configured_roots(pipeline, "source_roots")
         runtime_roots = validate_destination(
-            root, entry.get("destination"), pipeline, tracked, subject, errors
+            root, entry.get("destination"), pipeline, tracked, subject, errors,
+            coherence_errors,
         )
         validate_pipeline_extensions(pipeline, source_paths, "source", subject, errors)
         validate_pipeline_extensions(pipeline, runtime_paths, "runtime", subject, errors)
@@ -447,6 +447,14 @@ def validate_assets(
                         f"{path}: runtime SVG is not plain SVG"
                     )
 
+    validate_asset_inventory(files, pipelines, mapped_runtime, manifest_path, errors)
+
+
+def validate_asset_inventory(
+    files: list[Path], pipelines: dict, mapped_runtime: set[str],
+    manifest_path: Path, errors: list[str],
+) -> None:
+    """Compare actual runtime inventory even when first adoption had no manifest."""
     # Only dedicated export locations promise complete inventory coverage.
     # Native resource directories also contain independently authored resources.
     inventory_roots = {
@@ -474,17 +482,23 @@ def validate_assets(
             )
 
 
-def collect_errors(root: Path, include_storage: bool = True) -> list[PolicyError]:
+def collect_errors(
+    root: Path, include_storage: bool = True, policy: dict | None = None,
+    coherence_errors: list[str] | None = None,
+) -> list[PolicyError]:
     """Collect typed line violations and exact, unordered diagnostics."""
-    policy = load_policy(root)
+    first_adoption_baseline = policy is not None
+    policy = load_policy(root) if policy is None else policy
     files = tracked_files(root)
     errors: list[PolicyError] = []
 
     validate_structure(root, policy, files, errors)
     validate_json(root, files, errors)
-    validate_assets(root, policy, files, errors)
+    validate_assets(root, policy, files, errors, first_adoption_baseline, coherence_errors)
     if include_storage:
-        errors.extend(collect_storage_errors(root))
+        errors.extend(collect_storage_errors(
+            root, policy=policy if first_adoption_baseline else None,
+        ))
 
     return errors
 
@@ -675,6 +689,9 @@ def parse_args() -> argparse.Namespace:
         "--candidate-ref",
         help="inspect all content from this stored Git tree (storage defaults to the index)",
     )
+    evidence = parser.add_mutually_exclusive_group()
+    evidence.add_argument("--pr-body-file", type=Path, help="local PR adoption evidence")
+    evidence.add_argument("--event-path", type=Path, help="hosted PR event and adoption evidence")
     return parser.parse_args()
 
 
@@ -688,11 +705,27 @@ def main() -> int:
             # uses the frozen index; CI explicitly selects its stored merge candidate.
             content_root = candidate.root if args.candidate_ref else ROOT
             print(f"repository-policy: storage candidate tree {candidate.tree}")
-            errors = collect_errors(content_root, include_storage=False)
+            baseline_sha = None
             if args.baseline_ref:
                 baseline, baseline_sha = contexts.enter_context(detached_checkout(args.baseline_ref))
+            bootstrap = first_adoption(args.pr_body_file, args.event_path, baseline_sha)
+            manifest_errors: list[str] = []
+            errors = collect_errors(
+                content_root, include_storage=False,
+                coherence_errors=manifest_errors if bootstrap else None,
+            )
+            if args.baseline_ref:
                 changed = changed_files(baseline_sha, args.candidate_ref)
-                if changed & CHECKER_CONTRACT_PATHS:
+                if bootstrap:
+                    policy = load_policy(content_root)
+                    manifest_path = Path(policy["assets"]["manifest"])
+                    if manifest_path not in tracked_files(content_root):
+                        manifest_errors.append(f"{manifest_path}: manifest must be tracked")
+                    errors = new_policy_errors(errors, collect_errors(
+                        baseline, include_storage=False, policy=policy,
+                    ))
+                    errors.extend(error for error in manifest_errors if error not in errors)
+                elif changed & CHECKER_CONTRACT_PATHS:
                     baseline_errors = baseline_policy_errors(baseline)
                     errors = new_policy_errors(errors, baseline_errors, strict=True)
                     errors.extend(
@@ -706,8 +739,10 @@ def main() -> int:
                     errors = new_policy_errors(
                         errors, collect_errors(baseline, include_storage=False)
                     )
-            errors.extend(storage_policy_errors(ROOT, args.baseline_ref, candidate.tree))
-            if args.baseline_ref and changed & CHECKER_CONTRACT_PATHS:
+            errors.extend(storage_policy_errors(
+                ROOT, args.baseline_ref, candidate.tree, first_adoption=bootstrap,
+            ))
+            if args.baseline_ref and not bootstrap and changed & CHECKER_CONTRACT_PATHS:
                 errors.extend(historical_storage_errors(ROOT, baseline_sha, candidate.tree))
     except (OSError, subprocess.CalledProcessError, ValueError, KeyError) as exc:
         print(

@@ -113,6 +113,31 @@ class AdoptionPlanTests(unittest.TestCase):
     def plan(self, **kwargs):
         return create_plan("owner/game", self.root, api=self.api, **kwargs)
 
+    def test_first_adoption_planning_preserves_actual_non_framework_states(self):
+        """Plan both first-adoption cases without installing historical tooling."""
+        independent = self.root / "PROJECT_RULES.md"
+        for governance in (None, "Only project maintainers may publish builds.\n"):
+            with self.subTest(independent_governance=governance is not None):
+                if governance is not None:
+                    independent.write_text(governance, encoding="utf-8")
+                    self.git("add", independent.name)
+                    self.git("commit", "-m", "Independent project authority")
+                baseline = self.git("rev-parse", "HEAD")
+                before = self.snapshot()
+                plan = self.plan(
+                    lineage=baseline,
+                    lineage_reason="Actual project source and authority before adoption.",
+                    outcomes=["Adopt current governance after authority characterization."],
+                )
+                self.assertEqual(plan["mode"], "plan")
+                self.assertEqual(plan["recovery"]["selected_lineage"], baseline)
+                self.assertEqual(self.snapshot(), before)
+                for path in ("PROJECT_POLICY.toml", "tools/ci/check_repo.py"):
+                    self.assertFalse((self.root / path).exists())
+                if governance is not None:
+                    self.assertEqual(independent.read_text(encoding="utf-8"), governance)
+                self.assertTrue(all(method == "GET" for method, _, _ in self.api.calls))
+
     def historical_releases(self, count):
         """Provide real historical refs with a distinct source tree in one batch."""
         blob = self.git("hash-object", "-w", "--stdin", input="older source\n")
