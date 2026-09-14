@@ -4,6 +4,7 @@ import subprocess
 import unittest
 from copy import deepcopy
 from unittest.mock import patch
+from urllib.parse import unquote
 
 from tools.setup_github import (
     REQUIRED_LABELS,
@@ -29,11 +30,14 @@ class FakeApi:
     ):
         self.dev_sha = dev_sha
         self.main_sha = main_sha
-        self.labels = [
-            {"name": name}
-            for name in labels
-        ]
+        self.labels = [{"name": name} for name in labels]
         self.rulesets = list(rulesets)
+        self.rule_details = {
+            item["id"]: dict(item)
+            for item in self.rulesets
+            if isinstance(item, dict) and isinstance(item.get("id"), int)
+        }
+        self.metadata = dict(REPOSITORY_SETTINGS)
         self.calls = []
 
     def __call__(self, method, endpoint, payload=None):
@@ -51,11 +55,54 @@ class FakeApi:
         ):
             return self._ref("main", self.main_sha)
 
+        if method == "GET" and endpoint == "repos/owner/game":
+            return deepcopy(self.metadata)
+
         if method == "GET" and "/labels?" in endpoint:
             return deepcopy(self.labels)
 
         if method == "GET" and "/rulesets?" in endpoint:
             return deepcopy(self.rulesets)
+
+        if method == "GET" and "/rulesets/" in endpoint:
+            return deepcopy(self.rule_details[int(endpoint.rsplit("/", 1)[1])])
+
+        if method == "POST" and endpoint.endswith("/git/refs"):
+            self.main_sha = payload["sha"]
+            return {}
+
+        if method == "PATCH" and endpoint == "repos/owner/game":
+            self.metadata.update(payload)
+            return deepcopy(self.metadata)
+
+        if method == "POST" and endpoint == "repos/owner/game/labels":
+            self.labels.append(dict(payload))
+            return {}
+
+        if method == "PATCH" and "/labels/" in endpoint:
+            name = unquote(endpoint.rsplit("/", 1)[1])
+            current = next(item for item in self.labels if item["name"] == name)
+            current.update(payload)
+            if "new_name" in payload:
+                current["name"] = payload["new_name"]
+            return {}
+
+        if method == "POST" and endpoint == "repos/owner/game/rulesets":
+            ruleset = {"id": 100 + len(self.rulesets), **dict(payload)}
+            self.rulesets.append({"id": ruleset["id"], "name": ruleset["name"]})
+            self.rule_details[ruleset["id"]] = ruleset
+            return {}
+
+        if method == "PUT" and "/rulesets/" in endpoint:
+            ruleset_id = int(endpoint.rsplit("/", 1)[1])
+            self.rule_details[ruleset_id] = {
+                "id": ruleset_id,
+                **dict(payload),
+            }
+            for summary in self.rulesets:
+                if summary.get("id") == ruleset_id:
+                    summary.update({"name": payload["name"]})
+            return {}
 
         return {}
 
@@ -421,6 +468,21 @@ class ConfigureRepositoryTests(unittest.TestCase):
                 and payload["name"] == "main-release"
                 for method, endpoint, payload in api.calls
             )
+        )
+
+    def test_rerun_reconciles_without_creating_duplicate_resources(self):
+        api = FakeApi()
+
+        configure_repository("owner/game", api=api)
+        api.calls.clear()
+        messages = configure_repository("owner/game", api=api)
+
+        self.assertFalse(
+            any(method == "POST" for method, _, _ in api.calls)
+        )
+        self.assertIn(
+            "verified repository settings, branches, required labels, and rulesets",
+            messages,
         )
 
     def test_missing_dev_fails_before_writes(self):

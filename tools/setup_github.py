@@ -242,21 +242,36 @@ def exact_ref_sha(
     return sha
 
 
+def paged_list(
+    api: ApiCall,
+    endpoint: str,
+) -> list[JsonObject]:
+    """Read complete finite inventories instead of assuming the first page."""
+    values: list[JsonObject] = []
+    separator = "&" if "?" in endpoint else "?"
+    page = 1
+    while True:
+        response = api(
+            "GET",
+            f"{endpoint}{separator}per_page=100&page={page}",
+            None,
+        )
+        if not isinstance(response, list):
+            raise SetupError(f"unexpected inventory response for {endpoint}")
+        values.extend(item for item in response if isinstance(item, dict))
+        if len(response) < 100:
+            return values
+        page += 1
+
+
 def ensure_labels(
     api: ApiCall,
     repo: str,
 ) -> list[str]:
-    response = api(
-        "GET",
-        f"repos/{repo}/labels?per_page=100",
-        None,
-    )
-
-    if not isinstance(response, list):
-        raise SetupError("unexpected labels response")
+    response = paged_list(api, f"repos/{repo}/labels")
 
     existing = {
-        item.get("name")
+        item["name"]: item
         for item in response
         if isinstance(item, dict)
         and isinstance(item.get("name"), str)
@@ -283,8 +298,11 @@ def ensure_labels(
                 "description": target["description"],
             },
         )
-        existing.remove(old_name)
-        existing.add(new_name)
+        del existing[old_name]
+        existing[new_name] = {
+            **existing.get(new_name, {}),
+            **target,
+        }
         messages.append(
             f"renamed label {old_name} to {new_name}"
         )
@@ -292,24 +310,31 @@ def ensure_labels(
     for label in REQUIRED_LABELS:
         name = label["name"]
 
-        if name in existing:
+        current = existing.get(name)
+
+        if current is not None:
             payload: JsonObject = {
                 "new_name": name,
                 "color": label["color"],
                 "description": label["description"],
             }
-            api(
-                "PATCH",
-                f"repos/{repo}/labels/{quote(name, safe='')}",
-                payload,
-            )
-            messages.append(f"updated label {name}")
+            if any(current.get(key) != value for key, value in label.items()):
+                api(
+                    "PATCH",
+                    f"repos/{repo}/labels/{quote(name, safe='')}",
+                    payload,
+                )
+                messages.append(f"updated label {name}")
+                existing[name] = {**current, **label}
+            else:
+                messages.append(f"kept label {name}")
         else:
             api(
                 "POST",
                 f"repos/{repo}/labels",
                 dict(label),
             )
+            existing[name] = dict(label)
             messages.append(f"created label {name}")
 
     return messages
@@ -320,14 +345,10 @@ def install_rulesets(
     repo: str,
     recipes: Sequence[JsonObject],
 ) -> list[str]:
-    response = api(
-        "GET",
-        f"repos/{repo}/rulesets?includes_parents=false&per_page=100",
-        None,
+    response = paged_list(
+        api,
+        f"repos/{repo}/rulesets?includes_parents=false",
     )
-
-    if not isinstance(response, list):
-        raise SetupError("unexpected rulesets response")
 
     messages: list[str] = []
 
@@ -353,12 +374,22 @@ def install_rulesets(
                     f"ruleset {name} has no numeric id"
                 )
 
-            api(
-                "PUT",
+            current = api(
+                "GET",
                 f"repos/{repo}/rulesets/{ruleset_id}",
-                recipe,
+                None,
             )
-            messages.append(f"updated ruleset {name}")
+            if not isinstance(current, dict) or any(
+                current.get(key) != value for key, value in recipe.items()
+            ):
+                api(
+                    "PUT",
+                    f"repos/{repo}/rulesets/{ruleset_id}",
+                    recipe,
+                )
+                messages.append(f"updated ruleset {name}")
+            else:
+                messages.append(f"kept ruleset {name}")
         else:
             api(
                 "POST",
@@ -370,6 +401,75 @@ def install_rulesets(
     return messages
 
 
+def verify_configuration(
+    api: ApiCall,
+    repo: str,
+    recipes: Sequence[JsonObject],
+    created_main_sha: str | None = None,
+) -> list[str]:
+    """Verify every configured GitHub contract after the writes complete."""
+    metadata = api("GET", f"repos/{repo}", None)
+    if not isinstance(metadata, dict):
+        raise SetupError("unexpected repository settings response during verification")
+    for key, expected in REPOSITORY_SETTINGS.items():
+        if metadata.get(key) != expected:
+            raise SetupError(
+                f"repository setting {key} did not reach the expected value"
+            )
+
+    for branch in ("dev", "main"):
+        branch_sha = exact_ref_sha(api, repo, branch)
+        if branch_sha is None:
+            raise SetupError(f"branch {branch} was not observable after setup")
+        if branch == "main" and created_main_sha is not None and branch_sha != created_main_sha:
+            raise SetupError("main was not created from the observed dev commit")
+
+    labels = paged_list(api, f"repos/{repo}/labels")
+    labels_by_name = {
+        item["name"]: item
+        for item in labels
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    for label in REQUIRED_LABELS:
+        current = labels_by_name.get(label["name"])
+        if current is None or any(
+            current.get(key) != value for key, value in label.items()
+        ):
+            raise SetupError(f"label {label['name']} did not reach the expected value")
+
+    rulesets = paged_list(
+        api,
+        f"repos/{repo}/rulesets?includes_parents=false",
+    )
+    for recipe in recipes:
+        matches = [
+            item for item in rulesets
+            if isinstance(item, dict) and item.get("name") == recipe["name"]
+        ]
+        if len(matches) != 1:
+            raise SetupError(
+                f"ruleset {recipe['name']} was not uniquely observable after setup"
+            )
+        ruleset_id = matches[0].get("id")
+        if not isinstance(ruleset_id, int):
+            raise SetupError(f"ruleset {recipe['name']} has no numeric id")
+        detail = api(
+            "GET",
+            f"repos/{repo}/rulesets/{ruleset_id}",
+            None,
+        )
+        if not isinstance(detail, dict) or any(
+            detail.get(key) != value for key, value in recipe.items()
+        ):
+            raise SetupError(
+                f"ruleset {recipe['name']} did not reach the expected value"
+            )
+
+    return [
+        "verified repository settings, branches, required labels, and rulesets",
+    ]
+
+
 def configure_repository(
     repo: str,
     api: ApiCall = github_api,
@@ -377,6 +477,7 @@ def configure_repository(
 ) -> list[str]:
     recipes = load_rulesets(ruleset_paths)
     messages: list[str] = []
+    created_main_sha = None
 
     dev_sha = exact_ref_sha(api, repo, "dev")
 
@@ -389,6 +490,7 @@ def configure_repository(
     main_sha = exact_ref_sha(api, repo, "main")
 
     if main_sha is None:
+        created_main_sha = dev_sha
         api(
             "POST",
             f"repos/{repo}/git/refs",
@@ -410,6 +512,7 @@ def configure_repository(
 
     messages.extend(ensure_labels(api, repo))
     messages.extend(install_rulesets(api, repo, recipes))
+    messages.extend(verify_configuration(api, repo, recipes, created_main_sha))
 
     return messages
 
@@ -423,6 +526,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "bootstrap":
+        sys.dont_write_bytecode = True
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from tools.greenfield_bootstrap import main as bootstrap_main
+
+        return bootstrap_main(argv[1:])
     if argv and argv[0] == "adopt-existing":
         # Planning must not create import caches in the inspected repository.
         sys.dont_write_bytecode = True
@@ -435,8 +545,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         description=(
-            "Configure a repository created from this template. "
-            "For an existing repository use adopt-existing --help."
+            "Configure a repository created from this template. Use bootstrap "
+            "for a greenfield GameMaker folder and adopt-existing for an "
+            "existing repository."
         )
     )
     parser.add_argument(

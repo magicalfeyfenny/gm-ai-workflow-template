@@ -1,200 +1,197 @@
-# Setup after creating a repository
+# Greenfield bootstrap
 
-Use this checklist for a repository generated from this GameMaker workflow
-template.
+Use this procedure when starting a repository from a valid GameMaker project
+or from a repository freshly generated from this template. The bootstrap
+installs the current repository-local framework, verifies it, and configures
+the applicable GitHub settings when the remote state and credentials permit
+it.
 
-For an existing repository, start with the read-only
-[adoption and recovery plan](ADOPTION.md). That route inventories current
-state, establishes the framework comparison, and verifies an existing release
-before proposing separately authorized changes. Do not run the generated-repository
-bootstrap as an adoption probe.
-
-To update policy in an already-adopted repository, use the
+This is a greenfield route. It does not adopt, overwrite, or reconcile an
+existing governance system. For a repository with meaningful governance,
+earlier framework lineage, or uncertain partial setup, use the read-only
+[adoption and recovery plan](ADOPTION.md) instead. An already-adopted
+repository taking a newer framework revision uses the
 [bounded policy-update procedure](POLICY_UPDATE.md).
 
-This document owns setup procedure. Repository-change lifecycle policy remains
-in [GOVERNANCE.md](../GOVERNANCE.md#authority).
+Repository-change lifecycle rules remain authoritative in
+[GOVERNANCE.md](../GOVERNANCE.md#authority). The bootstrap is a setup tool, not
+a second policy authority or an adoption registry.
 
 ## Prerequisites
 
-Install:
+Install and authenticate:
 
 - Git;
 - Git LFS;
-- Python 3.12 or later;
-- GitHub CLI (`gh`).
+- Python 3.12 or later; and
+- GitHub CLI (`gh`) when GitHub configuration is wanted.
 
-Authenticate `gh` as a repository administrator. The authenticated identity
-needs repository Administration, Contents, and Issues write access so the
-setup tool can configure settings and rulesets, create `main`, and manage
-labels.
+The GitHub identity used for configuration needs permission to read and update
+repository settings, labels, and rulesets. If the identity lacks a capability,
+the tool leaves the local work resumable and reports the missing operation.
 
+## Run the bootstrap
+
+From a trusted clone of this template, run one of these paths.
+
+### Existing GameMaker folder
+
+The folder may already contain a Git repository. It may also be unversioned;
+the tool initializes one with `dev` as its initial branch in that case. The
+GameMaker project stays where it is.
+
+```sh
+python3.12 /path/to/gm-ai-workflow-template/tools/setup_github.py bootstrap \
+  --source-root /path/to/gm-ai-workflow-template \
+  --root /path/to/my-game \
+  --repo OWNER/REPOSITORY
+```
+
+If the GitHub repository is not ready yet, intentionally perform the local
+portion first:
+
+```sh
+python3.12 /path/to/gm-ai-workflow-template/tools/setup_github.py bootstrap \
+  --source-root /path/to/gm-ai-workflow-template \
+  --root /path/to/my-game \
+  --no-github
+```
+
+Review the result, stage and commit the project and framework files on `dev`,
+push that branch to the intended GitHub repository, and rerun without
+`--no-github` to configure and verify the hosted settings.
+
+### Repository generated from this template
+
+Clone the generated repository and run the same command from its root. The
+repository name is inferred from a GitHub `origin` when possible, so the
+explicit `--repo` argument is optional.
+
+```sh
+cd /path/to/generated-repository
+python3.12 tools/setup_github.py bootstrap --repo OWNER/REPOSITORY
+```
+
+This path recognizes the framework already present in the generated tree,
+verifies it, and performs the GitHub setup. It does not move an existing
+`main`; `main` is created from the observed `dev` commit only when absent.
+
+Use `--dry-run --json` to inspect classification and planned local writes
+without initializing Git, changing files, or calling GitHub:
+
+```sh
+python3.12 tools/setup_github.py bootstrap \
+  --root /path/to/my-game --dry-run --json
+```
+
+## What the tool establishes
+
+The source tree is read directly from the trusted template checkout. The
+bootstrap installs the current canonical Governance, policy, repository-local
+skills, validation and CI tooling, issue/PR support, ruleset recipes, setup
+documentation, Codex prompt templates, and framework asset-policy scaffolding.
+It also merges the canonical storage lines into an existing `.gitignore` or
+`.gitattributes` without discarding project-specific lines.
+
+Existing project content is preserved. In particular, the tool discovers valid
+`.yyp` or legacy `.gmx` projects in place, does not move or rewrite them,
+preserves an existing asset export manifest, and keeps a project README while
+adding one idempotent link to setup, adoption, and policy-update guidance.
+Existing framework files are left unchanged when identical. A conflicting
+framework authority is never silently replaced.
+
+## Classification and output
+
+The command classifies the target before writing:
+
+| Classification | Meaning | Action |
+| --- | --- | --- |
+| `greenfield` | A valid GameMaker project exists without meaningful framework authority. | Install the framework. |
+| `partial-framework` | Existing files are an explicit subset of the current framework. | Complete the missing framework files. |
+| `current-framework` | The current framework is already present. | Verify and configure only what is applicable. |
+| `independent` | Existing project governance or automation would be overwritten by greenfield setup. | Stop and use `adopt-existing --plan`. |
+| `ambiguous` | A framework-shaped conflict, invalid project, or incomplete evidence cannot be classified safely. | Stop and resolve the comparison basis. |
+
+The report separates local work, GitHub work, validation, and remaining human
+actions. Exit status `0` means the requested local and hosted portions passed
+or were explicitly skipped with `--no-github`; `1` means setup is incomplete
+or blocked and can be resumed; `2` means the command or target was invalid.
+The command never treats a permission failure, missing `dev`, validation
+failure, or ambiguous lineage as success.
 
 ## Configure GitHub
 
-1. Create the repository from this template. Its initial branch must be the
-   template's default `dev` branch.
-   When creating the repository, do not select "Include all branches".
-   Generate it from the template's default `dev` branch only.
-2. Clone the generated repository and enter its root directory.
-3. Initialize Git LFS for the local account:
+When a repository is supplied or inferred, the existing
+[setup tool](../tools/setup_github.py) updates and then verifies:
 
-   ```sh
-   git lfs install
-   ```
+- `dev` as the default branch;
+- `main` created from `dev` only when it is absent;
+- squash merging and auto-merge enabled;
+- merge commits, rebase merges, and automatic branch deletion disabled;
+- the labels in `REQUIRED_LABELS`; and
+- the active `dev-protection` and `main-release` ruleset recipes.
 
-4. Check GitHub CLI authentication:
-
-   ```sh
-   gh auth status
-   ```
-
-5. Run the bootstrap tool with the generated repository's full name:
-
-   ```sh
-   python3.12 tools/setup_github.py --repo OWNER/REPOSITORY
-   ```
-
-The tool requires an explicit repository name. It creates `main` from the
-current `dev` commit only when `main` is absent, makes `dev` the default,
-enables squash merging and auto-merge, disables merge commits, rebase merges,
-and automatic branch deletion, ensures the governance labels defined by
-`REQUIRED_LABELS` in the [bootstrap tool](../tools/setup_github.py), and
-installs the active `dev-protection` and `main-release` rulesets.
-
-The tool creates the labels used by the Governance
-[low-risk](../GOVERNANCE.md#low-risk-changes),
-[manual](../GOVERNANCE.md#manual-and-high-risk-changes), and
-[blocked-work](../GOVERNANCE.md#milestone-commits-and-draft-publication) paths.
-It renames a legacy `blocked` label to `work:blocked`, preserving assignments
-when the new name is absent. See
-[Inventory authority](../GOVERNANCE.md#inventory-authority) for the shared
-inventory rule.
-
-Both rulesets grant repository administrators pull-request-only bypass.
-[Human-created changes](../GOVERNANCE.md#human-created-changes) owns the limits
-on that bypass and protected-branch behavior.
-
-The tool is safe to rerun: it never moves an existing `main`, and it updates
-the named labels and rulesets in place. Review its output if it reports that
-`main` already existed.
-
-## Configure governed merge authentication
-
-The built-in Actions `GITHUB_TOKEN` cannot provide the identity context needed
-for GitHub-native linked-issue closure when the low-risk workflow performs the
-merge. Configure a dedicated GitHub App for that final merge call:
-
-1. Register a private GitHub App owned by the repository owner. Disable
-   webhooks and grant no account or organization permissions.
-2. Grant exactly these repository permissions:
-   - Contents: read and write;
-   - Issues: read and write;
-   - Pull requests: read and write.
-   Metadata read access is implicit.
-3. Install the App only on the generated repository. Do not grant access to
-   other repositories.
-4. Add the App client ID as the repository Actions variable
-   `GOVERNED_MERGE_APP_CLIENT_ID`.
-5. Generate a private key and store the complete PEM as the repository Actions
-   secret `GOVERNED_MERGE_APP_PRIVATE_KEY`. Never commit the key.
-
-Provisioning, installation, private-key rotation, and revocation are
-human-owned setup steps. The workflow uses the built-in job token for CI
-evidence, current-PR reads, readiness, and stale auto-merge revocation. It
-mints a separate installation token limited to the current repository and the
-three permissions above, uses it only for the final exact-head merge, and
-revokes it when the job ends. No personal access token is required or
-supported. If the App variable or secret is absent, automatic low-risk merging
-fails closed before the merge call.
-
-After provisioning, verify this identity path with one fresh, bounded
-documentation-only issue and low-risk pull request targeting `dev`. Let the
-repository automation mark the pull request ready and merge its exact head;
-do not manually ready, merge, or close it. Confirm that Required CI used the
-current pull-request metadata, the App performed the merge, and GitHub natively
-closed the linked issue. Preserve the issue, pull request, and workflow-run
-evidence if any part of that smoke check fails.
-
-## Register pinned imported libraries
-
-Follow [Source structure](../GOVERNANCE.md#source-structure) when a pinned,
-read-only imported source file needs an exception. Add an authorized exact path
-to `structure.large_file_exceptions` in `PROJECT_POLICY.toml`:
-
-```toml
-large_file_exceptions = [
-    "project/game/scripts/vendor_library/vendor_library.gml",
-]
-```
-
-Register the exception as bounded governed work, then run the validation below.
+The tool does not create a GitHub repository, push commits, move an existing
+branch, install a GitHub App, or make security and ownership decisions. Those
+steps remain human-owned. If configuration stops after some successful API
+calls, rerun the same command after fixing the reported permission or branch
+condition; named settings, labels, and rulesets are reconciled in place.
 
 ## Validate the generated repository
 
-Create a local virtual environment and install the pinned test dependencies:
+After local installation, the tool freezes the working tree into a temporary
+candidate Git index and runs:
 
 ```sh
-python3.12 -m venv .venv
-source .venv/bin/activate
-python3.12 -m pip install -r tools/tests/requirements.txt
-```
-
-Stage the intended files first. From the generated repository root, run:
-
-```sh
-python3.12 tools/ci/check_repo.py
+python3.12 tools/ci/check_repo.py --candidate-ref CANDIDATE_TREE
 python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
-git diff --check
 ```
 
-The checker reports the staged storage tree. Existing content checks read the
-working tree; use `--candidate-ref HEAD` to inspect a committed candidate for
-both. Configure hygiene, exact file exceptions, and any additional raw-size
-classes in `[storage]` and `[storage.lfs]`; see
-[Candidate storage](../GOVERNANCE.md#candidate-storage).
+The real index and working-tree contents are not staged by this verification.
+The candidate must pass both checks before the tool attempts hosted mutation.
+`--skip-tests` is available only for diagnosis; it reports incomplete and does
+not configure GitHub.
 
-For a committed candidate, obtain separate object-integrity evidence with:
+The label set is the executable inventory used by the setup tool. Its shared
+authority is the [Inventory authority](../GOVERNANCE.md#inventory-authority)
+rule; the setup command does not maintain a second label count in this guide.
 
-```sh
-python3.12 tools/ci/check_lfs_integrity.py --candidate-ref HEAD
-```
+## Remaining human-owned setup
 
-Use `--fetch-remote origin` when the candidate's LFS objects must be fetched
-into the check's temporary store. The JSON result distinguishes successful
-evidence, disabled or inapplicable checks, unsupported capability, and failure.
-It does not modify the author's LFS objects or migrate repository history.
+The bootstrap cannot safely decide or perform actions that require project
+ownership, credentials, security boundaries, or product decisions. Review and
+complete the reported items that apply:
 
-## Remaining manual setup
+1. Create or select the GitHub repository, review the project and framework
+   files, commit the intended tree to `dev`, and push it before hosted setup.
+2. Install and authenticate Git LFS when the project uses configured binary
+   asset formats.
+3. Initialize or extend the GameMaker project tests and pin the required
+   GM-Testing-Library release. Connect game-specific hosted runners and secrets
+   through the [CI extension procedure](CI.md).
+4. Create Codex scheduled automations deliberately in the Codex app, choosing
+   their schedule and execution identity. Use the
+   [Project Steward template](../templates/codex/project-steward.txt) for
+   evidence-backed issue audits and the
+   [Governed Change template](../templates/codex/governed-change.txt) for
+   executing one existing issue at a time.
+5. If automatic low-risk merging is wanted, provision the dedicated GitHub App
+   described in [governed merge authentication](#configure-governed-merge-authentication).
 
-The GitHub bootstrap tool does not perform these project-specific or
-human-owned steps:
+### Configure governed merge authentication
 
-1. Initialize the GameMaker project under `project/`.
-2. Download the latest GM-Testing-Library release when the GameMaker project
-   is initialized, pin that version, and add the project's GameMaker tests.
-3. In Codex, manually create whichever scheduled automations the generated
-   repository should use. Choose each automation's schedule and execution
-   identity:
-   - Project Steward uses
-     [templates/codex/project-steward.txt](../templates/codex/project-steward.txt)
-     to audit the repository and create evidence-backed issues without changing
-     implementation.
-   - Governed Change uses
-     [templates/codex/governed-change.txt](../templates/codex/governed-change.txt)
-     to select at most one eligible existing issue and execute its governed
-     workflow.
-   Keep these automations separate: Project Steward creates and tracks
-   actionable issue work, while Governed Change executes one existing
-   agent-workable issue.
-4. Add any game-specific hosted runner configuration or secrets needed by the
-   GameMaker tests, then connect the suite through the
-   [required Tests extension procedure](CI.md). Do not infer visual or runtime
-   success from the Python policy checks.
+The low-risk merge workflow needs a repository-scoped GitHub App for its final
+linked-issue merge call. A human repository owner must register and install a
+private App with only Contents, Issues, and Pull requests read/write access,
+then store its client ID as `GOVERNED_MERGE_APP_CLIENT_ID` and its complete PEM
+private key as `GOVERNED_MERGE_APP_PRIVATE_KEY`. Never commit the key. Verify
+the identity path with a fresh bounded low-risk documentation change, as
+described in the existing workflow policy; provisioning and revocation remain
+human-owned.
 
-If the bootstrap tool completes successfully, no manual GitHub branch,
-default-branch, merge-strategy, label, or ruleset configuration remains.
+## Pinned imported libraries
 
-Repository-local Codex skills are stored directly under `.agents/skills/`.
-They are included automatically when the repository is created from this
-template.
+When a pinned, read-only imported source file needs a large-file exception,
+follow [Source structure](../GOVERNANCE.md#source-structure) and register its
+exact path in `structure.large_file_exceptions`. Do not use bootstrap to hide
+ordinary source growth or to replace a project-owned library.
