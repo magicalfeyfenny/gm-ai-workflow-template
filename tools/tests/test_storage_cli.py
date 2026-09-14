@@ -10,7 +10,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CHECKER_FILES = ("check_repo.py", "candidate_git.py", "storage_policy.py")
+CHECKER_FILES = (
+    "check_repo.py", "candidate_git.py", "storage_policy.py",
+    "adoption_basis.py", "asset_manifest.py",
+)
 LFS_POINTER = (
     "version https://git-lfs.github.com/spec/v1\n"
     f"oid sha256:{'a' * 64}\n"
@@ -238,7 +241,7 @@ class StorageCliTests(unittest.TestCase):
             + "\n# Simulate a candidate checker that removes all storage rules.\n"
             + "def collect_storage_errors(root, ref=None, policy=None):\n"
             + "    return []\n"
-            + "def storage_policy_errors(root, baseline_ref=None, candidate_ref=None):\n"
+            + "def storage_policy_errors(*args, **kwargs):\n"
             + "    return []\n",
             encoding="utf-8",
         )

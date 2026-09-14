@@ -369,6 +369,22 @@ class GovernanceRoutingTests(unittest.TestCase):
             (ROOT / ".agents/skills/governed-change/SKILL.md").resolve(),
         }.issubset(targets))
 
+    def test_adoption_comparison_routes_to_shared_authority_and_existing_update(self):
+        """Prove route reachability, leaving lineage interpretation to evidence."""
+        adoption = ROOT / "docs/ADOPTION.md"
+        update = ROOT / "docs/POLICY_UPDATE.md"
+        for source in (adoption, update):
+            with self.subTest(source=source):
+                self.assertIn("framework-adoption-lineage", governance_fragments(source))
+        self.assertTrue({
+            "validation-evidence", "issue-contract-evidence", "risk",
+        }.issubset(governance_fragments(adoption)))
+        self.assertIn(
+            (adoption.resolve(), "establish-the-framework-comparison"),
+            local_destinations(update),
+        )
+        self.assertIn(update.resolve(), {path for path, _ in local_destinations(adoption)})
+
     def test_policy_correction_evidence_is_reachable_from_work_and_pr_routes(self):
         """Check authority reachability, not interpretation or future obedience."""
         for source in (

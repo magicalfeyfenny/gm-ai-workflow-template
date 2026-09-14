@@ -32,14 +32,56 @@ fixed identifiers, or protocol requirements. Dated historical evidence and
 non-normative reports may record observed totals; those measurements do not
 become ongoing inventory requirements.
 
+## Framework adoption lineage
+
+Before first adoption or an update of this governance, characterize the
+repository's existing authority and framework lineage read-only. Governance
+existence is not framework lineage. Existing files, names, terminology, and
+textual similarity are evidence to inspect, not proof of prior adoption or its
+absence. Distinguish these cases:
+
+| State | Required comparison and authority treatment |
+| --- | --- |
+| First adoption in an ungoverned brownfield | Establish that the repository has neither meaningful prior governance nor a prior adoption of this framework. Compare the current candidate with its actual immutable pre-adoption state under the candidate rules. Historical framework machinery that never existed is not required. |
+| First adoption with independent existing governance | Establish the existing rules as independent project authority. Reconcile incoming policy semantically against that authority before mutation, identifying conflicts, overlaps, gaps, superseded wording, and intentional project differences. Preserve independently established project rules unless current human direction or stronger project evidence supersedes them. Historical template checker/policy artifacts are not required. |
+| Update of an earlier adoption of this governance | Establish the real prior adopted upstream revision and adoption evidence, then follow [Policy updates](#policy-updates). Preserve its historical comparison and completion-evidence requirements. |
+| Ambiguous states | Characterize incomplete, partial, conflicting, or otherwise uncertain evidence. Resolve the comparison basis, or explicitly establish which authority is independent, before implementation proceeds on an adoption basis or claims completion. Never silently classify ambiguity as first adoption or infer an update from resemblance. |
+
+Use the [existing adoption procedure](docs/ADOPTION.md#establish-the-framework-comparison)
+and adoption PR to record the selected case, evidence, actual pre-adoption
+commit, incoming upstream repository/revision, and reconciliation decisions.
+For independent governance, record intentional differences and their authority;
+retain useful historical governance/history where appropriate and clearly
+distinguish it from current shared authority. Reconcile current shared rules
+into one authoritative Governance with routes linking to it. Do not silently
+replace independent authority with template wording.
+
+First-adoption validation applies candidate rules to the real pre-adoption
+state in memory and requires a coherent current framework candidate. It does
+not fabricate historical policy/checker files, treat absent machinery as a
+defect, or require installation of intermediate template revisions. Unrelated
+inherited imperfections keep the existing semantic non-worsening comparison;
+their existence creates no cleanup obligation. Historical existence alone
+does not create a [compatibility obligation](#compatibility-obligations).
+
+A comparison declaration records an evidence-backed decision; validating its
+syntax and commit binding does not prove the semantic authority judgment.
+Absence of a checker must never select first adoption automatically. This
+distinction grants no additional mutation, validation, completion, or merge
+authority and creates no separate registry or policy authority.
+
 ## Policy updates
 
-An adoption/update PR taking a newer upstream policy revision records the
+A PR updating an evidence-backed earlier adoption of this framework records the
 upstream repository, the previously adopted and newly selected immutable
 commit IDs, and the prior adoption evidence supporting the old revision.
 If the old revision is uncertain, identify that gap and resolve the bounded
 comparison basis from available adoption evidence before claiming the update
 complete; do not infer adoption from textual similarity.
+
+First adoption and ambiguous states use
+[Framework adoption lineage](#framework-adoption-lineage) before selecting a
+comparison path; they are not automatically updates of an earlier adoption.
 
 Bound the update to the changed upstream policy and the repository-owned
 consumers that actually encode it. Record the affected instruction, routing,

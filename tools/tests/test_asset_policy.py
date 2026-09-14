@@ -444,7 +444,10 @@ class AssetPolicyTests(unittest.TestCase):
         self.assertEqual(self.validate(), [])
         checker = self.root / "tools/ci/check_repo.py"
         checker.parent.mkdir(parents=True)
-        for name in ("check_repo.py", "candidate_git.py", "storage_policy.py"):
+        for name in (
+            "check_repo.py", "candidate_git.py", "storage_policy.py",
+            "adoption_basis.py", "asset_manifest.py",
+        ):
             shutil.copyfile(ROOT / "tools/ci" / name, checker.parent / name)
         self.write_file(
             "PROJECT_POLICY.toml",

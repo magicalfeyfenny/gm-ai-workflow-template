@@ -161,6 +161,7 @@ def introduced_errors(candidate: list[str], baseline: list[str]) -> list[str]:
 
 def storage_policy_errors(
     root: Path, baseline_ref: str | None = None, candidate_ref: str | None = None,
+    *, first_adoption: bool = False,
 ) -> list[str]:
     """Apply new enforcement to inherited state, while retaining old obligations."""
     with candidate_snapshot(root, candidate_ref) as candidate:
@@ -170,6 +171,10 @@ def storage_policy_errors(
             return errors
         with candidate_snapshot(root, baseline_ref) as baseline:
             errors = introduced_errors(errors, storage_errors(baseline, policy))
+            if first_adoption:
+                # The adoption record supplies authority for the incoming rules;
+                # this is actual prior content, not a historical framework policy.
+                return errors
             old_policy = candidate_policy(baseline)
             if storage_rules(policy) != storage_rules(old_policy):
                 errors.extend(

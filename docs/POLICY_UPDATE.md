@@ -1,7 +1,12 @@
 # Update policy in an adopted repository
 
-Use this procedure when an already-adopted repository takes a newer upstream
-governance or policy revision. [Policy updates](../GOVERNANCE.md#policy-updates)
+Use this procedure when a repository with evidence-backed earlier adoption of
+this framework takes a newer upstream governance or policy revision. First
+adoption in an ungoverned brownfield, first adoption with independent existing
+governance, and ambiguous states start at the
+[adoption comparison procedure](ADOPTION.md#establish-the-framework-comparison)
+under [Framework adoption lineage](../GOVERNANCE.md#framework-adoption-lineage).
+[Policy updates](../GOVERNANCE.md#policy-updates)
 owns the update contract; the existing
 [governed-change lifecycle](../.agents/skills/governed-change/SKILL.md) owns the
 implementation, evidence stages, and publication authority.
