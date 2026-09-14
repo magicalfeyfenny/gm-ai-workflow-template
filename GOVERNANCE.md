@@ -359,11 +359,14 @@ than actionable; leave it pending and allow the run to select at most one new
 eligible issue. Do not repeatedly retry an unavailable GUI or alter the pending
 continuation just to make progress appear possible.
 A continuation is pending for unavailable interactive validation only when
-that interactive validation is independently required by explicit human
-direction or by a concrete machine-verifiable runtime requirement permitted
-under Interactive runtime validation. Do not treat an agent-authored generic
-smoke test, subjective review, experiential acceptance, or human-observation
-requirement as a valid completion blocker.
+that interactive validation is independently required by the accepted issue
+contract through explicit human direction or by a concrete machine-verifiable
+runtime requirement permitted under
+[Interactive runtime validation](#interactive-runtime-validation). The PR
+body, handoff, risk label, or manual-path authority gate cannot create that
+requirement. Do not treat an agent-authored generic smoke test, subjective
+review, experiential acceptance, or human-observation requirement as a valid
+completion blocker.
 
 A continuation does not make an asset-primary issue eligible when its remaining
 primary deliverable still needs an unavailable capability. When the required
@@ -803,6 +806,13 @@ Include the accepted revision marker from
 Obtain Stage 3 hosted PR evidence for the final head and completion metadata
 before automation or final handoff.
 
+At the manual/high-risk handoff boundary, state human review, readiness, and
+merge as authority actions. They are not validation evidence and do not imply
+manual playtesting, visual review, experiential acceptance, or human
+observation. Include such a validation requirement or blocker only when it is
+explicit in the accepted issue contract; otherwise state that the contract has
+no manual or experiential validation requirement.
+
 ### Issue contract evidence
 
 The contract revision binds the governing issue's repository, immutable node
@@ -863,6 +873,10 @@ A high-risk PR is still committed, pushed, and published as a draft without
 separate authorization.
 
 A human must review the result, mark the PR ready, and merge it.
+These are authority gates, not validation requirements. The accepted issue
+contract controls validation; high risk or player-visible behavior alone does
+not add manual playtesting, visual review, experiential acceptance, or human
+observation to the handoff.
 
 ## Releases
 
