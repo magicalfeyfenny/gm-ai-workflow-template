@@ -14,6 +14,14 @@ At completion, record the accepted issue revision and marker under
 For an interpretive governance correction, include the applicable
 [policy correction boundary evidence](../GOVERNANCE.md#policy-correction-boundary-evidence).
 
+## Human gate
+
+For a high-risk or manual-path PR, human review, readiness, and merge are
+authority gates only. Do not list manual playtesting, visual review,
+experiential acceptance, or human observation as validation unless the accepted
+issue contract explicitly requires it. If it does not, state that no manual or
+experiential validation is required by the accepted issue contract.
+
 ## Scope
 
 List all systems or assets that were directly touched or affected, if any.

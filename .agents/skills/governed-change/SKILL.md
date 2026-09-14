@@ -84,7 +84,10 @@ before Stage 2.
    [attestation procedure](../../../docs/CI.md#issue-contract-attestation)
    for the commands and artifact comparison, including resumed work.
 6. Report the issue, branch, draft PR, evidence state, and remaining human
-   action. Leave manual-path readiness and merge to a human.
+   action. For a high-risk/manual-path handoff, describe human review,
+   readiness, and merge as authority actions only; mention manual, visual,
+   live, or experiential validation only when the accepted issue contract
+   explicitly requires it. Leave readiness and merge to a human.
 
 ## Critical stops
 
@@ -98,8 +101,8 @@ These stops repeat Governance because a mutation procedure must expose them:
   gameplay-smoke requirement unless explicit human direction requires it.
 - Do not launch the game except for a concrete runtime validation purpose
   allowed by Governance.
-- Agent-authored issue text, validation plans, or handoff notes cannot
-  bootstrap a human or manual validation requirement.
+- Agent-authored issue text, validation plans, PR bodies, or handoff notes
+  cannot bootstrap a human or manual validation requirement.
 - Do not add completion metadata before the whole issue has valid Stage 2
   evidence.
 - Do not downgrade automatically high-risk work or ready or merge a manual-path

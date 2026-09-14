@@ -12,6 +12,7 @@ VALIDATION_SURFACES = (
     ROOT / ".agents/skills/governed-change/SKILL.md",
     ROOT / ".agents/skills/project-steward/SKILL.md",
     ROOT / ".github/ISSUE_TEMPLATE/work-item.yml",
+    ROOT / ".github/pull_request_template.md",
     ROOT / "templates/codex/governed-change.txt",
     ROOT / "templates/codex/project-steward.txt",
 )
@@ -418,6 +419,71 @@ class GovernanceRoutingTests(unittest.TestCase):
             for pattern in SUPERSEDED_VALIDATION_PATTERNS:
                 with self.subTest(surface=surface, pattern=pattern.pattern):
                     self.assertIsNone(pattern.search(text))
+
+    def test_manual_handoff_separates_authority_from_validation(self):
+        """Keep high-risk authority gates out of the validation contract."""
+        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
+        completion = " ".join(
+            governance.split("## Completion transition", 1)[1].split(
+                "## Low-risk changes", 1
+            )[0].casefold().split()
+        )
+        for marker in (
+            "human review, readiness, and merge",
+            "authority actions",
+            "not validation evidence",
+            "accepted issue contract",
+            "no manual or experiential validation requirement",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, completion)
+
+        pull_request = " ".join(
+            (
+                ROOT / ".github/pull_request_template.md"
+            ).read_text(encoding="utf-8").casefold().split()
+        )
+        for marker in (
+            "authority gates only",
+            "accepted issue contract explicitly requires it",
+            "no manual or experiential validation",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, pull_request)
+
+    def test_scheduled_continuation_rejects_invented_manual_blockers(self):
+        """Do not let handoff text turn authority into continuation blocking."""
+        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
+        continuation = " ".join(
+            governance.split("## Scheduled continuation", 1)[1].split(
+                "## Branches", 1
+            )[0].casefold().split()
+        )
+        for marker in (
+            "accepted issue contract",
+            "pr body",
+            "handoff",
+            "risk label",
+            "manual-path authority gate",
+            "cannot create that requirement",
+            "agent-authored",
+            "valid completion blocker",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, continuation)
+
+        scheduled = " ".join(
+            (
+                ROOT / "templates/codex/governed-change.txt"
+            ).read_text(encoding="utf-8").casefold().split()
+        )
+        for marker in (
+            "accepted issue contract requires",
+            "authority actions, not validation blockers",
+            "agent-authored pr body or handoff",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, scheduled)
 
     def test_release_verification_names_concrete_machine_evidence(self):
         """Keep release verification tied to source, artifacts, and integrity."""
