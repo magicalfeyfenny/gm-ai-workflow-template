@@ -115,6 +115,28 @@ class GreenfieldBootstrapTests(unittest.TestCase):
         self.assertEqual(report["local"]["writes"], [])
         self.assertFalse((self.target / "tools/setup_github.py").exists())
 
+    def test_historical_non_core_framework_artifact_routes_to_adoption(self):
+        self.add_project()
+        self.init_git()
+        relative = "templates/codex/governed-change.txt"
+        target = self.target / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, target)
+        subprocess.run(
+            ["git", "-C", str(self.target), "add", relative],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(self.target), "commit", "--quiet", "-m", "Framework history"],
+            check=True,
+        )
+
+        report = self.run_bootstrap()
+
+        self.assertEqual(report["classification"]["classification"], "ambiguous")
+        self.assertIn(relative, report["classification"]["historical_framework_files"])
+        self.assertEqual(report["local"]["writes"], [])
+
     def test_historical_complete_current_framework_remains_resumable(self):
         for relative in framework_paths(ROOT):
             source = ROOT / relative
@@ -207,6 +229,51 @@ class GreenfieldBootstrapTests(unittest.TestCase):
 
         self.assertEqual(classification["classification"], "greenfield")
 
+    def test_project_only_validation_observes_uncommitted_framework_candidate(self):
+        self.add_project()
+        source = Path(self.temp.name) / "template"
+        shutil.copytree(
+            ROOT,
+            source,
+            ignore=shutil.ignore_patterns(
+                ".git", "__pycache__", ".venv", ".pytest_cache",
+            ),
+        )
+        shutil.rmtree(source / "tools/tests")
+        tests = source / "tools/tests"
+        tests.mkdir(parents=True)
+        (tests / "test_candidate_visibility.py").write_text(
+            "import subprocess\n"
+            "import unittest\n"
+            "from pathlib import Path\n\n"
+            "ROOT = Path(__file__).resolve().parents[2]\n\n"
+            "class CandidateVisibilityTests(unittest.TestCase):\n"
+            "    def test_framework_bundle_is_in_candidate_index(self):\n"
+            "        self.assertTrue((ROOT / 'AGENTS.md').is_file())\n"
+            "        result = subprocess.run(\n"
+            "            ['git', 'ls-files', '--error-unmatch', 'AGENTS.md'],\n"
+            "            cwd=ROOT, capture_output=True, text=True,\n"
+            "        )\n"
+            "        self.assertEqual(result.returncode, 0, result.stderr)\n\n"
+            "if __name__ == '__main__':\n"
+            "    unittest.main()\n",
+            encoding="utf-8",
+        )
+
+        report = bootstrap(
+            self.target,
+            source_root=source,
+            no_github=True,
+            run_tests=True,
+        )
+
+        self.assertEqual(
+            report["local"]["validation"]["status"],
+            "complete",
+            report["local"]["validation"],
+        )
+        self.assertEqual(report["status"], "incomplete")
+
 
     def test_deleted_framework_history_is_prior_lineage_evidence(self):
         self.add_project()
@@ -273,6 +340,35 @@ class GreenfieldBootstrapTests(unittest.TestCase):
         self.assertFalse(report["local"]["git"]["has_commit"])
         self.assertFalse(report["local"]["git"]["ready"])
         self.assertTrue(any("commit" in action for action in report["manual_actions"]))
+
+    def test_committed_dev_with_unrelated_dirty_work_remains_incomplete(self):
+        self.add_project()
+        self.init_git(commit=True)
+        unrelated = self.target / "notes.txt"
+        unrelated.write_text("user-owned work\n", encoding="utf-8")
+        with patch(
+            "tools.greenfield_bootstrap._local_validation",
+            return_value={"status": "complete"},
+        ):
+            report = bootstrap(
+                self.target,
+                source_root=ROOT,
+                no_github=True,
+                run_tests=True,
+            )
+
+        self.assertEqual(report["status"], "incomplete")
+        self.assertEqual(report["local"]["git"]["branch"], "dev")
+        self.assertIn("notes.txt", report["local"]["git"]["dirty_paths"])
+        self.assertFalse(report["local"]["git"]["ready"])
+        self.assertEqual(unrelated.read_text(encoding="utf-8"), "user-owned work\n")
+        self.assertEqual(
+            subprocess.run(
+                ["git", "-C", str(self.target), "diff", "--cached", "--quiet", "--", "notes.txt"],
+                check=False,
+            ).returncode,
+            0,
+        )
 
     def test_ordinary_non_dev_branch_installs_but_reports_incomplete(self):
         self.add_project()

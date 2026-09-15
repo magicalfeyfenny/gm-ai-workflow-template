@@ -273,6 +273,9 @@ STRONGER_RULESET_BOOLEAN_FIELDS = frozenset({
     "require_code_owner_review",
     "require_last_push_approval",
 })
+EXACT_RULESET_LIST_FIELDS = frozenset({
+    "include", "exclude", "bypass_actors",
+})
 
 
 def _without_ruleset_response_fields(
@@ -307,6 +310,32 @@ def _ruleset_stronger_than(actual: object, expected: object, key: str | None) ->
     return False
 
 
+def _ruleset_list_contains(actual: object, expected: list[object]) -> bool:
+    if not isinstance(actual, list):
+        return False
+    remaining = list(actual)
+    for value in expected:
+        match = next(
+            (
+                index for index, candidate in enumerate(remaining)
+                if _ruleset_semantics_match(candidate, value)
+            ),
+            None,
+        )
+        if match is None:
+            return False
+        remaining.pop(match)
+    return True
+
+
+def _ruleset_list_exact(actual: object, expected: list[object]) -> bool:
+    return (
+        isinstance(actual, list)
+        and len(actual) == len(expected)
+        and _ruleset_list_contains(actual, expected)
+    )
+
+
 def _ruleset_semantics_match(
     actual: object,
     expected: object,
@@ -319,31 +348,35 @@ def _ruleset_semantics_match(
             for child, value in expected.items()
         )
     if isinstance(expected, list):
+        if key in EXACT_RULESET_LIST_FIELDS:
+            return _ruleset_list_exact(actual, expected)
+        if key == "required_status_checks":
+            if not isinstance(actual, list):
+                return False
+            identities = [
+                _ruleset_item_identity(value) for value in actual
+            ]
+            if any(
+                identity is not None and identities.count(identity) > 1
+                for identity in identities
+            ):
+                return False
+            return _ruleset_list_contains(actual, expected)
         if not isinstance(actual, list):
             return False
         if key == "allowed_merge_methods":
             actual_set = set(actual)
             expected_set = set(expected)
-            return actual_set.issubset(expected_set) or expected_set.issubset(actual_set)
-        remaining = list(actual)
-        for value in expected:
-            match = next(
-                (
-                    index for index, candidate in enumerate(remaining)
-                    if _ruleset_semantics_match(candidate, value)
-                ),
-                None,
-            )
-            if match is None:
-                return False
-            remaining.pop(match)
-        return True
+            return actual_set.issubset(expected_set)
+        return _ruleset_list_contains(actual, expected)
     return actual == expected or _ruleset_stronger_than(actual, expected, key)
 
 
 def _ruleset_item_identity(value: object) -> tuple[object, ...] | None:
     if not isinstance(value, dict):
         return None
+    if "context" in value:
+        return ("context", value["context"])
     if "type" in value:
         return ("type", value["type"])
     if "actor_id" in value:
@@ -356,6 +389,33 @@ def _merge_ruleset_list(
     expected: list[object],
     key: str | None,
 ) -> list[object]:
+    if key in EXACT_RULESET_LIST_FIELDS:
+        existing = list(live) if isinstance(live, list) else []
+        result: list[object] = []
+        for value in expected:
+            match = next(
+                (
+                    index for index, candidate in enumerate(existing)
+                    if _ruleset_semantics_match(candidate, value)
+                ),
+                None,
+            )
+            if match is None:
+                identity = _ruleset_item_identity(value)
+                if identity is not None:
+                    match = next(
+                        (
+                            index for index, candidate in enumerate(existing)
+                            if _ruleset_item_identity(candidate) == identity
+                        ),
+                        None,
+                    )
+            if match is None:
+                result.append(_without_ruleset_response_fields(value, key))
+                continue
+            current = existing.pop(match)
+            result.append(_merge_ruleset_value(current, value, key))
+        return result
     if key == "allowed_merge_methods" and _ruleset_semantics_match(
         live, expected, key
     ):
@@ -386,7 +446,17 @@ def _merge_ruleset_list(
             continue
         current = existing.pop(match)
         result.append(_merge_ruleset_value(current, value, key))
-    result.extend(_without_ruleset_response_fields(item, key) for item in existing)
+    matched_identities = {
+        _ruleset_item_identity(value)
+        for value in result
+        if key == "required_status_checks"
+    }
+    result.extend(
+        _without_ruleset_response_fields(item, key)
+        for item in existing
+        if key != "required_status_checks"
+        or _ruleset_item_identity(item) not in matched_identities
+    )
     return result
 
 

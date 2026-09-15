@@ -150,6 +150,10 @@ When a repository is supplied or inferred, the existing
 - the labels in `REQUIRED_LABELS`; and
 - the active `dev-protection` and `main-release` ruleset recipes. API-managed
   response fields and stronger or unowned ruleset settings are preserved.
+  Framework-owned branch applicability conditions and bypass actors must still
+  match; an exclusion of a managed branch is reconciled rather than accepted.
+  Required check contexts are reconciled by context so differing integration
+  metadata does not create duplicate logical checks.
 
 The tool does not create a GitHub repository, push commits, move an existing
 branch, install a GitHub App, or make security and ownership decisions. Those
@@ -160,15 +164,17 @@ condition; named settings, labels, and rulesets are reconciled in place.
 ## Validate the generated repository
 
 After local installation, the tool freezes the working tree into a temporary
-candidate Git index and runs:
+candidate Git index, uses that stored tree for repository policy, and
+materializes the same tree into an isolated test checkout before running:
 
 ```sh
 python3.12 tools/ci/check_repo.py --candidate-ref CANDIDATE_TREE
 python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
 ```
 
-The real index and working-tree contents are not staged by this verification.
-The candidate must pass both checks before the tool attempts hosted mutation.
+The real index and working-tree contents are not staged by this verification,
+and user-owned changes are not committed or discarded. The candidate must pass
+both checks before the tool attempts hosted mutation.
 `--skip-tests` is available only for diagnosis; it reports incomplete and does
 not configure GitHub.
 

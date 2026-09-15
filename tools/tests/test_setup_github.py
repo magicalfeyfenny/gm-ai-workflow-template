@@ -574,6 +574,60 @@ class ConfigureRepositoryTests(unittest.TestCase):
             update["rules"],
         )
 
+    def test_ruleset_exclusion_of_dev_is_reconciled(self):
+        recipe = load_rulesets()[0]
+        altered = deepcopy(recipe)
+        altered["id"] = 17
+        altered["conditions"]["ref_name"]["exclude"] = ["refs/heads/dev"]
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=[label["name"] for label in REQUIRED_LABELS],
+            rulesets=[altered],
+        )
+
+        configure_repository("owner/game", api=api)
+
+        updates = [
+            payload
+            for method, endpoint, payload in api.calls
+            if method == "PUT" and endpoint == "repos/owner/game/rulesets/17"
+        ]
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0]["conditions"]["ref_name"]["exclude"], [])
+        self.assertEqual(
+            api.rule_details[17]["conditions"]["ref_name"]["exclude"],
+            [],
+        )
+
+    def test_required_check_context_differences_do_not_duplicate(self):
+        recipe = load_rulesets()[0]
+        altered = deepcopy(recipe)
+        altered["id"] = 17
+        checks = altered["rules"][3]["parameters"]["required_status_checks"]
+        checks[0]["integration_id"] = 999
+        checks.append({"context": "PR policy", "integration_id": 15368})
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=[label["name"] for label in REQUIRED_LABELS],
+            rulesets=[altered],
+        )
+
+        configure_repository("owner/game", api=api)
+
+        update = next(
+            payload
+            for method, endpoint, payload in api.calls
+            if method == "PUT" and endpoint == "repos/owner/game/rulesets/17"
+        )
+        checks = next(
+            rule for rule in update["rules"]
+            if rule["type"] == "required_status_checks"
+        )["parameters"]["required_status_checks"]
+        self.assertEqual(
+            [check for check in checks if check["context"] == "PR policy"],
+            [{"context": "PR policy", "integration_id": 15368}],
+        )
+
     def test_rerun_reconciles_without_creating_duplicate_resources(self):
         api = FakeApi()
 
