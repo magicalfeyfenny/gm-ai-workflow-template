@@ -375,7 +375,7 @@ def _ruleset_semantics_match(
 def _ruleset_item_identity(value: object) -> tuple[object, ...] | None:
     if not isinstance(value, dict):
         return None
-    if "context" in value:
+    if isinstance(value.get("context"), str):
         return ("context", value["context"])
     if "type" in value:
         return ("type", value["type"])
@@ -451,12 +451,17 @@ def _merge_ruleset_list(
         for value in result
         if key == "required_status_checks"
     }
-    result.extend(
-        _without_ruleset_response_fields(item, key)
-        for item in existing
-        if key != "required_status_checks"
-        or _ruleset_item_identity(item) not in matched_identities
-    )
+    if key == "required_status_checks":
+        identities = set(matched_identities)
+        for item in existing:
+            identity = _ruleset_item_identity(item)
+            if identity is not None and identity in identities:
+                continue
+            if identity is not None:
+                identities.add(identity)
+            result.append(_without_ruleset_response_fields(item, key))
+    else:
+        result.extend(_without_ruleset_response_fields(item, key) for item in existing)
     return result
 
 

@@ -547,8 +547,7 @@ def _local_validation(target_root: Path, required_paths: list[str]) -> dict:
             text=True,
             check=False,
         )
-        test_environment = environment.copy()
-        test_environment.pop("GIT_INDEX_FILE")
+        test_environment = {key: value for key, value in environment.items() if not key.startswith("GIT_")}
         try:
             with candidate_snapshot(target_root, tree.stdout.strip()) as candidate:
                 tests = subprocess.run(
