@@ -1,7 +1,6 @@
 """Install the current workflow framework into a greenfield GameMaker folder."""
 
 from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -41,8 +40,8 @@ INDEPENDENT_FILES = frozenset({
     ".github/pull_request_template.md",
 })
 INDEPENDENT_ROOT_FILES = frozenset({
-    "CODEOWNERS", "CONTRIBUTING.md", "POLICY.md", "REPOSITORY_POLICY.md",
-    "SECURITY.md",
+    "CODEOWNERS", ".github/CODEOWNERS", "CONTRIBUTING.md", "POLICY.md",
+    "REPOSITORY_POLICY.md", "SECURITY.md", "docs/GOVERNANCE.md",
 })
 ONBOARDING_MARKER = "<!-- gm-ai-workflow-template:onboarding -->"
 
@@ -50,12 +49,10 @@ ONBOARDING_MARKER = "<!-- gm-ai-workflow-template:onboarding -->"
 def _relative(path: Path, root: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
 
-
 def _safe_destination(root: Path, relative: str) -> Path:
     path = Path(relative)
     if path.is_absolute() or ".git" in path.parts or ".." in path.parts:
         raise SetupError(f"unsafe bootstrap destination: {relative}")
-
     root = root.resolve()
     current = root
     for part in path.parts[:-1]:
@@ -112,7 +109,6 @@ def _read_text(path: Path) -> str:
     except (OSError, UnicodeDecodeError) as exc:
         raise SetupError(f"cannot read {path}: {exc}") from exc
 
-
 def _is_nonempty(path: Path) -> bool:
     try:
         return bool(path.is_file() and path.read_bytes().strip())
@@ -124,7 +120,6 @@ def _discover_projects(root: Path) -> tuple[list[dict[str, str]], list[str]]:
     projects: list[dict[str, str]] = []
     invalid: list[str] = []
     skip = {".git", ".venv", "build", "dist", "node_modules", "tmp"}
-
     for directory, directories, filenames in os.walk(root, followlinks=False):
         directories[:] = [name for name in directories if name not in skip]
         directory_path = Path(directory)
@@ -201,7 +196,6 @@ def _custom_authority_paths(
             elif path.read_bytes() != source.read_bytes():
                 found.add(relative)
     return sorted(found)
-
 def _historical_framework_paths(target_root: Path) -> list[str]:
     result = subprocess.run(
         [
@@ -215,7 +209,6 @@ def _historical_framework_paths(target_root: Path) -> list[str]:
     if result.returncode != 0:
         return []
     return sorted({line.strip() for line in result.stdout.splitlines() if line.strip() in CORE_FILES})
-
 
 def classify_target(
     target_root: Path,
@@ -260,6 +253,7 @@ def classify_target(
         or relative == "README.md"
     ]
 
+    current_framework = CORE_FILES.issubset(set(matching))
     if custom_authority:
         classification = "independent"
         reasons = [
@@ -272,14 +266,13 @@ def classify_target(
         else:
             classification = "ambiguous"
             reasons = ["a framework-shaped file differs without a resolved lineage"]
-    elif historical and not matching:
+    elif historical and not current_framework:
         classification = "ambiguous"
-        reasons = ["committed framework paths provide prior-lineage evidence"]
-    elif matching:
-        classification = (
-            "current-framework" if CORE_FILES.issubset(set(matching))
-            else "partial-framework"
-        )
+        reasons = [
+            "historical framework evidence exists without a complete current framework",
+        ]
+    elif current_framework or matching:
+        classification = "current-framework" if current_framework else "partial-framework"
         reasons = ["existing framework files provide explicit current-framework evidence"]
     elif invalid_projects:
         classification = "ambiguous"
@@ -304,7 +297,6 @@ def classify_target(
         "historical_framework_files": historical,
     }
 
-
 def _onboarding_readme(source: Path, target: Path) -> bytes:
     if not target.exists():
         return source.read_bytes()
@@ -324,7 +316,6 @@ def _onboarding_readme(source: Path, target: Path) -> bytes:
     )
     return (existing.rstrip() + block).encode("utf-8")
 
-
 def _merge_text(source: Path, target: Path) -> bytes:
     existing = _read_text(target).splitlines()
     existing_keys = {line.strip() for line in existing if line.strip()}
@@ -335,7 +326,6 @@ def _merge_text(source: Path, target: Path) -> bytes:
     if not additions:
         return ("\n".join(existing) + ("\n" if existing else "")).encode("utf-8")
     return ("\n".join(existing + additions) + "\n").encode("utf-8")
-
 
 def _plan_local_writes(
     target_root: Path,
@@ -394,7 +384,6 @@ def _plan_local_writes(
         })
     return writes, conflicts
 
-
 def _apply_local_writes(target_root: Path, source_root: Path, writes: list[dict]) -> None:
     with tempfile.TemporaryDirectory(prefix=".workflow-bootstrap-", dir=target_root) as temporary:
         staging = Path(temporary)
@@ -419,7 +408,6 @@ def _apply_local_writes(target_root: Path, source_root: Path, writes: list[dict]
             destination.parent.mkdir(parents=True, exist_ok=True)
             os.replace(staging / item["path"], destination)
 
-
 def _git(target_root: Path, *arguments: str, env: dict[str, str] | None = None,
          check: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -430,6 +418,9 @@ def _git(target_root: Path, *arguments: str, env: dict[str, str] | None = None,
         check=check,
     )
 
+def _current_branch(target_root: Path) -> str | None:
+    result = _git(target_root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    return (result.stdout.strip() or None) if result.returncode == 0 else None
 
 def _ensure_git_repository(target_root: Path) -> dict:
     """Initialize only an unversioned folder; never rewrite existing history."""
@@ -481,10 +472,10 @@ def _ensure_git_repository(target_root: Path) -> dict:
         "created": created,
         "branch": branch,
         "has_commit": has_commit,
+        "ready": not manual,
         "actions": actions,
         "manual_actions": manual,
     }
-
 
 def _github_repository(target_root: Path) -> str | None:
     result = _git(target_root, "config", "--get", "remote.origin.url")
@@ -504,11 +495,9 @@ def _github_repository(target_root: Path) -> str | None:
     except argparse.ArgumentTypeError:
         return None
 
-
 def _command_result(result: subprocess.CompletedProcess[str]) -> dict:
     return {"returncode": result.returncode, "stdout": result.stdout[-4000:],
             "stderr": result.stderr[-4000:]}
-
 
 def _local_validation(target_root: Path, required_paths: list[str]) -> dict:
     """Validate an uncommitted bootstrap through a temporary Git index."""
@@ -589,7 +578,6 @@ def _local_validation(target_root: Path, required_paths: list[str]) -> dict:
         },
     }
 
-
 def bootstrap(
     target_root: Path,
     *,
@@ -641,6 +629,15 @@ def bootstrap(
         report["status"] = "blocked"
         return report
 
+    branch = _current_branch(target_root)
+    if branch and branch.startswith("human/"):
+        report["local"] = {"status": "blocked", "writes": [],
+                            "reason": "the current branch is reserved for human-owned work",
+                            "git": {"branch": branch}}
+        report["manual_actions"].append("switch to an agent-owned branch before rerunning bootstrap; do not modify a human/* branch")
+        report["status"] = "blocked"
+        return report
+
     writes, conflicts = _plan_local_writes(
         target_root, source_root, classification, source_paths,
     )
@@ -678,7 +675,11 @@ def bootstrap(
         {"status": "skipped", "reason": "template tests explicitly skipped"}
     )
     report["local"]["validation"] = validation
+    git_ready = git_state.get("ready", not git_state["manual_actions"])
     report["local"]["status"] = validation["status"]
+    if validation["status"] == "complete" and not git_ready:
+        report["local"].update({"status": "incomplete",
+                                "reason": "required Git setup remains unresolved"})
     if validation["status"] == "failed":
         report["manual_actions"].append(
             "resolve local repository-policy or template-test failures and rerun bootstrap"
@@ -727,11 +728,10 @@ def bootstrap(
                 "messages": messages,
             }
 
-    local_ok = validation["status"] == "complete"
+    local_ok = validation["status"] == "complete" and git_ready
     github_ok = report["github"]["status"] in {"complete", "skipped"}
     report["status"] = "complete" if local_ok and github_ok else "incomplete"
     return report
-
 
 def _print_report(report: dict, as_json: bool) -> None:
     if as_json:
@@ -750,7 +750,6 @@ def _print_report(report: dict, as_json: bool) -> None:
         print(f"greenfield-bootstrap: repository={github['repository']}")
     for action in report.get("manual_actions", []):
         print(f"greenfield-bootstrap: action required: {action}")
-
 
 def main(argv: list[str] | None = None) -> int:
     """Parse the explicit bootstrap command and preserve resumable status."""

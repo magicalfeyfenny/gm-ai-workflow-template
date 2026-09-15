@@ -470,6 +470,110 @@ class ConfigureRepositoryTests(unittest.TestCase):
             )
         )
 
+    def test_enriched_ruleset_responses_are_semantically_current(self):
+        rulesets = []
+        for index, recipe in enumerate(load_rulesets(), start=17):
+            enriched = deepcopy(recipe)
+            enriched.update({
+                "id": index,
+                "node_id": f"node-{index}",
+                "source": "owner/game",
+                "source_type": "Repository",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-02T00:00:00Z",
+                "current_user_can_bypass": "pull_requests_only",
+                "_links": {"self": {"href": "https://example.invalid"}},
+            })
+            enriched["bypass_actors"][0]["node_id"] = f"actor-{index}"
+            enriched["rules"][2]["id"] = index + 100
+            enriched["rules"][2]["parameters"].update({
+                "required_reviewers": [],
+                "require_extra_approval_for_unattributed_changes": True,
+            })
+            enriched["rules"][3]["parameters"]["required_status_checks"][0][
+                "id"
+            ] = index + 200
+            rulesets.append(enriched)
+
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=[label["name"] for label in REQUIRED_LABELS],
+            rulesets=rulesets,
+        )
+
+        configure_repository("owner/game", api=api)
+
+        self.assertFalse(
+            any(
+                method in {"POST", "PUT"}
+                and "/rulesets" in endpoint
+                for method, endpoint, _ in api.calls
+            )
+        )
+
+    def test_ruleset_update_preserves_unowned_and_stronger_settings(self):
+        recipe = load_rulesets()[0]
+        enriched = deepcopy(recipe)
+        enriched.update({
+            "id": 17,
+            "node_id": "node-17",
+            "source": "owner/game",
+            "source_type": "Repository",
+            "current_user_can_bypass": "pull_requests_only",
+        })
+        enriched["enforcement"] = "disabled"
+        enriched["rules"][0]["id"] = 19
+        enriched["rules"][2]["parameters"].update({
+            "required_approving_review_count": 2,
+            "required_reviewers": [{"id": 9}],
+            "require_extra_approval_for_unattributed_changes": True,
+            "allowed_merge_methods": ["squash"],
+        })
+        enriched["rules"].append({
+            "type": "required_linear_history",
+            "id": 20,
+        })
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=[label["name"] for label in REQUIRED_LABELS],
+            rulesets=[enriched],
+        )
+
+        configure_repository("owner/game", api=api)
+
+        updates = [
+            payload
+            for method, endpoint, payload in api.calls
+            if method == "PUT" and endpoint == "repos/owner/game/rulesets/17"
+        ]
+        self.assertEqual(len(updates), 1)
+        update = updates[0]
+        self.assertNotIn("node_id", update)
+        pull_request = next(
+            rule for rule in update["rules"] if rule["type"] == "pull_request"
+        )
+        self.assertEqual(
+            pull_request["parameters"]["required_approving_review_count"],
+            2,
+        )
+        self.assertEqual(
+            pull_request["parameters"]["required_reviewers"],
+            [{"id": 9}],
+        )
+        self.assertEqual(
+            pull_request["parameters"]["allowed_merge_methods"],
+            ["squash"],
+        )
+        self.assertTrue(
+            pull_request["parameters"][
+                "require_extra_approval_for_unattributed_changes"
+            ]
+        )
+        self.assertIn(
+            {"type": "required_linear_history"},
+            update["rules"],
+        )
+
     def test_rerun_reconciles_without_creating_duplicate_resources(self):
         api = FakeApi()
 

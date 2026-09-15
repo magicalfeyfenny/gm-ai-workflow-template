@@ -26,6 +26,17 @@ Install and authenticate:
 - Python 3.12 or later; and
 - GitHub CLI (`gh`) when GitHub configuration is wanted.
 
+The bootstrap runs the full repository-local test suite. Install its pinned
+Python dependencies before the first project-only run:
+
+```sh
+python3.12 -m pip install -r /path/to/gm-ai-workflow-template/tools/tests/requirements.txt
+```
+
+For a repository already generated from the template, run the same command
+from that repository with `tools/tests/requirements.txt` as the path. An
+isolated Python 3.12 virtual environment is recommended.
+
 The GitHub identity used for configuration needs permission to read and update
 repository settings, labels, and rulesets. If the identity lacks a capability,
 the tool leaves the local work resumable and reports the missing operation.
@@ -107,15 +118,23 @@ The command classifies the target before writing:
 | Classification | Meaning | Action |
 | --- | --- | --- |
 | `greenfield` | A valid GameMaker project exists without meaningful framework authority. | Install the framework. |
-| `partial-framework` | Existing files are an explicit subset of the current framework. | Complete the missing framework files. |
+| `partial-framework` | Existing files are an explicit subset of the current framework without prior-lineage evidence. | Complete the missing framework files. |
 | `current-framework` | The current framework is already present. | Verify and configure only what is applicable. |
 | `independent` | Existing project governance or automation would be overwritten by greenfield setup. | Stop and use `adopt-existing --plan`. |
 | `ambiguous` | A framework-shaped conflict, invalid project, or incomplete evidence cannot be classified safely. | Stop and resolve the comparison basis. |
 
+Historical framework evidence with only a partial surviving framework is
+`ambiguous`, even when one surviving file matches the current source. A
+complete current core framework is sufficient evidence for the resumable
+`current-framework` path.
+
 The report separates local work, GitHub work, validation, and remaining human
-actions. Exit status `0` means the requested local and hosted portions passed
-or were explicitly skipped with `--no-github`; `1` means setup is incomplete
-or blocked and can be resumed; `2` means the command or target was invalid.
+actions. Exit status `0` means local validation and the requested hosted
+portion passed, GitHub was explicitly skipped with `--no-github`, and required
+Git setup is ready. Exit status `1` means setup is incomplete or blocked and
+can be resumed; this includes an uncommitted result or an ordinary non-`dev`
+branch that still needs human resolution. Exit status `2` means the command or
+target was invalid.
 The command never treats a permission failure, missing `dev`, validation
 failure, or ambiguous lineage as success.
 
@@ -129,7 +148,8 @@ When a repository is supplied or inferred, the existing
 - squash merging and auto-merge enabled;
 - merge commits, rebase merges, and automatic branch deletion disabled;
 - the labels in `REQUIRED_LABELS`; and
-- the active `dev-protection` and `main-release` ruleset recipes.
+- the active `dev-protection` and `main-release` ruleset recipes. API-managed
+  response fields and stronger or unowned ruleset settings are preserved.
 
 The tool does not create a GitHub repository, push commits, move an existing
 branch, install a GitHub App, or make security and ownership decisions. Those
@@ -164,6 +184,9 @@ complete the reported items that apply:
 
 1. Create or select the GitHub repository, review the project and framework
    files, commit the intended tree to `dev`, and push it before hosted setup.
+   Bootstrap may install into an ordinary existing non-`dev` branch, but it
+   remains incomplete until the repository's normal owner resolves that branch.
+   It never writes to a reserved `human/*` branch.
 2. Install and authenticate Git LFS when the project uses configured binary
    asset formats.
 3. Initialize or extend the GameMaker project tests and pin the required

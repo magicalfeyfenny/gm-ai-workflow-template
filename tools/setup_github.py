@@ -264,6 +264,151 @@ def paged_list(
         page += 1
 
 
+RULESET_RESPONSE_FIELDS = frozenset({
+    "id", "node_id", "source", "source_type", "created_at",
+    "updated_at", "current_user_can_bypass", "_links",
+})
+STRONGER_RULESET_BOOLEAN_FIELDS = frozenset({
+    "dismiss_stale_reviews_on_push",
+    "require_code_owner_review",
+    "require_last_push_approval",
+})
+
+
+def _without_ruleset_response_fields(
+    value: object,
+    key: str | None = None,
+) -> object:
+    if isinstance(value, dict):
+        response_fields = set(RULESET_RESPONSE_FIELDS) if key is None else set()
+        if key in {"rules", "bypass_actors", "required_status_checks"}:
+            response_fields.update({"id", "node_id"})
+        return {
+            child: _without_ruleset_response_fields(item, child)
+            for child, item in value.items()
+            if child not in response_fields
+        }
+    if isinstance(value, list):
+        return [_without_ruleset_response_fields(item, key) for item in value]
+    return value
+
+
+def _ruleset_stronger_than(actual: object, expected: object, key: str | None) -> bool:
+    if key in STRONGER_RULESET_BOOLEAN_FIELDS:
+        return expected is False and actual is True
+    if key == "required_approving_review_count":
+        return (
+            isinstance(actual, int)
+            and not isinstance(actual, bool)
+            and isinstance(expected, int)
+            and not isinstance(expected, bool)
+            and actual >= expected
+        )
+    return False
+
+
+def _ruleset_semantics_match(
+    actual: object,
+    expected: object,
+    key: str | None = None,
+) -> bool:
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(
+            child in actual
+            and _ruleset_semantics_match(actual[child], value, child)
+            for child, value in expected.items()
+        )
+    if isinstance(expected, list):
+        if not isinstance(actual, list):
+            return False
+        if key == "allowed_merge_methods":
+            actual_set = set(actual)
+            expected_set = set(expected)
+            return actual_set.issubset(expected_set) or expected_set.issubset(actual_set)
+        remaining = list(actual)
+        for value in expected:
+            match = next(
+                (
+                    index for index, candidate in enumerate(remaining)
+                    if _ruleset_semantics_match(candidate, value)
+                ),
+                None,
+            )
+            if match is None:
+                return False
+            remaining.pop(match)
+        return True
+    return actual == expected or _ruleset_stronger_than(actual, expected, key)
+
+
+def _ruleset_item_identity(value: object) -> tuple[object, ...] | None:
+    if not isinstance(value, dict):
+        return None
+    if "type" in value:
+        return ("type", value["type"])
+    if "actor_id" in value:
+        return ("actor_id", value["actor_id"], value.get("actor_type"))
+    return None
+
+
+def _merge_ruleset_list(
+    live: object,
+    expected: list[object],
+    key: str | None,
+) -> list[object]:
+    if key == "allowed_merge_methods" and _ruleset_semantics_match(
+        live, expected, key
+    ):
+        preserved = _without_ruleset_response_fields(live, key)
+        return preserved if isinstance(preserved, list) else []
+    existing = list(live) if isinstance(live, list) else []
+    result: list[object] = []
+    for value in expected:
+        match = next(
+            (
+                index for index, candidate in enumerate(existing)
+                if _ruleset_semantics_match(candidate, value)
+            ),
+            None,
+        )
+        if match is None:
+            identity = _ruleset_item_identity(value)
+            if identity is not None:
+                match = next(
+                    (
+                        index for index, candidate in enumerate(existing)
+                        if _ruleset_item_identity(candidate) == identity
+                    ),
+                    None,
+                )
+        if match is None:
+            result.append(_without_ruleset_response_fields(value, key))
+            continue
+        current = existing.pop(match)
+        result.append(_merge_ruleset_value(current, value, key))
+    result.extend(_without_ruleset_response_fields(item, key) for item in existing)
+    return result
+
+
+def _merge_ruleset_value(
+    live: object,
+    expected: object,
+    key: str | None = None,
+) -> object:
+    if isinstance(expected, dict):
+        current = live if isinstance(live, dict) else {}
+        result = _without_ruleset_response_fields(current, key)
+        assert isinstance(result, dict)
+        for child, value in expected.items():
+            result[child] = _merge_ruleset_value(current.get(child), value, child)
+        return result
+    if isinstance(expected, list):
+        return _merge_ruleset_list(live, expected, key)
+    if _ruleset_semantics_match(live, expected, key):
+        return _without_ruleset_response_fields(live, key)
+    return expected
+
+
 def ensure_labels(
     api: ApiCall,
     repo: str,
@@ -379,13 +524,11 @@ def install_rulesets(
                 f"repos/{repo}/rulesets/{ruleset_id}",
                 None,
             )
-            if not isinstance(current, dict) or any(
-                current.get(key) != value for key, value in recipe.items()
-            ):
+            if not _ruleset_semantics_match(current, recipe):
                 api(
                     "PUT",
                     f"repos/{repo}/rulesets/{ruleset_id}",
-                    recipe,
+                    _merge_ruleset_value(current, recipe),
                 )
                 messages.append(f"updated ruleset {name}")
             else:
@@ -458,9 +601,7 @@ def verify_configuration(
             f"repos/{repo}/rulesets/{ruleset_id}",
             None,
         )
-        if not isinstance(detail, dict) or any(
-            detail.get(key) != value for key, value in recipe.items()
-        ):
+        if not _ruleset_semantics_match(detail, recipe):
             raise SetupError(
                 f"ruleset {recipe['name']} did not reach the expected value"
             )
