@@ -4,6 +4,7 @@ import subprocess
 import unittest
 from copy import deepcopy
 from unittest.mock import patch
+from urllib.parse import unquote
 
 from tools.setup_github import (
     REQUIRED_LABELS,
@@ -29,11 +30,14 @@ class FakeApi:
     ):
         self.dev_sha = dev_sha
         self.main_sha = main_sha
-        self.labels = [
-            {"name": name}
-            for name in labels
-        ]
+        self.labels = [{"name": name} for name in labels]
         self.rulesets = list(rulesets)
+        self.rule_details = {
+            item["id"]: dict(item)
+            for item in self.rulesets
+            if isinstance(item, dict) and isinstance(item.get("id"), int)
+        }
+        self.metadata = dict(REPOSITORY_SETTINGS)
         self.calls = []
 
     def __call__(self, method, endpoint, payload=None):
@@ -51,11 +55,54 @@ class FakeApi:
         ):
             return self._ref("main", self.main_sha)
 
+        if method == "GET" and endpoint == "repos/owner/game":
+            return deepcopy(self.metadata)
+
         if method == "GET" and "/labels?" in endpoint:
             return deepcopy(self.labels)
 
         if method == "GET" and "/rulesets?" in endpoint:
             return deepcopy(self.rulesets)
+
+        if method == "GET" and "/rulesets/" in endpoint:
+            return deepcopy(self.rule_details[int(endpoint.rsplit("/", 1)[1])])
+
+        if method == "POST" and endpoint.endswith("/git/refs"):
+            self.main_sha = payload["sha"]
+            return {}
+
+        if method == "PATCH" and endpoint == "repos/owner/game":
+            self.metadata.update(payload)
+            return deepcopy(self.metadata)
+
+        if method == "POST" and endpoint == "repos/owner/game/labels":
+            self.labels.append(dict(payload))
+            return {}
+
+        if method == "PATCH" and "/labels/" in endpoint:
+            name = unquote(endpoint.rsplit("/", 1)[1])
+            current = next(item for item in self.labels if item["name"] == name)
+            current.update(payload)
+            if "new_name" in payload:
+                current["name"] = payload["new_name"]
+            return {}
+
+        if method == "POST" and endpoint == "repos/owner/game/rulesets":
+            ruleset = {"id": 100 + len(self.rulesets), **dict(payload)}
+            self.rulesets.append({"id": ruleset["id"], "name": ruleset["name"]})
+            self.rule_details[ruleset["id"]] = ruleset
+            return {}
+
+        if method == "PUT" and "/rulesets/" in endpoint:
+            ruleset_id = int(endpoint.rsplit("/", 1)[1])
+            self.rule_details[ruleset_id] = {
+                "id": ruleset_id,
+                **dict(payload),
+            }
+            for summary in self.rulesets:
+                if summary.get("id") == ruleset_id:
+                    summary.update({"name": payload["name"]})
+            return {}
 
         return {}
 
@@ -421,6 +468,179 @@ class ConfigureRepositoryTests(unittest.TestCase):
                 and payload["name"] == "main-release"
                 for method, endpoint, payload in api.calls
             )
+        )
+
+    def test_enriched_ruleset_responses_are_semantically_current(self):
+        rulesets = []
+        for index, recipe in enumerate(load_rulesets(), start=17):
+            enriched = deepcopy(recipe)
+            enriched.update({
+                "id": index,
+                "node_id": f"node-{index}",
+                "source": "owner/game",
+                "source_type": "Repository",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-02T00:00:00Z",
+                "current_user_can_bypass": "pull_requests_only",
+                "_links": {"self": {"href": "https://example.invalid"}},
+            })
+            enriched["bypass_actors"][0]["node_id"] = f"actor-{index}"
+            enriched["rules"][2]["id"] = index + 100
+            enriched["rules"][2]["parameters"].update({
+                "required_reviewers": [],
+                "require_extra_approval_for_unattributed_changes": True,
+            })
+            enriched["rules"][3]["parameters"]["required_status_checks"][0][
+                "id"
+            ] = index + 200
+            rulesets.append(enriched)
+
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=[label["name"] for label in REQUIRED_LABELS],
+            rulesets=rulesets,
+        )
+
+        configure_repository("owner/game", api=api)
+
+        self.assertFalse(
+            any(
+                method in {"POST", "PUT"}
+                and "/rulesets" in endpoint
+                for method, endpoint, _ in api.calls
+            )
+        )
+
+    def test_ruleset_update_preserves_unowned_and_stronger_settings(self):
+        recipe = load_rulesets()[0]
+        enriched = deepcopy(recipe)
+        enriched.update({
+            "id": 17,
+            "node_id": "node-17",
+            "source": "owner/game",
+            "source_type": "Repository",
+            "current_user_can_bypass": "pull_requests_only",
+        })
+        enriched["enforcement"] = "disabled"
+        enriched["rules"][0]["id"] = 19
+        enriched["rules"][2]["parameters"].update({
+            "required_approving_review_count": 2,
+            "required_reviewers": [{"id": 9}],
+            "require_extra_approval_for_unattributed_changes": True,
+            "allowed_merge_methods": ["squash"],
+        })
+        enriched["rules"].append({
+            "type": "required_linear_history",
+            "id": 20,
+        })
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=[label["name"] for label in REQUIRED_LABELS],
+            rulesets=[enriched],
+        )
+
+        configure_repository("owner/game", api=api)
+
+        updates = [
+            payload
+            for method, endpoint, payload in api.calls
+            if method == "PUT" and endpoint == "repos/owner/game/rulesets/17"
+        ]
+        self.assertEqual(len(updates), 1)
+        update = updates[0]
+        self.assertNotIn("node_id", update)
+        pull_request = next(
+            rule for rule in update["rules"] if rule["type"] == "pull_request"
+        )
+        self.assertEqual(
+            pull_request["parameters"]["required_approving_review_count"],
+            2,
+        )
+        self.assertEqual(
+            pull_request["parameters"]["required_reviewers"],
+            [{"id": 9}],
+        )
+        self.assertEqual(
+            pull_request["parameters"]["allowed_merge_methods"],
+            ["squash"],
+        )
+        self.assertTrue(
+            pull_request["parameters"][
+                "require_extra_approval_for_unattributed_changes"
+            ]
+        )
+        self.assertIn(
+            {"type": "required_linear_history"},
+            update["rules"],
+        )
+
+    def test_ruleset_exclusion_of_dev_is_reconciled(self):
+        recipe = load_rulesets()[0]
+        altered = deepcopy(recipe)
+        altered["id"] = 17
+        altered["conditions"]["ref_name"]["exclude"] = ["refs/heads/dev"]
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=[label["name"] for label in REQUIRED_LABELS],
+            rulesets=[altered],
+        )
+
+        configure_repository("owner/game", api=api)
+
+        updates = [
+            payload
+            for method, endpoint, payload in api.calls
+            if method == "PUT" and endpoint == "repos/owner/game/rulesets/17"
+        ]
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0]["conditions"]["ref_name"]["exclude"], [])
+        self.assertEqual(
+            api.rule_details[17]["conditions"]["ref_name"]["exclude"],
+            [],
+        )
+
+    def test_required_check_context_differences_do_not_duplicate(self):
+        recipe = load_rulesets()[0]
+        altered = deepcopy(recipe)
+        altered["id"] = 17
+        checks = altered["rules"][3]["parameters"]["required_status_checks"]
+        checks[0]["integration_id"] = 999
+        checks.append({"context": "PR policy", "integration_id": 15368})
+        api = FakeApi(
+            main_sha="a" * 40,
+            labels=[label["name"] for label in REQUIRED_LABELS],
+            rulesets=[altered],
+        )
+
+        configure_repository("owner/game", api=api)
+
+        update = next(
+            payload
+            for method, endpoint, payload in api.calls
+            if method == "PUT" and endpoint == "repos/owner/game/rulesets/17"
+        )
+        checks = next(
+            rule for rule in update["rules"]
+            if rule["type"] == "required_status_checks"
+        )["parameters"]["required_status_checks"]
+        self.assertEqual(
+            [check for check in checks if check["context"] == "PR policy"],
+            [{"context": "PR policy", "integration_id": 15368}],
+        )
+
+    def test_rerun_reconciles_without_creating_duplicate_resources(self):
+        api = FakeApi()
+
+        configure_repository("owner/game", api=api)
+        api.calls.clear()
+        messages = configure_repository("owner/game", api=api)
+
+        self.assertFalse(
+            any(method == "POST" for method, _, _ in api.calls)
+        )
+        self.assertIn(
+            "verified repository settings, branches, required labels, and rulesets",
+            messages,
         )
 
     def test_missing_dev_fails_before_writes(self):

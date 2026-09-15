@@ -242,21 +242,256 @@ def exact_ref_sha(
     return sha
 
 
+def paged_list(
+    api: ApiCall,
+    endpoint: str,
+) -> list[JsonObject]:
+    """Read complete finite inventories instead of assuming the first page."""
+    values: list[JsonObject] = []
+    separator = "&" if "?" in endpoint else "?"
+    page = 1
+    while True:
+        response = api(
+            "GET",
+            f"{endpoint}{separator}per_page=100&page={page}",
+            None,
+        )
+        if not isinstance(response, list):
+            raise SetupError(f"unexpected inventory response for {endpoint}")
+        values.extend(item for item in response if isinstance(item, dict))
+        if len(response) < 100:
+            return values
+        page += 1
+
+
+RULESET_RESPONSE_FIELDS = frozenset({
+    "id", "node_id", "source", "source_type", "created_at",
+    "updated_at", "current_user_can_bypass", "_links",
+})
+STRONGER_RULESET_BOOLEAN_FIELDS = frozenset({
+    "dismiss_stale_reviews_on_push",
+    "require_code_owner_review",
+    "require_last_push_approval",
+})
+EXACT_RULESET_LIST_FIELDS = frozenset({
+    "include", "exclude", "bypass_actors",
+})
+
+
+def _without_ruleset_response_fields(
+    value: object,
+    key: str | None = None,
+) -> object:
+    if isinstance(value, dict):
+        response_fields = set(RULESET_RESPONSE_FIELDS) if key is None else set()
+        if key in {"rules", "bypass_actors", "required_status_checks"}:
+            response_fields.update({"id", "node_id"})
+        return {
+            child: _without_ruleset_response_fields(item, child)
+            for child, item in value.items()
+            if child not in response_fields
+        }
+    if isinstance(value, list):
+        return [_without_ruleset_response_fields(item, key) for item in value]
+    return value
+
+
+def _ruleset_stronger_than(actual: object, expected: object, key: str | None) -> bool:
+    if key in STRONGER_RULESET_BOOLEAN_FIELDS:
+        return expected is False and actual is True
+    if key == "required_approving_review_count":
+        return (
+            isinstance(actual, int)
+            and not isinstance(actual, bool)
+            and isinstance(expected, int)
+            and not isinstance(expected, bool)
+            and actual >= expected
+        )
+    return False
+
+
+def _ruleset_list_contains(actual: object, expected: list[object]) -> bool:
+    if not isinstance(actual, list):
+        return False
+    remaining = list(actual)
+    for value in expected:
+        match = next(
+            (
+                index for index, candidate in enumerate(remaining)
+                if _ruleset_semantics_match(candidate, value)
+            ),
+            None,
+        )
+        if match is None:
+            return False
+        remaining.pop(match)
+    return True
+
+
+def _ruleset_list_exact(actual: object, expected: list[object]) -> bool:
+    return (
+        isinstance(actual, list)
+        and len(actual) == len(expected)
+        and _ruleset_list_contains(actual, expected)
+    )
+
+
+def _ruleset_semantics_match(
+    actual: object,
+    expected: object,
+    key: str | None = None,
+) -> bool:
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(
+            child in actual
+            and _ruleset_semantics_match(actual[child], value, child)
+            for child, value in expected.items()
+        )
+    if isinstance(expected, list):
+        if key in EXACT_RULESET_LIST_FIELDS:
+            return _ruleset_list_exact(actual, expected)
+        if key == "required_status_checks":
+            if not isinstance(actual, list):
+                return False
+            identities = [
+                _ruleset_item_identity(value) for value in actual
+            ]
+            if any(
+                identity is not None and identities.count(identity) > 1
+                for identity in identities
+            ):
+                return False
+            return _ruleset_list_contains(actual, expected)
+        if not isinstance(actual, list):
+            return False
+        if key == "allowed_merge_methods":
+            actual_set = set(actual)
+            expected_set = set(expected)
+            return actual_set.issubset(expected_set)
+        return _ruleset_list_contains(actual, expected)
+    return actual == expected or _ruleset_stronger_than(actual, expected, key)
+
+
+def _ruleset_item_identity(value: object) -> tuple[object, ...] | None:
+    if not isinstance(value, dict):
+        return None
+    if isinstance(value.get("context"), str):
+        return ("context", value["context"])
+    if "type" in value:
+        return ("type", value["type"])
+    if "actor_id" in value:
+        return ("actor_id", value["actor_id"], value.get("actor_type"))
+    return None
+
+
+def _merge_ruleset_list(
+    live: object,
+    expected: list[object],
+    key: str | None,
+) -> list[object]:
+    if key in EXACT_RULESET_LIST_FIELDS:
+        existing = list(live) if isinstance(live, list) else []
+        result: list[object] = []
+        for value in expected:
+            match = next(
+                (
+                    index for index, candidate in enumerate(existing)
+                    if _ruleset_semantics_match(candidate, value)
+                ),
+                None,
+            )
+            if match is None:
+                identity = _ruleset_item_identity(value)
+                if identity is not None:
+                    match = next(
+                        (
+                            index for index, candidate in enumerate(existing)
+                            if _ruleset_item_identity(candidate) == identity
+                        ),
+                        None,
+                    )
+            if match is None:
+                result.append(_without_ruleset_response_fields(value, key))
+                continue
+            current = existing.pop(match)
+            result.append(_merge_ruleset_value(current, value, key))
+        return result
+    if key == "allowed_merge_methods" and _ruleset_semantics_match(
+        live, expected, key
+    ):
+        preserved = _without_ruleset_response_fields(live, key)
+        return preserved if isinstance(preserved, list) else []
+    existing = list(live) if isinstance(live, list) else []
+    result: list[object] = []
+    for value in expected:
+        match = next(
+            (
+                index for index, candidate in enumerate(existing)
+                if _ruleset_semantics_match(candidate, value)
+            ),
+            None,
+        )
+        if match is None:
+            identity = _ruleset_item_identity(value)
+            if identity is not None:
+                match = next(
+                    (
+                        index for index, candidate in enumerate(existing)
+                        if _ruleset_item_identity(candidate) == identity
+                    ),
+                    None,
+                )
+        if match is None:
+            result.append(_without_ruleset_response_fields(value, key))
+            continue
+        current = existing.pop(match)
+        result.append(_merge_ruleset_value(current, value, key))
+    matched_identities = {
+        _ruleset_item_identity(value)
+        for value in result
+        if key == "required_status_checks"
+    }
+    if key == "required_status_checks":
+        identities = set(matched_identities)
+        for item in existing:
+            identity = _ruleset_item_identity(item)
+            if identity is not None and identity in identities:
+                continue
+            if identity is not None:
+                identities.add(identity)
+            result.append(_without_ruleset_response_fields(item, key))
+    else:
+        result.extend(_without_ruleset_response_fields(item, key) for item in existing)
+    return result
+
+
+def _merge_ruleset_value(
+    live: object,
+    expected: object,
+    key: str | None = None,
+) -> object:
+    if isinstance(expected, dict):
+        current = live if isinstance(live, dict) else {}
+        result = _without_ruleset_response_fields(current, key)
+        assert isinstance(result, dict)
+        for child, value in expected.items():
+            result[child] = _merge_ruleset_value(current.get(child), value, child)
+        return result
+    if isinstance(expected, list):
+        return _merge_ruleset_list(live, expected, key)
+    if _ruleset_semantics_match(live, expected, key):
+        return _without_ruleset_response_fields(live, key)
+    return expected
+
+
 def ensure_labels(
     api: ApiCall,
     repo: str,
 ) -> list[str]:
-    response = api(
-        "GET",
-        f"repos/{repo}/labels?per_page=100",
-        None,
-    )
-
-    if not isinstance(response, list):
-        raise SetupError("unexpected labels response")
+    response = paged_list(api, f"repos/{repo}/labels")
 
     existing = {
-        item.get("name")
+        item["name"]: item
         for item in response
         if isinstance(item, dict)
         and isinstance(item.get("name"), str)
@@ -283,8 +518,11 @@ def ensure_labels(
                 "description": target["description"],
             },
         )
-        existing.remove(old_name)
-        existing.add(new_name)
+        del existing[old_name]
+        existing[new_name] = {
+            **existing.get(new_name, {}),
+            **target,
+        }
         messages.append(
             f"renamed label {old_name} to {new_name}"
         )
@@ -292,24 +530,31 @@ def ensure_labels(
     for label in REQUIRED_LABELS:
         name = label["name"]
 
-        if name in existing:
+        current = existing.get(name)
+
+        if current is not None:
             payload: JsonObject = {
                 "new_name": name,
                 "color": label["color"],
                 "description": label["description"],
             }
-            api(
-                "PATCH",
-                f"repos/{repo}/labels/{quote(name, safe='')}",
-                payload,
-            )
-            messages.append(f"updated label {name}")
+            if any(current.get(key) != value for key, value in label.items()):
+                api(
+                    "PATCH",
+                    f"repos/{repo}/labels/{quote(name, safe='')}",
+                    payload,
+                )
+                messages.append(f"updated label {name}")
+                existing[name] = {**current, **label}
+            else:
+                messages.append(f"kept label {name}")
         else:
             api(
                 "POST",
                 f"repos/{repo}/labels",
                 dict(label),
             )
+            existing[name] = dict(label)
             messages.append(f"created label {name}")
 
     return messages
@@ -320,14 +565,10 @@ def install_rulesets(
     repo: str,
     recipes: Sequence[JsonObject],
 ) -> list[str]:
-    response = api(
-        "GET",
-        f"repos/{repo}/rulesets?includes_parents=false&per_page=100",
-        None,
+    response = paged_list(
+        api,
+        f"repos/{repo}/rulesets?includes_parents=false",
     )
-
-    if not isinstance(response, list):
-        raise SetupError("unexpected rulesets response")
 
     messages: list[str] = []
 
@@ -353,12 +594,20 @@ def install_rulesets(
                     f"ruleset {name} has no numeric id"
                 )
 
-            api(
-                "PUT",
+            current = api(
+                "GET",
                 f"repos/{repo}/rulesets/{ruleset_id}",
-                recipe,
+                None,
             )
-            messages.append(f"updated ruleset {name}")
+            if not _ruleset_semantics_match(current, recipe):
+                api(
+                    "PUT",
+                    f"repos/{repo}/rulesets/{ruleset_id}",
+                    _merge_ruleset_value(current, recipe),
+                )
+                messages.append(f"updated ruleset {name}")
+            else:
+                messages.append(f"kept ruleset {name}")
         else:
             api(
                 "POST",
@@ -370,6 +619,73 @@ def install_rulesets(
     return messages
 
 
+def verify_configuration(
+    api: ApiCall,
+    repo: str,
+    recipes: Sequence[JsonObject],
+    created_main_sha: str | None = None,
+) -> list[str]:
+    """Verify every configured GitHub contract after the writes complete."""
+    metadata = api("GET", f"repos/{repo}", None)
+    if not isinstance(metadata, dict):
+        raise SetupError("unexpected repository settings response during verification")
+    for key, expected in REPOSITORY_SETTINGS.items():
+        if metadata.get(key) != expected:
+            raise SetupError(
+                f"repository setting {key} did not reach the expected value"
+            )
+
+    for branch in ("dev", "main"):
+        branch_sha = exact_ref_sha(api, repo, branch)
+        if branch_sha is None:
+            raise SetupError(f"branch {branch} was not observable after setup")
+        if branch == "main" and created_main_sha is not None and branch_sha != created_main_sha:
+            raise SetupError("main was not created from the observed dev commit")
+
+    labels = paged_list(api, f"repos/{repo}/labels")
+    labels_by_name = {
+        item["name"]: item
+        for item in labels
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    for label in REQUIRED_LABELS:
+        current = labels_by_name.get(label["name"])
+        if current is None or any(
+            current.get(key) != value for key, value in label.items()
+        ):
+            raise SetupError(f"label {label['name']} did not reach the expected value")
+
+    rulesets = paged_list(
+        api,
+        f"repos/{repo}/rulesets?includes_parents=false",
+    )
+    for recipe in recipes:
+        matches = [
+            item for item in rulesets
+            if isinstance(item, dict) and item.get("name") == recipe["name"]
+        ]
+        if len(matches) != 1:
+            raise SetupError(
+                f"ruleset {recipe['name']} was not uniquely observable after setup"
+            )
+        ruleset_id = matches[0].get("id")
+        if not isinstance(ruleset_id, int):
+            raise SetupError(f"ruleset {recipe['name']} has no numeric id")
+        detail = api(
+            "GET",
+            f"repos/{repo}/rulesets/{ruleset_id}",
+            None,
+        )
+        if not _ruleset_semantics_match(detail, recipe):
+            raise SetupError(
+                f"ruleset {recipe['name']} did not reach the expected value"
+            )
+
+    return [
+        "verified repository settings, branches, required labels, and rulesets",
+    ]
+
+
 def configure_repository(
     repo: str,
     api: ApiCall = github_api,
@@ -377,6 +693,7 @@ def configure_repository(
 ) -> list[str]:
     recipes = load_rulesets(ruleset_paths)
     messages: list[str] = []
+    created_main_sha = None
 
     dev_sha = exact_ref_sha(api, repo, "dev")
 
@@ -389,6 +706,7 @@ def configure_repository(
     main_sha = exact_ref_sha(api, repo, "main")
 
     if main_sha is None:
+        created_main_sha = dev_sha
         api(
             "POST",
             f"repos/{repo}/git/refs",
@@ -410,6 +728,7 @@ def configure_repository(
 
     messages.extend(ensure_labels(api, repo))
     messages.extend(install_rulesets(api, repo, recipes))
+    messages.extend(verify_configuration(api, repo, recipes, created_main_sha))
 
     return messages
 
@@ -423,6 +742,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "bootstrap":
+        sys.dont_write_bytecode = True
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from tools.greenfield_bootstrap import main as bootstrap_main
+
+        return bootstrap_main(argv[1:])
     if argv and argv[0] == "adopt-existing":
         # Planning must not create import caches in the inspected repository.
         sys.dont_write_bytecode = True
@@ -435,8 +761,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         description=(
-            "Configure a repository created from this template. "
-            "For an existing repository use adopt-existing --help."
+            "Configure a repository created from this template. Use bootstrap "
+            "for a greenfield GameMaker folder and adopt-existing for an "
+            "existing repository."
         )
     )
     parser.add_argument(
