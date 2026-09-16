@@ -67,6 +67,37 @@ class GreenfieldBootstrapTests(unittest.TestCase):
             **kwargs,
         )
 
+    def candidate_visibility_source(self):
+        source = Path(self.temp.name) / "template"
+        shutil.copytree(
+            ROOT,
+            source,
+            ignore=shutil.ignore_patterns(
+                ".git", "__pycache__", ".venv", ".pytest_cache",
+            ),
+        )
+        shutil.rmtree(source / "tools/tests")
+        tests = source / "tools/tests"
+        tests.mkdir(parents=True)
+        (tests / "test_candidate_visibility.py").write_text(
+            "import subprocess\n"
+            "import unittest\n"
+            "from pathlib import Path\n\n"
+            "ROOT = Path(__file__).resolve().parents[2]\n\n"
+            "class CandidateVisibilityTests(unittest.TestCase):\n"
+            "    def test_framework_bundle_is_in_candidate_index(self):\n"
+            "        self.assertTrue((ROOT / 'AGENTS.md').is_file())\n"
+            "        result = subprocess.run(\n"
+            "            ['git', 'ls-files', '--error-unmatch', 'AGENTS.md'],\n"
+            "            cwd=ROOT, capture_output=True, text=True,\n"
+            "        )\n"
+            "        self.assertEqual(result.returncode, 0, result.stderr)\n\n"
+            "if __name__ == '__main__':\n"
+            "    unittest.main()\n",
+            encoding="utf-8",
+        )
+        return source
+
     def test_project_only_path_preserves_topology_and_adds_framework(self):
         self.add_project("game/game.yyp")
         game_before = (self.target / "game/game.yyp").read_bytes()
@@ -231,34 +262,7 @@ class GreenfieldBootstrapTests(unittest.TestCase):
 
     def test_project_only_validation_observes_uncommitted_framework_candidate(self):
         self.add_project()
-        source = Path(self.temp.name) / "template"
-        shutil.copytree(
-            ROOT,
-            source,
-            ignore=shutil.ignore_patterns(
-                ".git", "__pycache__", ".venv", ".pytest_cache",
-            ),
-        )
-        shutil.rmtree(source / "tools/tests")
-        tests = source / "tools/tests"
-        tests.mkdir(parents=True)
-        (tests / "test_candidate_visibility.py").write_text(
-            "import subprocess\n"
-            "import unittest\n"
-            "from pathlib import Path\n\n"
-            "ROOT = Path(__file__).resolve().parents[2]\n\n"
-            "class CandidateVisibilityTests(unittest.TestCase):\n"
-            "    def test_framework_bundle_is_in_candidate_index(self):\n"
-            "        self.assertTrue((ROOT / 'AGENTS.md').is_file())\n"
-            "        result = subprocess.run(\n"
-            "            ['git', 'ls-files', '--error-unmatch', 'AGENTS.md'],\n"
-            "            cwd=ROOT, capture_output=True, text=True,\n"
-            "        )\n"
-            "        self.assertEqual(result.returncode, 0, result.stderr)\n\n"
-            "if __name__ == '__main__':\n"
-            "    unittest.main()\n",
-            encoding="utf-8",
-        )
+        source = self.candidate_visibility_source()
 
         report = bootstrap(
             self.target,
@@ -273,6 +277,69 @@ class GreenfieldBootstrapTests(unittest.TestCase):
             report["local"]["validation"],
         )
         self.assertEqual(report["status"], "incomplete")
+
+    def test_ignored_framework_candidate_must_be_in_head_before_github_setup(self):
+        self.add_project()
+        self.init_git(commit=True)
+        exclude = self.target / ".git/info/exclude"
+        exclude.write_text("*\n", encoding="utf-8")
+        source = self.candidate_visibility_source()
+
+        with patch("tools.greenfield_bootstrap.configure_repository") as configure:
+            report = bootstrap(
+                self.target,
+                source_root=source,
+                repo="owner/game",
+                run_tests=True,
+            )
+
+        self.assertEqual(
+            report["local"]["validation"]["status"],
+            "complete",
+            report["local"]["validation"],
+        )
+        self.assertTrue(report["local"]["validation"]["candidate_tree"])
+        self.assertFalse(report["local"]["git"]["ready"])
+        self.assertEqual(report["local"]["status"], "incomplete")
+        self.assertEqual(report["status"], "incomplete")
+        self.assertEqual(report["github"]["status"], "incomplete")
+        baseline = report["local"]["git"]["framework_baseline"]
+        self.assertIn("AGENTS.md", baseline["missing_from_head"])
+        actions = " ".join(report["manual_actions"])
+        for required_action in ("review", "stage", "commit"):
+            self.assertIn(required_action, actions)
+        self.assertEqual(
+            subprocess.run(
+                ["git", "-C", str(self.target), "status", "--porcelain=v1", "--untracked-files=all"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout,
+            "",
+        )
+        self.assertEqual(
+            subprocess.run(
+                ["git", "-C", str(self.target), "check-ignore", "--quiet", "AGENTS.md"],
+                check=False,
+            ).returncode,
+            0,
+        )
+        head_paths = subprocess.run(
+            ["git", "-C", str(self.target), "ls-tree", "-r", "--name-only", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        self.assertNotIn("AGENTS.md", head_paths)
+        self.assertEqual(
+            subprocess.run(
+                ["git", "-C", str(self.target), "diff", "--cached", "--quiet"],
+                check=False,
+            ).returncode,
+            0,
+        )
+        self.assertEqual(exclude.read_text(encoding="utf-8"), "*\n")
+        configure.assert_not_called()
 
 
     def test_deleted_framework_history_is_prior_lineage_evidence(self):

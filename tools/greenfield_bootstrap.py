@@ -12,13 +12,13 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from tools.ci.candidate_git import candidate_snapshot
+from tools.ci.framework_baseline import gate_git_state
 from tools.setup_github import (
     ROOT as TEMPLATE_ROOT,
     SetupError,
     configure_repository,
     repository_name,
 )
-
 
 ROOT_FILES = frozenset({
     ".gitattributes", ".gitignore", ".python-version", "AGENTS.md",
@@ -568,7 +568,7 @@ def _local_validation(target_root: Path, required_paths: list[str]) -> dict:
             }
     status = "complete" if checker.returncode == 0 and tests.returncode == 0 else "failed"
     return {
-        "status": status,
+        "status": status, "candidate_tree": tree.stdout.strip(),
         "commands": {
             "repository_policy": _command_result(checker),
             "template_tests": _command_result(tests),
@@ -671,7 +671,7 @@ def bootstrap(
         {"status": "skipped", "reason": "template tests explicitly skipped"}
     )
     report["local"]["validation"] = validation
-    post_git_state = _ensure_git_repository(target_root)
+    post_git_state = gate_git_state(target_root, _ensure_git_repository(target_root), validation, source_paths)
     post_git_state["created"] = git_state["created"]
     post_git_state["actions"] = git_state["actions"] + post_git_state["actions"]
     git_state = post_git_state
