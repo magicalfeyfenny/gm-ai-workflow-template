@@ -1,43 +1,56 @@
 # GameMaker AI Workflow Template
 
-This repository is a reusable governance scaffold for GameMaker projects, not a
-game. It lets agents work in coherent, auditable units while humans retain
-authority over high-risk and release decisions.
+This repository is a reusable governance and tooling scaffold for GameMaker
+projects. It is not a game. It gives a project a canonical repository policy,
+machine-verifiable checks, GitHub workflow configuration, reusable Codex task
+prompts, and an explicit boundary between agent work and human authority.
 
 ## Governance overview (non-normative)
 
-This README is a user-facing summary, not a source of rules. The authoritative
-workflow and rationale live in [GOVERNANCE.md](GOVERNANCE.md#authority), while
-[PROJECT_POLICY.toml](PROJECT_POLICY.toml) owns executable paths, formats,
-limits, and risk patterns.
+This overview is navigation only. The authoritative workflow and rationale
+live in [GOVERNANCE.md](GOVERNANCE.md#authority), executable values live in
+[PROJECT_POLICY.toml](PROJECT_POLICY.toml), and task routing starts in
+[AGENTS.md](AGENTS.md#authority-and-task-routing).
 
-Normal agent-governed work starts with one coherent implementation issue.
-Broader requests split only when they contain independently meaningful
-outcomes; technical implementation layers stay together when they jointly
-deliver one outcome. Each issue branches from current `origin/dev`, uses an
-issue-numbered branch, and opens a draft pull request after the first
-meaningful, tested milestone. Blocked work waits until its blockers are
-resolved.
+## What it provides
 
-Validation happens in three stages: focused checks support each milestone,
-the complete change receives whole-issue local validation, and hosted CI then
-verifies the exact pull-request head, body, and labels. Completion metadata is
-added only after the whole change is locally valid.
-
-Risk determines the final path. Eligible completed low-risk work targeting
-`dev` can be marked ready and squash-merged by repository automation after its
-final hosted evidence passes. High-risk or manually handled work remains a
-draft for human review, readiness, and merge. Automatic high risk is reserved
-for authority-bearing governance, release-bound work, and exceptional
-structural size; ordinary game code, content, project metadata, and assets can
-use the low-risk path. Any change can still be classified high risk when its
-actual circumstances warrant it.
-
-`main` is release-only, and releases require explicit human authorization.
-Human-created work uses a separate protected lane that agents do not modify.
+- authoritative workflow rules in [GOVERNANCE.md](GOVERNANCE.md#authority);
+- executable paths, asset formats, storage rules, and risk limits in
+  [PROJECT_POLICY.toml](PROJECT_POLICY.toml);
+- repository-policy, asset, storage, CI, and issue-contract tooling under
+  [the tools directory](tools/setup_github.py);
+- GitHub workflows, issue/PR support, and portable branch ruleset recipes;
+- repository-local Codex skills and automation prompt templates; and
+- a resumable [greenfield bootstrap](docs/SETUP.md) for a new GameMaker folder
+  or a repository generated from this template.
 
 ## Start here
 
-Follow [docs/SETUP.md](docs/SETUP.md) when creating a repository from this
-template. For day-to-day work, [AGENTS.md](AGENTS.md#authority-and-task-routing)
-routes each task to only the governance sections and local skill it needs.
+Choose the path that matches the repository before changing anything:
+
+- A valid GameMaker project with no meaningful governance: run the
+  [greenfield bootstrap](docs/SETUP.md).
+- An existing repository with independent governance, earlier framework
+  lineage, or uncertain history: use the read-only
+  [brownfield adoption plan](docs/ADOPTION.md).
+- A repository that already adopted this framework and needs a newer upstream
+  policy: use the [bounded policy-update procedure](docs/POLICY_UPDATE.md).
+
+The bootstrap detects the latter cases and stops before overwriting authority.
+It discovers an existing GameMaker project instead of moving it into a
+template-specific directory. Read [docs/SETUP.md](docs/SETUP.md) for commands,
+verification, recovery, and the setup actions that remain human-owned.
+
+## Day-to-day workflow
+
+Normal agent-governed work starts with one coherent issue, branches from the
+current `origin/dev`, and opens a draft pull request after its first tested
+milestone. Focused checks support milestones, whole-issue local evidence comes
+before completion metadata, and hosted CI verifies the exact pull-request
+candidate. See [AGENTS.md](AGENTS.md#authority-and-task-routing) for task
+routing and [GOVERNANCE.md](GOVERNANCE.md#authority) for the authoritative
+rules.
+
+`dev` is the integration branch. `main` is release-only. High-risk and
+human-created work stays at the human review, readiness, and merge gates;
+release and publication actions always require explicit human authority.
