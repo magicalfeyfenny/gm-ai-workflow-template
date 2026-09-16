@@ -368,6 +368,17 @@ requirement. Do not treat an agent-authored generic smoke test, subjective
 review, experiential acceptance, or human-observation requirement as a valid
 completion blocker.
 
+Implementation completion, a milestone commit, draft pull-request publication,
+or hosted checks obtained before completion metadata are not terminal states.
+Once the implementation scope is complete, an actionable continuation includes
+whole-issue Stage 2 evidence, the issue-contract revision and immediate
+pre-transition re-fetch, the applicable completion transition, and fresh Stage
+3 hosted evidence. An eligible low-risk continuation may reach `work:complete`
+and then stops at the existing low-risk readiness and squash auto-merge
+automation; high-risk and manual-path continuations use `work:review-ready`
+and stop for human review, readiness, and merge. These authority boundaries do
+not add manual or experiential validation requirements.
+
 A continuation does not make an asset-primary issue eligible when its remaining
 primary deliverable still needs an unavailable capability. When the required
 environment becomes available, or the required human action is resolved, the
