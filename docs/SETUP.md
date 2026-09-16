@@ -174,7 +174,9 @@ python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
 
 The real index and working-tree contents are not staged by this verification,
 and user-owned changes are not committed or discarded. The candidate must pass
-both checks before the tool attempts hosted mutation.
+both checks, and the post-bootstrap Git state must be ready, before the tool
+attempts hosted mutation. A validated but uncommitted candidate remains
+incomplete until the intended local baseline is committed on `dev`.
 `--skip-tests` is available only for diagnosis; it reports incomplete and does
 not configure GitHub.
 

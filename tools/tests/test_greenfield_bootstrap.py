@@ -370,6 +370,30 @@ class GreenfieldBootstrapTests(unittest.TestCase):
             0,
         )
 
+    def test_clean_committed_dev_with_bootstrap_writes_defers_github(self):
+        self.add_project()
+        self.init_git(commit=True)
+        with patch(
+            "tools.greenfield_bootstrap._local_validation",
+            return_value={"status": "complete"},
+        ), patch("tools.greenfield_bootstrap.configure_repository") as configure:
+            report = bootstrap(
+                self.target,
+                source_root=ROOT,
+                repo="owner/game",
+                run_tests=True,
+            )
+
+        self.assertEqual(report["local"]["validation"]["status"], "complete")
+        self.assertEqual(report["status"], "incomplete")
+        self.assertEqual(report["local"]["git"]["branch"], "dev")
+        self.assertTrue(report["local"]["git"]["has_commit"])
+        self.assertIn("AGENTS.md", report["local"]["git"]["dirty_paths"])
+        self.assertFalse(report["local"]["git"]["ready"])
+        self.assertEqual(report["github"]["status"], "incomplete")
+        self.assertTrue((self.target / "AGENTS.md").is_file())
+        configure.assert_not_called()
+
     def test_ordinary_non_dev_branch_installs_but_reports_incomplete(self):
         self.add_project()
         self.init_git(branch="feature/setup", commit=True)

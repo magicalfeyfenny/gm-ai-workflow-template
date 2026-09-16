@@ -28,7 +28,6 @@ FRAMEWORK_ROOTS = (".agents", ".github", "docs", "templates", "tools")
 FRAMEWORK_DATA_ROOTS = ("assets",)
 FRAMEWORK_CONTENT_FILES = frozenset({"content/.gitkeep"})
 SKIPPED_FRAMEWORK_PREFIXES = ("docs/audits/",)
-
 CORE_FILES = frozenset({
     "AGENTS.md", "GOVERNANCE.md", "PROJECT_POLICY.toml",
     ".github/workflows/ci.yml", ".github/pull_request_template.md",
@@ -45,7 +44,6 @@ INDEPENDENT_ROOT_FILES = frozenset({
     "REPOSITORY_POLICY.md", "SECURITY.md", "docs/GOVERNANCE.md",
 })
 ONBOARDING_MARKER = "<!-- gm-ai-workflow-template:onboarding -->"
-
 
 def _relative(path: Path, root: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
@@ -272,7 +270,6 @@ def classify_target(
     else:
         classification = "greenfield"
         reasons = ["valid GameMaker project found without meaningful framework authority"]
-
     return {
         "classification": classification,
         "reasons": reasons,
@@ -321,7 +318,6 @@ def _plan_local_writes(
 ) -> tuple[list[dict], list[str]]:
     if classification["classification"] in {"independent", "ambiguous"}:
         return [], []
-
     writes: list[dict] = []
     conflicts: list[str] = []
     for relative in source_paths:
@@ -329,7 +325,6 @@ def _plan_local_writes(
         target = _safe_destination(target_root, relative)
         if not source.is_file() or source.is_symlink():
             raise SetupError(f"framework source is not a regular file: {relative}")
-
         if relative == "README.md":
             content = _onboarding_readme(source, target) if target.exists() else source.read_bytes()
             if not target.exists() or target.read_bytes() != content:
@@ -339,7 +334,6 @@ def _plan_local_writes(
                     "expected": target.read_bytes() if target.exists() else None,
                 })
             continue
-
         if target.exists() or target.is_symlink():
             if target.is_symlink() or not target.is_file():
                 conflicts.append(relative)
@@ -361,7 +355,6 @@ def _plan_local_writes(
             else:
                 conflicts.append(relative)
             continue
-
         writes.append({
             "path": relative,
             "content": source.read_bytes(),
@@ -456,7 +449,7 @@ def _ensure_git_repository(target_root: Path) -> dict:
         ]
         if dirty_paths:
             manual.append(
-                "review and commit or resolve pre-existing Git work before treating setup as complete"
+                "review, stage, commit, or resolve the uncommitted repository changes before treating setup as complete"
             )
 
     lfs = _git(target_root, "lfs", "install", "--local")
@@ -678,11 +671,21 @@ def bootstrap(
         {"status": "skipped", "reason": "template tests explicitly skipped"}
     )
     report["local"]["validation"] = validation
+    post_git_state = _ensure_git_repository(target_root)
+    post_git_state["created"] = git_state["created"]
+    post_git_state["actions"] = git_state["actions"] + post_git_state["actions"]
+    git_state = post_git_state
+    report["local"]["git"] = git_state
+    report["manual_actions"] = list(dict.fromkeys(report["manual_actions"] + git_state["manual_actions"]))
     git_ready = git_state.get("ready", not git_state["manual_actions"])
     report["local"]["status"] = validation["status"]
     if validation["status"] == "complete" and not git_ready:
         report["local"].update({"status": "incomplete",
                                 "reason": "required Git setup remains unresolved"})
+        if report["github"]["status"] == "not-selected":
+            report["github"] = {"status": "incomplete", "reason": "GitHub configuration was deferred until the local Git baseline is committed and ready"}
+            report["manual_actions"].append("commit or resolve the local Git changes, then rerun bootstrap before configuring GitHub")
+        return report
     if validation["status"] == "failed":
         report["manual_actions"].append(
             "resolve local repository-policy or template-test failures and rerun bootstrap"
@@ -793,7 +796,5 @@ def main(argv: list[str] | None = None) -> int:
     if report["status"] in {"complete", "dry-run"}:
         return 0
     return 1
-
-
 if __name__ == "__main__":
     raise SystemExit(main())
