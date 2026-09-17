@@ -652,9 +652,8 @@ After the entire issue scope is complete, run the following on one unchanged
 repository-content candidate before adding completion metadata or making a
 final handoff:
 
-- `python3.12 tools/ci/check_repo.py --baseline-ref origin/dev`;
+- `python3 tools/ci/run_repository_checks.py all --baseline-ref origin/dev`;
 - relevant tests, including relevant GameMaker tests when available;
-- `python3.12 -m unittest discover -s tools/tests -p 'test_*.py'`;
 - `git diff --check`.
 
 This evidence applies to the exact candidate tree that was checked. Committing

@@ -26,16 +26,25 @@ Install and authenticate:
 - Python 3.12 or later; and
 - GitHub CLI (`gh`) when GitHub configuration is wanted.
 
-The bootstrap runs the full repository-local test suite. Install its pinned
-Python dependencies before the first project-only run:
+The bootstrap runs the full repository-local test suite. Dependency-sensitive
+checks use the repository's bounded environment router. It reads an explicit
+interpreter from `.python-version`, then validates `.venv`, then validates the
+ambient Python against the Python 3.12-or-later and pinned-dependency contract,
+and creates a temporary isolated environment from a compatible Python only
+when those routes do not produce a usable environment. It installs only the
+pinned requirements into isolated environments.
+
+To preinstall the pinned dependencies in a chosen isolated environment, use:
 
 ```sh
-python3.12 -m pip install -r /path/to/gm-ai-workflow-template/tools/tests/requirements.txt
+/path/to/isolated-python -m pip install -r /path/to/gm-ai-workflow-template/tools/tests/requirements.txt
 ```
 
 For a repository already generated from the template, run the same command
 from that repository with `tools/tests/requirements.txt` as the path. An
-isolated Python 3.12 virtual environment is recommended.
+isolated Python 3.12-or-later virtual environment is recommended. Do not treat a
+missing dependency in the ambient interpreter as a project failure when the
+router can satisfy the check in isolation.
 
 The GitHub identity used for configuration needs permission to read and update
 repository settings, labels, and rulesets. If the identity lacks a capability,
@@ -168,9 +177,13 @@ candidate Git index, uses that stored tree for repository policy, and
 materializes the same tree into an isolated test checkout before running:
 
 ```sh
-python3.12 tools/ci/check_repo.py --candidate-ref CANDIDATE_TREE
-python3.12 -m unittest discover -s tools/tests -p 'test_*.py'
+python3 tools/ci/run_repository_checks.py repository-policy \
+  --baseline-ref origin/dev --candidate-ref CANDIDATE_TREE
+python3 tools/ci/run_repository_checks.py tests
 ```
+
+The router prints the selected route and distinguishes environment setup
+failure from a repository-policy or test failure.
 
 The real index and working-tree contents are not staged by this verification,
 and user-owned changes are not committed or discarded. The candidate must pass

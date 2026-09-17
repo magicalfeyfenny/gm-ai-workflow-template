@@ -30,8 +30,12 @@ because the repository is governed.
 
 ## Tooling
 
-Repository tooling requires Python 3.12 or later. Use `python3.12` for policy
-and test commands.
+Repository tooling requires Python 3.12 or later. Use
+`python3 tools/ci/run_repository_checks.py` for dependency-sensitive policy
+and test commands; it follows the repository's explicit interpreter, a
+validated `.venv`, a compatible ambient interpreter with the pinned
+dependencies, and then a bounded isolated environment. Standalone commands
+must likewise use any compatible Python 3.12-or-later interpreter.
 
 ## Standing permission
 
