@@ -41,6 +41,111 @@ class CodexAutomationTemplateTests(unittest.TestCase):
                     )
                 )
 
+    def test_scheduled_completion_route_is_not_terminal_at_draft_or_ci(self):
+        """Keep the scheduled worker moving through the whole completion route."""
+        prompt = " ".join(
+            (ROOT / "templates/codex/governed-change.txt")
+            .read_text(encoding="utf-8")
+            .casefold()
+            .split()
+        )
+        ordered_stages = (
+            "do not stop after implementation",
+            "re-fetch and reconcile the governing issue before stage 2",
+            "stage 2 whole-issue local evidence",
+            "immediately before the completion transition",
+            "exactly one physical-line `closes #<issue>` line",
+            "fresh stage 3 exact-head hosted evidence",
+            "existing low-risk automation",
+        )
+        positions = []
+        for stage in ordered_stages:
+            with self.subTest(stage=stage):
+                position = prompt.find(stage)
+                self.assertGreaterEqual(position, 0)
+                positions.append(position)
+        self.assertEqual(positions, sorted(positions))
+
+    def test_early_stop_fixtures_continue_into_whole_issue_evidence(self):
+        """Keep both observed early-stop states on the same continuation route."""
+        prompt = " ".join(
+            (ROOT / "templates/codex/governed-change.txt")
+            .read_text(encoding="utf-8")
+            .casefold()
+            .split()
+        )
+        fixtures = (
+            {
+                "name": "bug-free-pancake issue 34 and draft PR 39",
+                "state": (
+                    "milestone commit",
+                    "draft pr publication",
+                    "hosted checks",
+                ),
+            },
+            {
+                "name": "bug-free-pancake issue 35 and draft PR 40",
+                "state": (
+                    "milestone commit",
+                    "draft pr publication",
+                    "hosted checks",
+                ),
+            },
+        )
+        for fixture in fixtures:
+            with self.subTest(fixture=fixture["name"]):
+                for state in fixture["state"]:
+                    self.assertIn(state, prompt)
+                self.assertIn(
+                    "do not stop after implementation, a milestone commit, "
+                    "draft pr publication, or hosted checks",
+                    prompt,
+                )
+                self.assertIn("stage 2 whole-issue local evidence", prompt)
+
+    def test_evidence_and_authority_boundaries_cover_completion_states(self):
+        """Keep unavailable evidence, freshness, and actor boundaries explicit."""
+        prompt = " ".join(
+            (ROOT / "templates/codex/governed-change.txt")
+            .read_text(encoding="utf-8")
+            .casefold()
+            .split()
+        )
+        fixtures = {
+            "stage 2 failure": (
+                "missing, failed, stale, or mismatched",
+                "blocks completion metadata",
+            ),
+            "unavailable capability": (
+                "run all available evidence",
+                "record that limitation accurately",
+                "do not create a human-only gate",
+            ),
+            "stage 3 failure": (
+                "stage 3 is not a prerequisite",
+                "blocks readiness and auto-merge",
+            ),
+            "low risk actor": (
+                "existing low-risk automation",
+                "mark the pr ready",
+                "configure squash auto-merge",
+            ),
+            "manual actor": (
+                "work:review-ready",
+                "human review, readiness, and merge",
+                "authority actions, not validation blockers",
+            ),
+            "worker boundary": (
+                "do not directly mark ready, merge, bypass rulesets",
+                "push protected branches",
+                "release, or publish",
+            ),
+        }
+        for name, markers in fixtures.items():
+            with self.subTest(fixture=name):
+                for marker in markers:
+                    self.assertIn(marker, prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

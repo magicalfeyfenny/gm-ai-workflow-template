@@ -498,8 +498,48 @@ class GovernanceRoutingTests(unittest.TestCase):
             "authority actions, not validation blockers",
             "agent-authored pr body or handoff",
         ):
+                with self.subTest(marker=marker):
+                    self.assertIn(marker, scheduled)
+
+    def test_scheduled_completion_continuation_reaches_the_existing_boundaries(self):
+        """Keep scheduled completion in evidence flow and existing authority lanes."""
+        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
+        continuation = " ".join(
+            governance.split("## Scheduled continuation", 1)[1].split(
+                "## Asset completion and authority", 1
+            )[0].casefold().split()
+        )
+        for marker in (
+            "implementation completion",
+            "not terminal states",
+            "whole-issue stage 2 evidence",
+            "issue-contract revision",
+            "immediate pre-transition re-fetch",
+            "fresh stage 3 hosted evidence",
+            "eligible low-risk continuation",
+            "existing low-risk readiness and squash auto-merge automation",
+            "high-risk and manual-path continuations",
+            "authority boundaries",
+        ):
             with self.subTest(marker=marker):
-                self.assertIn(marker, scheduled)
+                self.assertIn(marker, continuation)
+
+        agents = " ".join(
+            (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+            .casefold()
+            .split()
+        )
+        for marker in (
+            "completion metadata remains an evidence-backed transition",
+            "scheduled worker may carry eligible low-risk work",
+            "whole-issue stage 2 evidence",
+            "immediate pre-transition issue re-fetch",
+            "fresh stage 3 evidence",
+            "existing low-risk automation owns readiness and squash auto-merge",
+            "high-risk and manual-path work waits for human review, readiness, and merge",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, agents)
 
     def test_release_verification_names_concrete_machine_evidence(self):
         """Keep release verification tied to source, artifacts, and integrity."""

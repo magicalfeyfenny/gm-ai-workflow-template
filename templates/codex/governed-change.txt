@@ -59,6 +59,39 @@ create the governed issue branch. For a continuation, use the existing matching
 issue branch and draft pull request; do not recreate the branch. Do not absorb
 unrelated fixes.
 
+Do not stop after implementation, a milestone commit, draft PR publication, or
+hosted checks. When the complete implementation scope is ready, continue the
+same work item through the ordinary completion lifecycle:
+
+1. Re-fetch and reconcile the governing issue before Stage 2. Use the issue
+   contract command in [Issue contract evidence](../../GOVERNANCE.md#issue-contract-evidence)
+   and record its accepted revision with the validation evidence.
+2. Run the required Stage 2 whole-issue local evidence on one unchanged
+   candidate: repository policy, relevant tests, the full Python suite, and
+   `git diff --check`. Missing, failed, stale, or mismatched required evidence
+   or the accepted issue-contract revision blocks completion metadata. If a
+   native, runtime, or interactive capability is unavailable but only limits
+   evidence under the accepted contract and Governance, run all available
+   evidence and record that limitation accurately; do not create a human-only
+   gate or substitute manual, visual, experiential, or human observation.
+3. Re-fetch and reconcile the governing issue immediately before the completion
+   transition. If the contract changed, establish fresh Stage 2 evidence for
+   the revised contract before proceeding.
+4. Only after that sequence, add exactly one physical-line `Closes #<issue>`
+   line and the applicable completion label: `work:complete` for eligible
+   low-risk work, or `work:review-ready` for high-risk or manual-path work.
+   Never add completion metadata to an intermediate milestone.
+5. After completion metadata is present, obtain fresh Stage 3 exact-head hosted
+   evidence for the final PR head, body, labels, and accepted issue contract.
+   Stage 3 is not a prerequisite for adding completion metadata, but missing,
+   failed, stale, or mismatched Stage 3 evidence blocks readiness and
+   auto-merge or the manual handoff.
+6. For eligible low-risk work targeting `dev`, leave the existing low-risk
+   automation to mark the PR ready and configure squash auto-merge. Do not
+   directly mark ready, merge, bypass rulesets, push protected branches,
+   release, or publish. High-risk and manual-path work stops for human review,
+   readiness, and merge; those are authority actions, not validation blockers.
+
 Allocate evidence under
 [Validation coverage allocation](../../GOVERNANCE.md#validation-coverage-allocation).
 If a required interactive machine-verifiable check cannot run, follow
