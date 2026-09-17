@@ -107,7 +107,6 @@ def run_checks(
     root: Path = ROOT,
     requirements: Path | None = DEFAULT_REQUIREMENTS,
     explicit_interpreter: str | None = None,
-    allow_ambient: bool = False,
     baseline_ref: str | None = None,
     candidate_ref: str | None = None,
 ) -> int:
@@ -116,7 +115,6 @@ def run_checks(
         root,
         requirements=requirements,
         explicit_interpreter=explicit_interpreter,
-        allow_ambient=allow_ambient,
     )
     try:
         print(selected.evidence(), flush=True)
@@ -158,14 +156,6 @@ def _parser() -> argparse.ArgumentParser:
         "--interpreter",
         help="explicit interpreter or environment path; otherwise read .python-version",
     )
-    parser.add_argument(
-        "--allow-ambient",
-        action="store_true",
-        help=(
-            "compatibility flag; ambient Python is used only after version and "
-            "pinned-dependency validation"
-        ),
-    )
     subparsers = parser.add_subparsers(dest="check", required=True)
     for name in ("all", "repository-policy", "tests"):
         subparser = subparsers.add_parser(name)
@@ -186,7 +176,6 @@ def main(argv: list[str] | None = None) -> int:
             root=args.root,
             requirements=requirements,
             explicit_interpreter=args.interpreter,
-            allow_ambient=args.allow_ambient,
             baseline_ref=getattr(args, "baseline_ref", None),
             candidate_ref=getattr(args, "candidate_ref", None),
         )

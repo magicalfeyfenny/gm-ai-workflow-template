@@ -401,7 +401,6 @@ def select_environment(
     *,
     requirements: Path | None = DEFAULT_REQUIREMENTS,
     explicit_interpreter: str | None = None,
-    allow_ambient: bool = False,
 ) -> EnvironmentSelection:
     """Select a usable interpreter in the repository's bounded route order."""
     root = root.resolve()
