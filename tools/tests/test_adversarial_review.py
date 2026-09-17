@@ -6,7 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools.ci.adversarial_review import (
+    ADJUDICATION_RESULT_OUTPUT_SCHEMA,
     ADJUDICATION_RESULT_SCHEMA,
+    REVIEW_RESULT_OUTPUT_SCHEMA,
     REVIEW_RESULT_SCHEMA,
     ReviewContractError,
     build_adjudication_packet,
@@ -370,6 +372,57 @@ class ReviewLoopTests(unittest.TestCase):
         self.assertEqual(transition["status"], "revalidate-and-rereview")
         self.assertEqual(transition["cycle"], 1)
         self.assertEqual(transition["corrections"][0]["locations"], [INCLUDED[0]])
+
+    def test_blocker_correction_runs_fresh_stage2_and_fresh_review(self):
+        original_packet = packet()
+        adjudication_packet = build_adjudication_packet(
+            original_packet, [finding("F-blocker", "supported blocker")]
+        )
+        result = adjudication_result(
+            adjudication_packet,
+            [decision("F-blocker", "blocker", correction())],
+        )
+        corrected = candidate(head_sha="g" * 40, diff=DIFF + "corrected\n")
+        transition = review_loop_decision(
+            result,
+            adjudication_packet,
+            cycle=0,
+            candidate_changed=True,
+            next_candidate=corrected,
+        )
+        self.assertEqual(transition["status"], "revalidate-and-rereview")
+        corrected_stage2 = {
+            "issue_contract_revision": REVISION,
+            "candidate_identity": candidate_identity(corrected),
+            "checks": [
+                {"name": "fresh Stage 2", "result": "passed", "evidence": ["fresh"]}
+            ],
+        }
+        corrected_packet = build_review_packet(
+            issue_contract(),
+            corrected,
+            governance(),
+            corrected_stage2,
+            {"included": INCLUDED, "exclusions": ["readiness", "merge", "release"]},
+        )
+        self.assertTrue(stage2_evidence_current(corrected_packet, corrected))
+        calls = []
+
+        def fake_runner(role, payload, output_schema):
+            calls.append((role, payload, output_schema))
+            if role == "reviewer":
+                return review_result(payload, [])
+            return adjudication_result(payload, [])
+
+        final = run_adversarial_review(corrected_packet, session_runner=fake_runner)
+        self.assertEqual([call[0] for call in calls], ["reviewer", "adjudicator"])
+        self.assertIs(calls[0][2], REVIEW_RESULT_OUTPUT_SCHEMA)
+        self.assertIs(calls[1][2], ADJUDICATION_RESULT_OUTPUT_SCHEMA)
+        self.assertEqual(final["dispositions"], [])
+        self.assertNotEqual(
+            original_packet["candidate"]["head_sha"],
+            corrected_packet["candidate"]["head_sha"],
+        )
 
     def test_cycle_cap_and_oscillation_surface_human_handoff(self):
         result, adjudication_packet = self._adjudication()
