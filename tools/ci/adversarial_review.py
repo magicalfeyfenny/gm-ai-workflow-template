@@ -19,6 +19,7 @@ ADJUDICATION_PACKET_SCHEMA = "adversarial-adjudication-packet:v1"
 ADJUDICATION_RESULT_SCHEMA = "adversarial-adjudication-result:v1"
 MAX_CORRECTION_CYCLES = 2
 DISPOSITIONS = ("blocker", "patch-now", "follow-up", "reject")
+_IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _FORBIDDEN_KEYS = frozenset(
     {
@@ -50,15 +51,70 @@ class ReviewSessionError(RuntimeError):
     """Raised when an isolated reviewer or adjudicator cannot return a result."""
 
 
+_IDENTITY_OUTPUT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": list(_IDENTITY_FIELDS),
+    "properties": {field: {"type": "string"} for field in _IDENTITY_FIELDS},
+}
+
+_FINDING_OUTPUT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "finding_id",
+        "severity",
+        "defect_or_invariant",
+        "supporting_evidence",
+        "contract_or_governance",
+        "affected_location",
+        "confidence",
+        "uncertainty",
+    ],
+    "properties": {
+        "finding_id": {"type": "string"},
+        "severity": {"type": "string"},
+        "defect_or_invariant": {"type": "string"},
+        "supporting_evidence": {"type": "array", "items": {"type": "string"}},
+        "contract_or_governance": {"type": "string"},
+        "affected_location": {"type": ["string", "null"]},
+        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "uncertainty": {"type": ["string", "null"]},
+    },
+}
+
 REVIEW_RESULT_OUTPUT_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "additionalProperties": False,
     "required": ["schema", "candidate_identity", "findings"],
     "properties": {
-        "schema": {"const": REVIEW_RESULT_SCHEMA},
-        "candidate_identity": {"type": "object"},
-        "findings": {"type": "array"},
+        "schema": {"type": "string", "const": REVIEW_RESULT_SCHEMA},
+        "candidate_identity": _IDENTITY_OUTPUT_SCHEMA,
+        "findings": {"type": "array", "items": _FINDING_OUTPUT_SCHEMA},
+    },
+}
+
+_CORRECTION_OUTPUT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "locations", "validation"],
+    "properties": {
+        "summary": {"type": "string"},
+        "locations": {"type": "array", "items": {"type": "string"}},
+        "validation": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+_DISPOSITION_OUTPUT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["finding_id", "disposition", "basis", "correction"],
+    "properties": {
+        "finding_id": {"type": "string"},
+        "disposition": {"type": "string", "enum": list(DISPOSITIONS)},
+        "basis": {"type": "string"},
+        "correction": {"anyOf": [{"type": "null"}, _CORRECTION_OUTPUT_SCHEMA]},
     },
 }
 
@@ -73,10 +129,18 @@ ADJUDICATION_RESULT_OUTPUT_SCHEMA = {
         "human_handoff",
     ],
     "properties": {
-        "schema": {"const": ADJUDICATION_RESULT_SCHEMA},
-        "candidate_identity": {"type": "object"},
-        "dispositions": {"type": "array"},
-        "human_handoff": {"type": "object"},
+        "schema": {"type": "string", "const": ADJUDICATION_RESULT_SCHEMA},
+        "candidate_identity": _IDENTITY_OUTPUT_SCHEMA,
+        "dispositions": {"type": "array", "items": _DISPOSITION_OUTPUT_SCHEMA},
+        "human_handoff": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["required", "reason"],
+            "properties": {
+                "required": {"type": "boolean"},
+                "reason": {"type": ["string", "null"]},
+            },
+        },
     },
 }
 
@@ -202,9 +266,6 @@ def _contract(value: object) -> dict:
     if normalized["open_blocker_ids"]:
         raise ReviewContractError("issue contract has unresolved native blockers")
     return normalized
-
-
-_IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
 
 
 def _identity(value: object, subject: str = "candidate identity") -> dict:
@@ -454,7 +515,9 @@ def _finding(value: object, index: int) -> dict:
         )
     if "confidence" in raw:
         confidence = raw["confidence"]
-        if (
+        if confidence is None:
+            finding["confidence"] = None
+        elif (
             not isinstance(confidence, (int, float))
             or isinstance(confidence, bool)
             or not 0 <= confidence <= 1
@@ -462,10 +525,14 @@ def _finding(value: object, index: int) -> dict:
             raise ReviewContractError(
                 f"{subject}.confidence must be a number from 0 through 1"
             )
-        finding["confidence"] = confidence
+        else:
+            finding["confidence"] = confidence
     if "uncertainty" in raw:
-        finding["uncertainty"] = _string(
-            raw["uncertainty"], f"{subject}.uncertainty"
+        uncertainty = raw["uncertainty"]
+        finding["uncertainty"] = (
+            None
+            if uncertainty is None
+            else _string(uncertainty, f"{subject}.uncertainty")
         )
     return finding
 
