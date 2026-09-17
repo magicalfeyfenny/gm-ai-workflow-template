@@ -68,7 +68,10 @@ same work item through the ordinary completion lifecycle:
    and record its accepted revision with the validation evidence.
 2. Run the required Stage 2 whole-issue local evidence on one unchanged
    candidate: repository policy, relevant tests, the full Python suite, and
-   `git diff --check`. Missing, failed, stale, or mismatched required evidence
+   `git diff --check`. Use the repository's
+   `tools/ci/run_repository_checks.py` entry point for dependency-sensitive
+   checks so the selected interpreter is recorded before execution. Missing,
+   failed, stale, or mismatched required evidence
    or the accepted issue-contract revision blocks completion metadata. If a
    native, runtime, or interactive capability is unavailable but only limits
    evidence under the accepted contract and Governance, run all available

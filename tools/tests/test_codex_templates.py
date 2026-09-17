@@ -146,6 +146,15 @@ class CodexAutomationTemplateTests(unittest.TestCase):
                 for marker in markers:
                     self.assertIn(marker, prompt)
 
+    def test_scheduled_checks_use_the_repository_environment_router(self):
+        """Keep dependency-sensitive scheduled checks on the bounded route."""
+        prompt = (
+            (ROOT / "templates/codex/governed-change.txt")
+            .read_text(encoding="utf-8")
+            .casefold()
+        )
+        self.assertIn("tools/ci/run_repository_checks.py", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

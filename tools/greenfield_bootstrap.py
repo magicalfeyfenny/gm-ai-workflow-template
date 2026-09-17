@@ -530,7 +530,9 @@ def _local_validation(target_root: Path, required_paths: list[str]) -> dict:
         checker = subprocess.run(
             [
                 sys.executable,
-                "tools/ci/check_repo.py",
+                "tools/ci/run_repository_checks.py",
+                "--no-requirements",
+                "repository-policy",
                 "--candidate-ref",
                 tree.stdout.strip(),
             ],
@@ -543,17 +545,15 @@ def _local_validation(target_root: Path, required_paths: list[str]) -> dict:
         test_environment = {key: value for key, value in environment.items() if not key.startswith("GIT_")}
         try:
             with candidate_snapshot(target_root, tree.stdout.strip()) as candidate:
+                test_command = [
+                    sys.executable,
+                    "tools/ci/run_repository_checks.py",
+                ]
+                if not (candidate.root / "tools/tests/requirements.txt").is_file():
+                    test_command.append("--no-requirements")
+                test_command.append("tests")
                 tests = subprocess.run(
-                    [
-                        sys.executable,
-                        "-m",
-                        "unittest",
-                        "discover",
-                        "-s",
-                        "tools/tests",
-                        "-p",
-                        "test_*.py",
-                    ],
+                    test_command,
                     cwd=candidate.root,
                     env=test_environment,
                     capture_output=True,
