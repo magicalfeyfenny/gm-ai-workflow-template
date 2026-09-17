@@ -161,7 +161,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-ambient",
         action="store_true",
-        help="allow ambient Python only after isolated routing cannot be used",
+        help=(
+            "compatibility flag; ambient Python is used only after version and "
+            "pinned-dependency validation"
+        ),
     )
     subparsers = parser.add_subparsers(dest="check", required=True)
     for name in ("all", "repository-policy", "tests"):

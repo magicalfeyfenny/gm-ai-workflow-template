@@ -309,18 +309,23 @@ def _install_requirements(
     return detail or f"pip exited with status {result.returncode}"
 
 
-def _creator(
-    root: Path,
-    explicit: Path | None,
-) -> Path | None:
+def _creator(explicit: Path | None) -> Path | None:
+    """Find a bounded compatible base interpreter for isolated creation.
+
+    The explicit candidate is already repository-selected and therefore gets
+    first consideration.  ``python3`` is the only conventional launcher we
+    consult; the current interpreter is the final bounded candidate.  Each
+    candidate is version-probed without importing repository dependencies so a
+    dependency-incomplete interpreter can still safely create a new isolated
+    environment.
+    """
     candidates: list[Path] = []
     if explicit is not None:
         candidates.append(explicit)
-    versioned = shutil.which("python3.12")
-    if versioned:
-        candidates.append(Path(versioned))
-    if sys.version_info[:2] >= MINIMUM_PYTHON:
-        candidates.append(Path(sys.executable))
+    conventional = shutil.which("python3")
+    if conventional:
+        candidates.append(Path(conventional))
+    candidates.append(Path(sys.executable))
 
     checked: set[str] = set()
     for candidate in candidates:
@@ -398,7 +403,7 @@ def select_environment(
     explicit_interpreter: str | None = None,
     allow_ambient: bool = False,
 ) -> EnvironmentSelection:
-    """Select explicit, repo-local, temporary, or explicitly allowed ambient Python."""
+    """Select a usable interpreter in the repository's bounded route order."""
     root = root.resolve()
     requirements_path = _requirement_file(root, requirements)
     pinned = read_pinned_requirements(requirements_path)
@@ -415,17 +420,19 @@ def select_environment(
         else:
             probe = probe_interpreter(explicit_path, pinned)
             if explicit_spec.casefold() in {"system", "ambient"}:
-                if not probe.version_valid:
-                    raise EnvironmentSetupError(
-                        "explicit ambient interpreter is unusable: "
-                        + _probe_reason(probe)
+                if probe.usable:
+                    return EnvironmentSelection(
+                        executable=explicit_path,
+                        route="explicit-ambient",
+                        reason=(
+                            "repository explicitly permits the ambient interpreter "
+                            "and it satisfies the pinned dependency contract"
+                        ),
+                        isolated=probe.isolated,
+                        diagnostics=tuple(diagnostics),
                     )
-                return EnvironmentSelection(
-                    executable=explicit_path,
-                    route="explicit-ambient",
-                    reason="repository explicitly permits the ambient interpreter",
-                    isolated=probe.isolated,
-                    diagnostics=tuple(diagnostics),
+                diagnostics.append(
+                    f"explicit ambient interpreter: {_probe_reason(probe)}"
                 )
             if probe.usable:
                 return EnvironmentSelection(
@@ -496,9 +503,9 @@ def select_environment(
         else:
             diagnostics.append(f".venv: {_probe_reason(probe)}")
 
+    ambient = probe_interpreter(Path(sys.executable), pinned)
     if requirements_path is None:
-        ambient = probe_interpreter(Path(sys.executable))
-        if ambient.version_valid:
+        if ambient.usable:
             return EnvironmentSelection(
                 executable=Path(sys.executable),
                 route="ambient-no-dependencies",
@@ -507,8 +514,21 @@ def select_environment(
                 diagnostics=tuple(diagnostics),
             )
         diagnostics.append(f"ambient interpreter: {_probe_reason(ambient)}")
+    elif ambient.usable:
+        return EnvironmentSelection(
+            executable=Path(sys.executable),
+            route="ambient",
+            reason=(
+                "ambient Python satisfies the Python 3.12-or-later and pinned "
+                "dependency contract after explicit and repo-local routes"
+            ),
+            isolated=ambient.isolated,
+            diagnostics=tuple(diagnostics),
+        )
+    else:
+        diagnostics.append(f"ambient interpreter: {_probe_reason(ambient)}")
 
-    creator = _creator(root, explicit_path)
+    creator = _creator(explicit_path)
     if creator is not None and requirements_path is not None:
         try:
             return _create_temporary_environment(
@@ -522,18 +542,6 @@ def select_environment(
             diagnostics.append(str(exc))
     elif requirements_path is not None:
         diagnostics.append("no Python 3.12-or-later creator is available")
-
-    if allow_ambient:
-        ambient = probe_interpreter(Path(sys.executable), pinned)
-        if ambient.version_valid:
-            return EnvironmentSelection(
-                executable=Path(sys.executable),
-                route="ambient-fallback",
-                reason="isolated routing was unavailable and ambient fallback was explicitly allowed",
-                isolated=ambient.isolated,
-                diagnostics=tuple(diagnostics),
-            )
-        diagnostics.append(f"ambient fallback: {_probe_reason(ambient)}")
 
     detail = "; ".join(diagnostics) or "no candidate was found"
     raise EnvironmentSetupError(

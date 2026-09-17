@@ -28,9 +28,11 @@ Install and authenticate:
 
 The bootstrap runs the full repository-local test suite. Dependency-sensitive
 checks use the repository's bounded environment router. It reads an explicit
-interpreter from `.python-version`, then validates `.venv`, then creates a
-temporary isolated Python 3.12-or-later environment and installs only the
-pinned requirements when needed.
+interpreter from `.python-version`, then validates `.venv`, then validates the
+ambient Python against the Python 3.12-or-later and pinned-dependency contract,
+and creates a temporary isolated environment from a compatible Python only
+when those routes do not produce a usable environment. It installs only the
+pinned requirements into isolated environments.
 
 To preinstall the pinned dependencies in a chosen isolated environment, use:
 
@@ -40,7 +42,7 @@ To preinstall the pinned dependencies in a chosen isolated environment, use:
 
 For a repository already generated from the template, run the same command
 from that repository with `tools/tests/requirements.txt` as the path. An
-isolated Python 3.12 virtual environment is recommended. Do not treat a
+isolated Python 3.12-or-later virtual environment is recommended. Do not treat a
 missing dependency in the ambient interpreter as a project failure when the
 router can satisfy the check in isolation.
 
