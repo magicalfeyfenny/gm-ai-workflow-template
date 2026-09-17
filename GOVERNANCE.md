@@ -716,8 +716,8 @@ runner starts one fresh `codex exec` process for the reviewer and a second
 fresh `codex exec` process for the adjudicator. Each uses `--ephemeral`,
 `--ignore-user-config`, `--ignore-rules`, `--skip-git-repo-check`, a separate
 packet-only temporary directory, `--sandbox read-only`,
-`--ask-for-approval never`, a repository-owned output schema, and the packet
-only through standard input. The runner never uses `resume` or `fork`, and the
+a repository-owned output schema, and the packet only through standard input.
+The runner never uses `resume` or `fork`, and the
 two invocations do not share a session, working directory, repository files,
 or conversational context. This execution detail is a concrete isolation
 mechanism, not an additional source of governance authority.

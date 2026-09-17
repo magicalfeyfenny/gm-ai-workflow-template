@@ -106,8 +106,6 @@ def _run_fresh_codex_session(
             "--skip-git-repo-check",
             "--sandbox",
             "read-only",
-            "--ask-for-approval",
-            "never",
             "--output-schema",
             str(schema_path),
             "--output-last-message",
