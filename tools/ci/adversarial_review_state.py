@@ -9,7 +9,6 @@ try:
         MAX_CORRECTION_CYCLES,
         ReviewContractError,
         _digest,
-        _IDENTITY_FIELDS,
         candidate_identity,
         validate_adjudication_packet,
         validate_adjudication_result,
@@ -20,7 +19,6 @@ except ImportError:  # pragma: no cover - direct script compatibility
         MAX_CORRECTION_CYCLES,
         ReviewContractError,
         _digest,
-        _IDENTITY_FIELDS,
         candidate_identity,
         validate_adjudication_packet,
         validate_adjudication_result,
@@ -28,9 +26,12 @@ except ImportError:  # pragma: no cover - direct script compatibility
     )
 
 
-def _identity_key(value: Mapping[str, object]) -> tuple[str, ...]:
+_CONTENT_FIELDS = ("tree_sha", "diff_sha256")
+
+
+def _content_key(value: Mapping[str, object]) -> tuple[str, ...]:
     identity = candidate_identity(value)
-    return tuple(identity[field] for field in _IDENTITY_FIELDS)
+    return tuple(identity[field] for field in _CONTENT_FIELDS)
 
 
 def review_loop_decision(
@@ -60,15 +61,29 @@ def review_loop_decision(
         if item["disposition"] in {"blocker", "patch-now"}
         and item["correction"] is not None
     ]
+    if not isinstance(candidate_changed, bool):
+        raise ReviewContractError("candidate_changed must be boolean")
+    if not candidate_changed and next_candidate is not None:
+        return {
+            "status": "human-handoff",
+            "cycle": cycle,
+            "corrections": [],
+            "reason": "a next candidate was supplied without a candidate change",
+        }
     if not corrections:
+        if candidate_changed:
+            return {
+                "status": "human-handoff",
+                "cycle": cycle,
+                "corrections": [],
+                "reason": "candidate changed after review without an accepted correction",
+            }
         return {
             "status": "complete",
             "cycle": cycle,
             "corrections": [],
             "reason": None,
         }
-    if not isinstance(candidate_changed, bool):
-        raise ReviewContractError("candidate_changed must be boolean")
     if not candidate_changed:
         return {
             "status": "human-handoff",
@@ -83,9 +98,9 @@ def review_loop_decision(
             "corrections": [],
             "reason": "the corrected candidate identity was not established",
         }
-    next_key = _identity_key(next_candidate)
-    history = {_identity_key(candidate) for candidate in previous_candidates}
-    history.add(_identity_key(adjudication_packet["candidate_identity"]))
+    next_key = _content_key(next_candidate)
+    history = {_content_key(candidate) for candidate in previous_candidates}
+    history.add(_content_key(adjudication_packet["candidate_identity"]))
     if next_key in history:
         return {
             "status": "human-handoff",
@@ -123,8 +138,8 @@ def stage2_evidence_current(
         )
         return (
             revision == validated["issue_contract"]["revision"]
-            and candidate_identity(candidate)
-            == validated["stage2_evidence"]["candidate_identity"]
+            and _content_key(candidate)
+            == _content_key(validated["stage2_evidence"]["candidate_identity"])
         )
     except ReviewContractError:
         return False

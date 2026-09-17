@@ -1,6 +1,8 @@
 import hashlib
 import json
+import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -50,12 +52,16 @@ def issue_contract() -> dict:
     }
 
 
-def candidate(head_sha: str = "h" * 40, diff: str = DIFF) -> dict:
+def candidate(
+    head_sha: str = "h" * 40,
+    diff: str = DIFF,
+    tree_sha: str = "t" * 40,
+) -> dict:
     return {
         "base_ref": "origin/dev",
         "head_ref": "work/116-adversarial-review-adjudication",
         "head_sha": head_sha,
-        "tree_sha": "t" * 40,
+        "tree_sha": tree_sha,
         "diff_sha256": hashlib.sha256(diff.encode("utf-8")).hexdigest(),
         "diff": diff,
     }
@@ -332,6 +338,99 @@ class GovernanceBoundaryFixtureTests(unittest.TestCase):
             ["reject"] * 5,
         )
 
+    def test_evidence_sensitive_fixture_reaches_independent_adjudication(self):
+        review_packet = packet()
+        cases = [
+            finding(
+                "F-blocker",
+                "candidate violates an accepted required invariant",
+                severity="medium",
+            ),
+            finding(
+                "F-python313",
+                "Python 3.13+ concern is a bounded same-outcome improvement",
+                severity="low",
+            ),
+            finding(
+                "F-follow-up",
+                "separately meaningful concern is outside accepted outcome",
+                severity="critical",
+            ),
+            finding(
+                "F-doc-example",
+                "python3.12 documentation example is already satisfied",
+                severity="high",
+            ),
+            finding(
+                "F-compat",
+                "compatibility requested without independent compatibility evidence",
+                severity="critical",
+            ),
+        ]
+        cases[0]["supporting_evidence"] = [
+            "accepted invariant is absent from the candidate",
+            "contract requirement is not satisfied",
+        ]
+        cases[1]["supporting_evidence"] = [
+            "Python 3.13+ concern is non-blocking",
+            "the correction remains in the same outcome",
+        ]
+        cases[2]["supporting_evidence"] = [
+            "the concern is outside accepted outcome",
+            "separate authority would be needed",
+        ]
+        cases[3]["supporting_evidence"] = [
+            "existing python3.12 documentation already satisfies the contract",
+        ]
+        cases[4]["supporting_evidence"] = [
+            "no independent compatibility evidence was supplied",
+        ]
+        calls = []
+
+        def evidence_runner(role, payload, output_schema):
+            calls.append((role, payload, output_schema))
+            if role == "reviewer":
+                return review_result(payload, cases)
+            self.assertEqual(
+                set(payload),
+                {
+                    "schema",
+                    "issue_contract",
+                    "candidate_identity",
+                    "applicable_governance",
+                    "evidence",
+                    "findings",
+                    "scope",
+                },
+            )
+            self.assertNotIn("candidate", payload)
+            self.assertNotIn("diff", payload)
+            decisions = []
+            for item in payload["findings"]:
+                evidence = " ".join(item["supporting_evidence"])
+                if "accepted invariant" in evidence:
+                    disposition = "blocker"
+                    value = correction()
+                elif "same outcome" in evidence:
+                    disposition = "patch-now"
+                    value = correction()
+                elif "outside accepted outcome" in evidence:
+                    disposition = "follow-up"
+                    value = None
+                else:
+                    disposition = "reject"
+                    value = None
+                decisions.append(decision(item["finding_id"], disposition, value))
+            return adjudication_result(payload, decisions)
+
+        result = run_adversarial_review(review_packet, session_runner=evidence_runner)
+        self.assertEqual(
+            [item["disposition"] for item in result["dispositions"]],
+            ["blocker", "patch-now", "follow-up", "reject", "reject"],
+        )
+        self.assertEqual([call[0] for call in calls], ["reviewer", "adjudicator"])
+        self.assertNotIn("findings", result)
+
 
 class ReviewLoopTests(unittest.TestCase):
     def _adjudication(self, disposition: str = "patch-now") -> tuple[dict, dict]:
@@ -360,7 +459,13 @@ class ReviewLoopTests(unittest.TestCase):
 
     def test_accepted_correction_stales_old_stage2_and_requires_fresh_review(self):
         result, adjudication_packet = self._adjudication()
-        changed = candidate(head_sha="g" * 40)
+        commit_only = candidate(head_sha="g" * 40)
+        self.assertTrue(stage2_evidence_current(packet(), commit_only))
+        changed = candidate(
+            head_sha="g" * 40,
+            diff=DIFF + "changed\n",
+            tree_sha="u" * 40,
+        )
         self.assertFalse(stage2_evidence_current(packet(), changed))
         transition = review_loop_decision(
             result,
@@ -372,6 +477,61 @@ class ReviewLoopTests(unittest.TestCase):
         self.assertEqual(transition["status"], "revalidate-and-rereview")
         self.assertEqual(transition["cycle"], 1)
         self.assertEqual(transition["corrections"][0]["locations"], [INCLUDED[0]])
+
+    def test_changed_candidate_without_correction_cannot_complete(self):
+        review_packet = packet()
+        adjudication_packet = build_adjudication_packet(review_packet, [])
+        result = adjudication_result(adjudication_packet, [])
+        changed = candidate(head_sha="g" * 40, diff=DIFF + "changed\n")
+        transition = review_loop_decision(
+            result,
+            adjudication_packet,
+            cycle=0,
+            candidate_changed=True,
+            next_candidate=changed,
+        )
+        self.assertEqual(transition["status"], "human-handoff")
+        self.assertIn("changed", transition["reason"])
+
+    def test_content_oscillation_with_new_commit_identity_hands_off(self):
+        original = candidate()
+        middle = candidate(
+            head_sha="g" * 40,
+            diff=DIFF + "middle\n",
+            tree_sha="u" * 40,
+        )
+        middle_stage2 = {
+            "issue_contract_revision": REVISION,
+            "candidate_identity": candidate_identity(middle),
+            "checks": [
+                {"name": "middle", "result": "passed", "evidence": ["middle"]}
+            ],
+        }
+        middle_packet = build_review_packet(
+            issue_contract(),
+            middle,
+            governance(),
+            middle_stage2,
+            {"included": INCLUDED, "exclusions": ["readiness"]},
+        )
+        adjudication_packet = build_adjudication_packet(
+            middle_packet, [finding("F1", "supported correction")]
+        )
+        result = adjudication_result(
+            adjudication_packet,
+            [decision("F1", "patch-now", correction())],
+        )
+        revisited = candidate(head_sha="j" * 40)
+        transition = review_loop_decision(
+            result,
+            adjudication_packet,
+            cycle=1,
+            candidate_changed=True,
+            next_candidate=revisited,
+            previous_candidates=[original],
+        )
+        self.assertEqual(transition["status"], "human-handoff")
+        self.assertIn("oscillat", transition["reason"])
 
     def test_blocker_correction_runs_fresh_stage2_and_fresh_review(self):
         original_packet = packet()
@@ -426,7 +586,11 @@ class ReviewLoopTests(unittest.TestCase):
 
     def test_cycle_cap_and_oscillation_surface_human_handoff(self):
         result, adjudication_packet = self._adjudication()
-        changed = candidate(head_sha="g" * 40)
+        changed = candidate(
+            head_sha="g" * 40,
+            diff=DIFF + "changed\n",
+            tree_sha="u" * 40,
+        )
         capped = review_loop_decision(
             result,
             adjudication_packet,
@@ -510,6 +674,82 @@ class IsolatedSessionTests(unittest.TestCase):
             self.assertNotIn("--worktree", command)
             self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", command)
             self.assertNotIn(str(Path.cwd()), str(kwargs["cwd"]))
+        self.assertNotIn("findings", result)
+
+    def test_real_subprocesses_have_separate_packet_only_workspaces(self):
+        review_packet = packet()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / "fake-codex.py"
+            log = root / "observations.jsonl"
+            executable.write_text(
+                """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+prompt = sys.stdin.read()
+payload = json.loads(prompt.split("BOUNDARY-PACKET (JSON):\\n", 1)[1])
+record = {
+    "pid": os.getpid(),
+    "cwd": os.getcwd(),
+    "keys": sorted(payload),
+    "repo_files": {
+        name: (Path.cwd() / name).exists()
+        for name in (".git", "AGENTS.md", "GOVERNANCE.md")
+    },
+    "args": sys.argv[1:],
+}
+with Path(os.environ["ADVERSARIAL_REVIEW_TEST_LOG"]).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps(record) + "\\n")
+fields = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
+if "candidate" in payload:
+    identity = {field: payload["candidate"][field] for field in fields}
+    result = {
+        "schema": "adversarial-review-result:v1",
+        "candidate_identity": identity,
+        "findings": [],
+    }
+else:
+    result = {
+        "schema": "adversarial-adjudication-result:v1",
+        "candidate_identity": payload["candidate_identity"],
+        "dispositions": [],
+        "human_handoff": {"required": False, "reason": None},
+    }
+output_path = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
+output_path.write_text(json.dumps(result), encoding="utf-8")
+""",
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+            with patch.dict(
+                os.environ, {"ADVERSARIAL_REVIEW_TEST_LOG": str(log)}
+            ):
+                result = run_adversarial_review(
+                    review_packet,
+                    codex_executable=str(executable),
+                )
+            observations = [
+                json.loads(line)
+                for line in log.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(len(observations), 2)
+        self.assertEqual(len({item["pid"] for item in observations}), 2)
+        self.assertNotEqual(observations[0]["cwd"], observations[1]["cwd"])
+        self.assertIn("candidate", observations[0]["keys"])
+        self.assertNotIn("candidate", observations[1]["keys"])
+        for observation in observations:
+            self.assertFalse(any(observation["repo_files"].values()))
+            args = observation["args"]
+            self.assertIn("--ephemeral", args)
+            self.assertIn("--ignore-user-config", args)
+            self.assertIn("--ignore-rules", args)
+            self.assertEqual(args[args.index("--sandbox") + 1], "read-only")
+            self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", args)
+        self.assertEqual(result["dispositions"], [])
         self.assertNotIn("findings", result)
 
 
