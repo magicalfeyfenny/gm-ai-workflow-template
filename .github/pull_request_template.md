@@ -14,6 +14,15 @@ At completion, record the accepted issue revision and marker under
 For an interpretive governance correction, include the applicable
 [policy correction boundary evidence](../GOVERNANCE.md#policy-correction-boundary-evidence).
 
+## Adversarial review
+
+For a completed governed change, record the frozen candidate identity, review
+packet/result contract, correction-cycle count, and adjudicated dispositions.
+Record accepted current-pass corrections and any human handoff. Use the
+[adversarial review and adjudication route](../GOVERNANCE.md#adversarial-review-and-adjudication).
+Raw reviewer findings are evidence for adjudication, not implementation
+instructions.
+
 ## Human gate
 
 For a high-risk or manual-path PR, human review, readiness, and merge are

@@ -691,6 +691,93 @@ No validation stage changes risk classification or grants completion,
 readiness, review, merge, release, or publication authority. Those actions
 remain governed by the paths below.
 
+## Adversarial review and adjudication
+
+After the implementation is complete and whole-issue Stage 2 evidence has
+passed, freeze one exact review candidate. Bind the candidate to its base,
+head, tree, diff digest, accepted issue-contract revision, and Stage 2
+evidence. This stage is not required for an intermediate milestone or draft
+publication, and it does not replace any existing validation stage.
+
+The repository-owned contracts in
+[adversarial_review.py](tools/ci/adversarial_review.py) define four values:
+`adversarial-review-packet:v1`, `adversarial-review-result:v1`,
+`adversarial-adjudication-packet:v1`, and
+`adversarial-adjudication-result:v1`. A reviewer packet contains only the
+accepted issue contract and revision, exact candidate identity and diff,
+applicable Governance and review doctrine, Stage 2 evidence, and explicit
+included scope and exclusions. It contains no implementation chain-of-thought,
+scratchpad, conversation history, provider metadata, or instructions from the
+implementation session.
+
+The concrete session mechanism is the local Codex CLI invoked by
+[adversarial_review_session.py](tools/ci/adversarial_review_session.py). The
+runner starts one fresh `codex exec` process for the reviewer and a second
+fresh `codex exec` process for the adjudicator. Each uses `--ephemeral`,
+`--ignore-user-config`, `--ignore-rules`, `--skip-git-repo-check`, a separate
+packet-only temporary directory, `--sandbox read-only`,
+`--ask-for-approval never`, a repository-owned output schema, and the packet
+only through standard input. The runner never uses `resume` or `fork`, and the
+two invocations do not share a session, working directory, repository files,
+or conversational context. This execution detail is a concrete isolation
+mechanism, not an additional source of governance authority.
+
+The reviewer returns zero or more structured findings. Every finding has a
+unique identity, severity, concrete defect or invariant, supporting evidence,
+the affected location when applicable, and its relationship to the accepted
+contract or Governance. Confidence and unresolved uncertainty may be recorded.
+Findings are evidence-backed proposals, not implementation commands.
+
+The adjudicator receives only the accepted issue contract and revision,
+applicable Governance and review doctrine, exact candidate identity, the
+structured findings, their cited evidence, and the bounded scope. It receives
+no implementation or reviewer chain-of-thought, scratchpad, conversation
+history, or conversational framing. It assigns exactly one disposition to
+every finding, independently of severity:
+
+- `blocker` is a supported defect, accepted-contract or Governance violation,
+  invalid evidence, or comparable problem that must be corrected before
+  completion;
+- `patch-now` is a legitimate bounded correction within the same outcome that
+  is appropriate in the current pass even when it is not independently
+  blocking;
+- `follow-up` records a legitimate concern outside this outcome or separately
+  meaningful enough for separate work, without creating tracking or expanding
+  scope silently; and
+- `reject` records an unsupported, speculative, stylistic, redundant,
+  already-satisfied, invented-obligation, or otherwise non-actionable finding.
+
+Only accepted `blocker` and `patch-now` dispositions may return a current-pass
+correction. A correction must identify locations inside the included scope and
+the validation needed after applying it. The implementation session receives
+only the adjudicated dispositions and accepted corrections; raw reviewer
+findings are never implementation instructions. Compatibility, manual or
+experiential validation, unavailable capabilities, abstraction scope, and
+other obligations are adjudicated under the existing [Compatibility
+obligations](#compatibility-obligations), [Issue authority](#issue-authority),
+[Validation coverage allocation](#validation-coverage-allocation), and
+[Contract-oriented validation](#contract-oriented-validation) rules. They are
+not created by a reviewer assertion.
+
+When an accepted correction changes repository content, the frozen candidate's
+Stage 2 evidence and review result are stale. Apply only that accepted
+correction, validate the new exact candidate under the existing rules, freeze
+it, and run both fresh sessions again. An unchanged candidate preserves valid
+Stage 2 evidence. Permit no more than two content-changing correction cycles
+initially. A disputed or uncertain finding, oscillating candidate, missing
+candidate identity, scope or authority conflict, invalid session result, or
+reached cycle cap stops the lifecycle for human disposition; it must not be
+silently accepted or turned into a new authority path.
+
+Both sessions are read-only. Neither may mutate repository content, issues,
+pull requests, labels, readiness, merges, releases, or publication. Once the
+adjudication result has no accepted current-pass corrections, continue with
+the existing immediate pre-transition issue re-fetch, completion metadata,
+Stage 3 evidence, and applicable low-risk or high-risk/manual path. Review,
+readiness, merge, release, and publication authority remain unchanged. This
+stage does not infer manual, visual, human-observation, or experiential
+validation.
+
 ## Milestone commits and draft publication
 
 Agents may commit to their current issue-scoped branch without separate human

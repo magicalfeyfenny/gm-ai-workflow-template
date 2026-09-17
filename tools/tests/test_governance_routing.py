@@ -196,6 +196,7 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "interactive-runtime-validation",
                 "validation-evidence",
                 "milestone-commits-and-draft-publication",
+                "adversarial-review-and-adjudication",
                 "human-created-changes",
                 "risk",
                 "completion-transition",
@@ -396,6 +397,62 @@ class GovernanceRoutingTests(unittest.TestCase):
                     "policy-correction-boundary-evidence",
                     governance_fragments(source),
                 )
+
+    def test_adversarial_review_route_is_reachable_from_work_and_pr_routes(self):
+        """Keep the bounded review stage on every completion-facing route."""
+        for source in (
+            ROOT / ".agents/skills/governed-change/SKILL.md",
+            ROOT / "templates/codex/governed-change.txt",
+            ROOT / ".github/pull_request_template.md",
+        ):
+            with self.subTest(source=source):
+                self.assertIn(
+                    "adversarial-review-and-adjudication",
+                    governance_fragments(source),
+                )
+
+        skill_targets = {
+            target for target, _ in local_destinations(
+                ROOT / ".agents/skills/governed-change/SKILL.md"
+            )
+        }
+        self.assertTrue({
+            (ROOT / "tools/ci/adversarial_review.py").resolve(),
+            (ROOT / "tools/ci/adversarial_review_session.py").resolve(),
+        }.issubset(skill_targets))
+
+    def test_adversarial_review_preserves_the_existing_completion_boundary(self):
+        """Ensure review finishes before pre-transition metadata and hosted CI."""
+        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
+        review = governance.split(
+            "## Adversarial review and adjudication", 1
+        )[1].split("## Milestone commits and draft publication", 1)[0].casefold()
+        for marker in (
+            "whole-issue stage 2",
+            "freeze one exact review candidate",
+            "fresh `codex exec`",
+            "exactly one disposition",
+            "two content-changing correction cycles",
+            "immediate pre-transition issue re-fetch",
+            "readiness, merge, release, and publication authority remain unchanged",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, review)
+
+        template = " ".join(
+            (ROOT / "templates/codex/governed-change.txt")
+            .read_text(encoding="utf-8").casefold().split()
+        )
+        ordered = (
+            "stage 2 whole-issue local evidence",
+            "freeze the exact candidate identity",
+            "two separate fresh `codex exec` invocations",
+            "immediately before the completion transition",
+            "fresh stage 3 exact-head hosted evidence",
+        )
+        positions = [template.find(marker) for marker in ordered]
+        self.assertTrue(all(position >= 0 for position in positions))
+        self.assertEqual(positions, sorted(positions))
 
     def test_setup_label_inventory_routes_to_its_authorities(self):
         """Link setup to the shared rule and executable label inventory."""

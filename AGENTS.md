@@ -70,6 +70,10 @@ they must be visible before mutation:
   [Stage 2 evidence](GOVERNANCE.md#stage-2-whole-issue-local-evidence), then use
   the [Completion transition](GOVERNANCE.md#completion-transition) and path
   selected by [Risk](GOVERNANCE.md#risk).
+- Before completion metadata, complete the bounded
+  [adversarial review and adjudication](GOVERNANCE.md#adversarial-review-and-adjudication)
+  stage. Raw reviewer findings do not authorize implementation changes; only
+  adjudicated, accepted current-pass corrections do.
 - High-risk and `manual-merge` work waits for human review, readiness, and
   merge after valid [Stage 3 evidence](GOVERNANCE.md#stage-3-hosted-pr-evidence).
 - Do not merge into `main` or create release builds, tags, releases, or

@@ -1,9 +1,8 @@
-"""Run and validate the bounded adversarial review stage.
+"""Define repository-owned contracts for bounded adversarial review.
 
 The review packet and result contracts live here so a session provider cannot
-define governance. The default runner starts two fresh, packet-only Codex
-processes in read-only sandboxes; it never resumes or forks an implementation
-conversation.
+define governance. The concrete fresh-session runner is kept in the sibling
+``adversarial_review_session`` module.
 """
 
 from __future__ import annotations
