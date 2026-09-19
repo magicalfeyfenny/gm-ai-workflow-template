@@ -186,44 +186,41 @@ def adjudication_result(packet: dict, decisions: list[dict]) -> dict:
     }
 
 
-def source_backed_decisions(packet: dict) -> list[dict]:
+FIXTURE_EXPECTED = [
+    "blocker",
+    "patch-now",
+    "follow-up",
+    "reject",
+    "reject",
+    "reject",
+    "reject",
+    "reject",
+]
+FIXTURE_SOURCE_ASSERTIONS = (
+    "accepted contract requires",
+    "bounded same-outcome improvement within this issue",
+    "outside the accepted outcome",
+    "already uses a supported interpreter",
+    "unit and live integration evidence cover it",
+    "no independent compatibility evidence and no concrete consumer",
+    "manual visual observation is not an accepted requirement",
+    "existing evidence passes",
+)
+
+
+def fixed_source_fixture_adjudication(packet: dict) -> dict:
     source_text = "\n".join(item["text"] for item in packet["evidence"]["source_items"])
-    decisions = []
-    for item in packet["findings"]:
-        claim = item["defect_or_invariant"].casefold()
-        evidence = source_text.casefold()
-        if "required invariant" in claim and "accepted contract requires" in evidence:
-            value = correction()
-            disposition = "blocker"
-        elif "python 3.13+" in claim and "bounded same-outcome improvement" in evidence:
-            value = correction()
-            disposition = "patch-now"
-        elif "python 3.13+" in claim and "outside the accepted outcome" in evidence:
-            value = None
-            disposition = "follow-up"
-        elif "separately meaningful" in claim and "outside the accepted outcome" in evidence:
-            value = None
-            disposition = "follow-up"
-        elif "python3.12" in claim and "already uses a supported interpreter" in evidence:
-            value = None
-            disposition = "reject"
-        elif "temporary-environment" in claim and "unit and live integration evidence cover it" in evidence:
-            value = None
-            disposition = "reject"
-        elif "compatible" in claim and "no independent compatibility evidence" in evidence:
-            value = None
-            disposition = "reject"
-        elif "manual visual" in claim and "not an accepted requirement" in evidence:
-            value = None
-            disposition = "reject"
-        elif "unavailable environment" in claim and "existing evidence passes" in evidence:
-            value = None
-            disposition = "reject"
-        else:
-            value = None
-            disposition = "reject"
-        decisions.append(decision(item["finding_id"], disposition, value))
-    return decisions
+    for assertion in FIXTURE_SOURCE_ASSERTIONS:
+        if assertion not in source_text.casefold():
+            raise AssertionError(f"semantic source fixture is missing: {assertion}")
+    corrections = [correction(), correction(), None, None, None, None, None, None]
+    decisions = [
+        decision(item["finding_id"], disposition, correction_value)
+        for item, disposition, correction_value in zip(
+            packet["findings"], FIXTURE_EXPECTED, corrections
+        )
+    ]
+    return adjudication_result(packet, decisions)
 
 
 class SourceBackedFixtureTests(unittest.TestCase):
@@ -233,22 +230,31 @@ class SourceBackedFixtureTests(unittest.TestCase):
         with self.assertRaisesRegex(ReviewContractError, "accepted snapshot"):
             validate_review_packet(packet)
 
-    def test_semantic_cases_are_classified_from_actual_source_text(self):
+    def test_production_contract_path_covers_fixed_source_classifications(self):
         review_packet = semantic_packet()
         findings = semantic_findings()
 
         def runner(role, payload, output_schema):
             if role == "reviewer":
                 return review_result(payload, findings)
-            return adjudication_result(payload, source_backed_decisions(payload))
+            return fixed_source_fixture_adjudication(payload)
 
         result = run_adversarial_review(review_packet, session_runner=runner)
         self.assertEqual(
             [item["disposition"] for item in result["dispositions"]],
-            ["blocker", "patch-now", "follow-up", "reject", "reject", "reject", "reject", "reject"],
+            [
+                "blocker",
+                "patch-now",
+                "follow-up",
+                "reject",
+                "reject",
+                "reject",
+                "reject",
+                "reject",
+            ],
         )
 
-    def test_material_source_change_changes_classification_with_same_evidence_id(self):
+    def test_material_source_change_exposes_incorrect_fixture_classification(self):
         review_packet = semantic_packet()
         findings = semantic_findings()
         original = build_adjudication_packet(review_packet, findings)
@@ -261,10 +267,9 @@ class SourceBackedFixtureTests(unittest.TestCase):
             "outside the accepted outcome",
         )
         validate_adjudication_packet(changed)
-        original_decisions = source_backed_decisions(original)
-        changed_decisions = source_backed_decisions(changed)
-        self.assertEqual(original_decisions[1]["disposition"], "patch-now")
-        self.assertEqual(changed_decisions[1]["disposition"], "follow-up")
+        fixed_source_fixture_adjudication(original)
+        with self.assertRaisesRegex(AssertionError, "semantic source fixture"):
+            fixed_source_fixture_adjudication(changed)
 
 
 class SandboxBoundaryTests(unittest.TestCase):
@@ -322,6 +327,21 @@ class SessionFailureTests(unittest.TestCase):
 
 
 class ProviderOutputBoundaryTests(unittest.TestCase):
+    def test_invalid_provider_stream_encoding_becomes_bounded_handoff(self):
+        packet = semantic_packet()
+        for stream in ("stdout", "stderr"):
+            with self.subTest(stream=stream), patch(
+                "tools.ci.adversarial_review_session._sandbox_path",
+                return_value="/usr/bin/sandbox-exec",
+            ), patch(
+                "tools.ci.adversarial_review_session.subprocess.run",
+                side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid"),
+            ):
+                result = run_review_lifecycle(packet, codex_executable="/fake/codex")
+            self.assertEqual(result["transition"]["status"], "human-handoff")
+            self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
+            self.assertNotIn("UnicodeDecodeError", json.dumps(result))
+
     def test_raw_provider_streams_do_not_enter_session_errors(self):
         for stream in ("stdout", "stderr"):
             raw = "raw-provider-instruction-" + stream

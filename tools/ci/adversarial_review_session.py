@@ -284,6 +284,10 @@ def _run_fresh_codex_session(
             raise ReviewSessionError(
                 f"{role} session timed out after 300 seconds"
             ) from exc
+        except UnicodeError as exc:
+            raise ReviewSessionError(
+                f"{role} session output could not be decoded"
+            ) from exc
         if completed.returncode != 0:
             raise ReviewSessionError(
                 f"{role} session failed with exit status {completed.returncode}"
