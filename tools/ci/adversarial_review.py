@@ -15,7 +15,12 @@ from collections.abc import Mapping, Sequence
 try:
     from .issue_contract import contract_digest
 except ImportError:  # pragma: no cover - direct script compatibility
-    from issue_contract import contract_digest  # type: ignore[no-redef]
+    def contract_digest(contract: dict) -> str:
+        """Mirror the repository issue-contract digest for direct execution."""
+        encoded = json.dumps(
+            contract, ensure_ascii=False, separators=(",", ":"), sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
 
 try:
     from .adversarial_review_contracts import (
