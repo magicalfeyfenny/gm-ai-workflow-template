@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -55,6 +56,99 @@ except ImportError:  # pragma: no cover - direct script compatibility
         stage2_evidence_current,
         validate_lifecycle_state,
     )
+
+
+CODEX_MODEL_CONFIG_FILENAME = "CODEX_MODEL_CONFIG.toml"
+MODEL_CONFIG_ROLES = ("implementer", "reviewer", "adjudicator")
+SUPPORTED_CODEX_MODELS = frozenset(
+    {"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"}
+)
+SUPPORTED_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
+
+
+def _repository_root() -> Path:
+    current = Path.cwd().resolve()
+    for root in (current, *current.parents):
+        if (root / ".git").exists():
+            return root
+    raise ReviewSessionError(
+        "cannot locate the repository root for the repository-owned Codex model config"
+    )
+
+
+def _load_model_config(repository_root: Path | None = None) -> dict[str, dict[str, str]]:
+    """Load and strictly validate repository-owned role launch settings."""
+    root = (
+        _repository_root()
+        if repository_root is None
+        else Path(repository_root).resolve()
+    )
+    path = root / CODEX_MODEL_CONFIG_FILENAME
+    if path.is_symlink() or not path.is_file():
+        raise ReviewSessionError(
+            f"missing repository-owned Codex model config: {path}"
+        )
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise ReviewSessionError(
+            f"cannot read repository-owned Codex model config: {type(exc).__name__}"
+        ) from exc
+    if set(raw) != {"roles"} or not isinstance(raw.get("roles"), Mapping):
+        raise ReviewSessionError(
+            "Codex model config must contain only a roles table"
+        )
+    roles = raw["roles"]
+    if set(roles) != set(MODEL_CONFIG_ROLES):
+        raise ReviewSessionError(
+            "Codex model config must define implementer, reviewer, and adjudicator"
+        )
+    normalized: dict[str, dict[str, str]] = {}
+    for role in MODEL_CONFIG_ROLES:
+        selection = roles[role]
+        if not isinstance(selection, Mapping) or set(selection) != {
+            "model", "reasoning_effort"
+        }:
+            raise ReviewSessionError(
+                f"Codex model config role {role!r} must define only model and reasoning_effort"
+            )
+        model = selection["model"]
+        effort = selection["reasoning_effort"]
+        if not isinstance(model, str) or model not in SUPPORTED_CODEX_MODELS:
+            raise ReviewSessionError(
+                f"Codex model config role {role!r} selects an unsupported model"
+            )
+        if (
+            not isinstance(effort, str)
+            or effort not in SUPPORTED_REASONING_EFFORTS
+        ):
+            raise ReviewSessionError(
+                f"Codex model config role {role!r} selects an unsupported reasoning effort"
+            )
+        normalized[role] = {"model": model, "reasoning_effort": effort}
+    return normalized
+
+
+def _role_model_config(
+    model_config: Mapping[str, object], role: str
+) -> Mapping[str, str]:
+    if role not in {"reviewer", "adjudicator"}:
+        raise ReviewSessionError(f"unsupported isolated session role: {role}")
+    selection = model_config.get(role)
+    if not isinstance(selection, Mapping):
+        raise ReviewSessionError(f"missing model config for isolated session role: {role}")
+    model = selection.get("model")
+    effort = selection.get("reasoning_effort")
+    if (
+        not isinstance(model, str)
+        or model not in SUPPORTED_CODEX_MODELS
+        or not isinstance(effort, str)
+        or effort not in SUPPORTED_REASONING_EFFORTS
+    ):
+        raise ReviewSessionError(
+            f"unsupported model config for isolated session role: {role}"
+        )
+    return {"model": model, "reasoning_effort": effort}
 
 
 def _session_prompt(role: str, packet: Mapping[str, object]) -> str:
@@ -222,6 +316,8 @@ def _run_fresh_codex_session(
     output_schema: Mapping[str, object],
     *,
     executable: str = "codex",
+    repository_root: Path | None = None,
+    model_config: Mapping[str, object] | None = None,
 ) -> dict:
     """Run one fresh provider process with no repository or prior session context."""
     copied_packet = _copy_json(packet, f"{role} packet")
@@ -229,6 +325,12 @@ def _run_fresh_codex_session(
     schema = _copy_json(output_schema, f"{role} output schema")
     if not isinstance(schema, Mapping):
         raise ReviewSessionError(f"{role} output schema must be an object")
+    configured_roles = (
+        _load_model_config(repository_root)
+        if model_config is None
+        else model_config
+    )
+    selection = _role_model_config(configured_roles, role)
     command_path = Path(_codex_path(executable)).resolve()
     sandbox_path = _sandbox_path()
     with tempfile.TemporaryDirectory(prefix=f"governed-{role}-") as directory:
@@ -251,6 +353,10 @@ def _run_fresh_codex_session(
             "--",
             str(command_path),
             "exec",
+            "--model",
+            selection["model"],
+            "--config",
+            f'model_reasoning_effort="{selection["reasoning_effort"]}"',
             "--ephemeral",
             "--ignore-user-config",
             "--ignore-rules",
@@ -312,6 +418,7 @@ def _run_adversarial_review_sessions(
 ) -> tuple[dict, dict]:
     """Run both fresh roles and retain the internal adjudication packet locally."""
     review_packet = validate_review_packet(packet)
+    model_config = _load_model_config()
     if session_runner is None:
         def session_runner(
             role: str,
@@ -323,6 +430,7 @@ def _run_adversarial_review_sessions(
                 session_packet,
                 output_schema,
                 executable=codex_executable,
+                model_config=model_config,
             )
 
     reviewer_raw = session_runner(

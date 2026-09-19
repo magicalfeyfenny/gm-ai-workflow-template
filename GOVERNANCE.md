@@ -727,6 +727,13 @@ binary and required system runtime paths, and the minimum authentication file;
 the inherited environment is rebuilt from a fixed allowlist. If that
 allowlist mechanism is unavailable, the runner fails closed rather than
 falling back to a cwd-only or read-only claim.
+The runner reads the repository-owned `CODEX_MODEL_CONFIG.toml` outside the
+semantic packets and explicitly selects the configured model and reasoning
+effort for each reviewer and adjudicator launch. `--ignore-user-config` remains
+enabled, so ambient user configuration cannot replace that selection. This file
+is adjustable execution configuration, not Governance authority; the existing
+implementer parent session is not relaunched or assigned a new model by this
+route.
 The runner never uses `resume` or `fork`, and the
 two invocations do not share a session, working directory, repository files,
 or conversational context. The isolation fixture attempts to read external,
