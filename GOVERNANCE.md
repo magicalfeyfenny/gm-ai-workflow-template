@@ -701,12 +701,13 @@ publication, and it does not replace any existing validation stage.
 
 The repository-owned contracts in
 [adversarial_review.py](tools/ci/adversarial_review.py) define four values:
-`adversarial-review-packet:v1`, `adversarial-review-result:v1`,
-`adversarial-adjudication-packet:v1`, and
-`adversarial-adjudication-result:v1`. A reviewer packet contains only the
+`adversarial-review-packet:v2`, `adversarial-review-result:v2`,
+`adversarial-adjudication-packet:v2`, and
+`adversarial-adjudication-result:v2`. A reviewer packet contains only the
 accepted issue contract and revision, exact candidate identity and diff,
 applicable Governance and review doctrine, Stage 2 evidence, and explicit
-included scope and exclusions. It contains no implementation chain-of-thought,
+included scope and exclusions. It also contains a repository-owned evidence
+catalog with stable IDs derived from those same sources. It contains no implementation chain-of-thought,
 scratchpad, conversation history, provider metadata, or instructions from the
 implementation session.
 
@@ -715,12 +716,20 @@ The concrete session mechanism is the local Codex CLI invoked by
 runner starts one fresh `codex exec` process for the reviewer and a second
 fresh `codex exec` process for the adjudicator. Each uses `--ephemeral`,
 `--ignore-user-config`, `--ignore-rules`, `--skip-git-repo-check`, a separate
-packet-only temporary directory, `--sandbox read-only`,
-a repository-owned output schema, and the packet only through standard input.
+packet-only temporary directory, `--sandbox read-only`, a repository-owned
+output schema, and the packet only through standard input. The host runner
+also wraps each process in the macOS `sandbox-exec` Seatbelt profile: reads and
+writes are allowed only for that temporary packet workspace, the provider
+binary and required system runtime paths, and the minimum authentication file;
+the inherited environment is rebuilt from a fixed allowlist. If that
+allowlist mechanism is unavailable, the runner fails closed rather than
+falling back to a cwd-only or read-only claim.
 The runner never uses `resume` or `fork`, and the
 two invocations do not share a session, working directory, repository files,
-or conversational context. This execution detail is a concrete isolation
-mechanism, not an additional source of governance authority.
+or conversational context. The isolation fixture attempts to read external,
+repository, implementation, and reviewer-artifact sentinels from both roles
+and must receive permission failures. This execution detail is a concrete
+isolation mechanism, not an additional source of governance authority.
 
 The reviewer returns zero or more structured findings. Every finding has a
 unique identity, severity, concrete defect or invariant, supporting evidence,
@@ -750,8 +759,10 @@ every finding, independently of severity:
 Only accepted `blocker` and `patch-now` dispositions may return a current-pass
 correction. A correction must identify locations inside the included scope and
 the validation needed after applying it. The implementation session receives
-only the adjudicated dispositions and accepted corrections; raw reviewer
-findings are never implementation instructions. Compatibility, manual or
+only the adjudicated dispositions, accepted-correction flag, and accepted
+corrections; raw reviewer findings are never implementation instructions. The
+adjudicator receives the actual source items referenced by evidence IDs, not
+reviewer-authored paraphrases. Compatibility, manual or
 experiential validation, unavailable capabilities, abstraction scope, and
 other obligations are adjudicated under the existing [Compatibility
 obligations](#compatibility-obligations), [Issue authority](#issue-authority),
@@ -768,6 +779,16 @@ initially. A disputed or uncertain finding, oscillating candidate, missing
 candidate identity, scope or authority conflict, invalid session result, or
 reached cycle cap stops the lifecycle for human disposition; it must not be
 silently accepted or turned into a new authority path.
+
+The production `adversarial_review_session.py run` command consumes an
+optional lifecycle-state JSON document and always invokes the repository-owned
+state transition. It mechanically returns `complete`,
+`revalidate-and-rereview`, `revalidate`, or `human-handoff`; it does not leave
+cycle, freshness, candidate-change, or oscillation decisions to prompt prose.
+Its outcome includes an actionable handoff summary containing the exact
+candidate identity, each finding ID and adjudicated disposition, adjudicator
+basis, correction-accepted flag, reason, and cycle. It never includes raw
+reviewer instructions.
 
 Both sessions are read-only. Neither may mutate repository content, issues,
 pull requests, labels, readiness, merges, releases, or publication. Once the

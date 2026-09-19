@@ -86,13 +86,16 @@ before Stage 2.
    through Stage 2, freeze the exact candidate, and complete the
    [adversarial review and adjudication](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
    stage. Use the repository-owned contracts and run the reviewer and
-   adjudicator in separate fresh read-only sessions. Return only the
-   adjudicated dispositions and accepted current-pass corrections to the
-   implementation route. Apply only an accepted `blocker` or `patch-now`
-   correction within scope; when content changes, rerun Stage 2 and both
-   sessions on the new exact candidate, no more than two correction cycles.
-   Stop for human disposition on disagreement, uncertainty, oscillation,
-   invalid evidence, scope or authority conflict, or the cycle cap.
+   adjudicator in separate fresh, OS-bounded sessions. The adjudicator gets
+   actual catalog items for the stable evidence IDs cited by findings, not
+   reviewer paraphrases. The production command must consume its lifecycle
+   state and return only adjudicated dispositions, accepted-correction flags,
+   and bounded handoff information to the implementation route. Apply only
+   an accepted `blocker` or `patch-now` correction within scope; when content
+   changes, rerun Stage 2 and both sessions on the new exact candidate, no
+   more than two correction cycles. Stop for human disposition on
+   disagreement, uncertainty, oscillation, invalid evidence, scope or
+   authority conflict, or the cycle cap.
 6. When no accepted current-pass corrections remain, re-fetch and reconcile
    the issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the

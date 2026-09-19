@@ -18,10 +18,11 @@ For an interpretive governance correction, include the applicable
 
 For a completed governed change, record the frozen candidate identity, review
 packet/result contract, correction-cycle count, and adjudicated dispositions.
-Record accepted current-pass corrections and any human handoff. Use the
+Record accepted current-pass corrections, source evidence IDs, and any
+actionable human handoff summary. Use the
 [adversarial review and adjudication route](../GOVERNANCE.md#adversarial-review-and-adjudication).
-Raw reviewer findings are evidence for adjudication, not implementation
-instructions.
+The adjudicator receives actual catalog items for cited IDs; raw reviewer
+findings are not implementation instructions.
 
 ## Human gate
 

@@ -27,6 +27,14 @@ except ImportError:  # pragma: no cover - direct script compatibility
 
 
 _CONTENT_FIELDS = ("tree_sha", "diff_sha256")
+_LIFECYCLE_STATE_FIELDS = (
+    "cycle",
+    "candidate_changed",
+    "accepted_correction",
+    "expected_candidate",
+    "previous_candidates",
+    "issue_contract_revision",
+)
 
 
 def _content_key(value: Mapping[str, object]) -> tuple[str, ...]:
@@ -143,3 +151,163 @@ def stage2_evidence_current(
         )
     except ReviewContractError:
         return False
+
+
+def validate_lifecycle_state(value: Mapping[str, object] | None = None) -> dict:
+    """Validate the small state handoff consumed by the production CLI route."""
+    raw = {} if value is None else dict(value)
+    unexpected = sorted(set(raw) - set(_LIFECYCLE_STATE_FIELDS))
+    if unexpected:
+        raise ReviewContractError(
+            "review lifecycle state has unsupported fields: " + ", ".join(unexpected)
+        )
+    cycle = raw.get("cycle", 0)
+    if not isinstance(cycle, int) or isinstance(cycle, bool) or cycle < 0:
+        raise ReviewContractError("review lifecycle state cycle must be nonnegative")
+    candidate_changed = raw.get("candidate_changed", False)
+    accepted_correction = raw.get("accepted_correction", False)
+    if not isinstance(candidate_changed, bool):
+        raise ReviewContractError("review lifecycle state candidate_changed must be boolean")
+    if not isinstance(accepted_correction, bool):
+        raise ReviewContractError(
+            "review lifecycle state accepted_correction must be boolean"
+        )
+    expected_value = raw.get("expected_candidate")
+    expected = None if expected_value is None else candidate_identity(expected_value)
+    previous_value = raw.get("previous_candidates", [])
+    if not isinstance(previous_value, list):
+        raise ReviewContractError(
+            "review lifecycle state previous_candidates must be a list"
+        )
+    previous = [candidate_identity(item) for item in previous_value]
+    revision_value = raw.get("issue_contract_revision")
+    revision = (
+        None
+        if revision_value is None
+        else _digest(revision_value, "review lifecycle state issue_contract_revision")
+    )
+    if accepted_correction and expected is None:
+        raise ReviewContractError(
+            "an accepted correction needs an expected exact candidate identity"
+        )
+    return {
+        "cycle": cycle,
+        "candidate_changed": candidate_changed,
+        "accepted_correction": accepted_correction,
+        "expected_candidate": expected,
+        "previous_candidates": previous,
+        "issue_contract_revision": revision,
+    }
+
+
+def review_lifecycle_decision(
+    result: Mapping[str, object],
+    review_packet: Mapping[str, object],
+    adjudication_packet: Mapping[str, object],
+    *,
+    state: Mapping[str, object] | None = None,
+) -> dict:
+    """Apply the deterministic transition to the production review outcome."""
+    lifecycle = validate_lifecycle_state(state)
+    validated_review = validate_review_packet(review_packet)
+    adjudication = validate_adjudication_result(result, adjudication_packet)
+    if not stage2_evidence_current(
+        validated_review,
+        validated_review["candidate"],
+        lifecycle["issue_contract_revision"],
+    ):
+        return {
+            "status": "revalidate",
+            "cycle": lifecycle["cycle"],
+            "corrections": [],
+            "reason": "Stage 2 evidence is stale or uses a different issue revision",
+            "requirements": ["fresh Stage 2 evidence", "fresh exact candidate"],
+        }
+    current_identity = candidate_identity(validated_review["candidate"])
+    if lifecycle["accepted_correction"]:
+        if lifecycle["expected_candidate"] != current_identity:
+            return {
+                "status": "revalidate",
+                "cycle": lifecycle["cycle"],
+                "corrections": [],
+                "reason": "the reviewed candidate does not match the expected correction candidate",
+                "requirements": ["establish the exact corrected candidate identity"],
+            }
+        if not lifecycle["candidate_changed"]:
+            return review_loop_decision(
+                adjudication,
+                adjudication_packet,
+                cycle=lifecycle["cycle"],
+                candidate_changed=False,
+                next_candidate=current_identity,
+                previous_candidates=lifecycle["previous_candidates"],
+            )
+        if _content_key(current_identity) in {
+            _content_key(candidate) for candidate in lifecycle["previous_candidates"]
+        }:
+            return {
+                "status": "human-handoff",
+                "cycle": lifecycle["cycle"],
+                "corrections": [],
+                "reason": "candidate correction oscillated to an earlier identity",
+                "requirements": [],
+            }
+    elif lifecycle["candidate_changed"]:
+        return review_loop_decision(
+            adjudication,
+            adjudication_packet,
+            cycle=lifecycle["cycle"],
+            candidate_changed=True,
+            next_candidate=current_identity,
+            previous_candidates=lifecycle["previous_candidates"],
+        )
+    elif lifecycle["expected_candidate"] is not None:
+        return {
+            "status": "human-handoff",
+            "cycle": lifecycle["cycle"],
+            "corrections": [],
+            "reason": "an expected corrected candidate was supplied without an accepted correction",
+            "requirements": [],
+        }
+
+    if adjudication["human_handoff"]["required"]:
+        return {
+            "status": "human-handoff",
+            "cycle": lifecycle["cycle"],
+            "corrections": [],
+            "reason": adjudication["human_handoff"]["reason"],
+            "requirements": [],
+        }
+    corrections = [
+        item["correction"]
+        for item in adjudication["dispositions"]
+        if item["correction_accepted"]
+    ]
+    if not corrections:
+        return review_loop_decision(
+            adjudication,
+            adjudication_packet,
+            cycle=lifecycle["cycle"],
+            candidate_changed=False,
+        )
+    if lifecycle["cycle"] >= MAX_CORRECTION_CYCLES:
+        return {
+            "status": "human-handoff",
+            "cycle": lifecycle["cycle"],
+            "corrections": [],
+            "reason": f"correction cycle cap {MAX_CORRECTION_CYCLES} reached",
+            "requirements": [],
+        }
+    return {
+        "status": "revalidate-and-rereview",
+        "cycle": lifecycle["cycle"],
+        "next_cycle": lifecycle["cycle"] + 1,
+        "corrections": corrections,
+        "reason": None,
+        "requirements": [
+            "apply only the accepted corrections",
+            "establish a new exact candidate identity",
+            "run fresh Stage 2 evidence",
+            "run fresh reviewer and adjudicator sessions",
+        ],
+    }

@@ -81,13 +81,15 @@ same work item through the ordinary completion lifecycle:
    Stage 2 evidence. Build the repository-owned review packet under the
    [adversarial review and adjudication route](../../GOVERNANCE.md#adversarial-review-and-adjudication)
    and run
-   `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT`.
-   The command uses two separate fresh `codex exec` invocations in read-only,
-   packet-only temporary directories: one reviewer and one adjudicator. The
-   adjudicator receives only the accepted contract, applicable Governance,
-   candidate identity, structured findings, and cited evidence. The
-   implementation route receives only its validated dispositions and accepted
-   current-pass corrections, never raw reviewer findings.
+   `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT`
+   (add `--state STATE` when continuing a correction cycle). The command uses
+   two separate fresh `codex exec` invocations inside a fail-closed OS
+   allowlist: one reviewer and one adjudicator. The adjudicator receives only
+   the accepted contract, applicable Governance, candidate identity,
+   structured findings, and the actual source items cited by stable evidence
+   IDs. The implementation route receives only its validated dispositions,
+   correction-accepted flags, accepted current-pass corrections, and bounded
+   handoff summary, never raw reviewer findings or reviewer instructions.
 4. Apply only accepted `blocker` or `patch-now` corrections inside the accepted
    scope. If repository content changes, the prior Stage 2 evidence and review
    result are stale: rerun Stage 2, freeze the new candidate, and run both fresh

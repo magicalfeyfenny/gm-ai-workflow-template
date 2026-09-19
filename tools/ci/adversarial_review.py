@@ -12,14 +12,46 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 
+try:
+    from .adversarial_review_contracts import (
+        ADJUDICATION_PACKET_SCHEMA,
+        ADJUDICATION_RESULT_OUTPUT_SCHEMA,
+        ADJUDICATION_RESULT_SCHEMA,
+        DISPOSITIONS,
+        MAX_CORRECTION_CYCLES,
+        REVIEW_PACKET_SCHEMA,
+        REVIEW_RESULT_OUTPUT_SCHEMA,
+        REVIEW_RESULT_SCHEMA,
+        ReviewContractError,
+        _IDENTITY_FIELDS,
+    )
+    from .adversarial_review_evidence import (
+        build_evidence_catalog,
+        evidence_ids,
+        referenced_evidence,
+        validate_evidence_catalog,
+    )
+except ImportError:  # pragma: no cover - direct script compatibility
+    from adversarial_review_contracts import (  # type: ignore[no-redef]
+        ADJUDICATION_PACKET_SCHEMA,
+        ADJUDICATION_RESULT_OUTPUT_SCHEMA,
+        ADJUDICATION_RESULT_SCHEMA,
+        DISPOSITIONS,
+        MAX_CORRECTION_CYCLES,
+        REVIEW_PACKET_SCHEMA,
+        REVIEW_RESULT_OUTPUT_SCHEMA,
+        REVIEW_RESULT_SCHEMA,
+        ReviewContractError,
+        _IDENTITY_FIELDS,
+    )
+    from adversarial_review_evidence import (  # type: ignore[no-redef]
+        build_evidence_catalog,
+        evidence_ids,
+        referenced_evidence,
+        validate_evidence_catalog,
+    )
 
-REVIEW_PACKET_SCHEMA = "adversarial-review-packet:v1"
-REVIEW_RESULT_SCHEMA = "adversarial-review-result:v1"
-ADJUDICATION_PACKET_SCHEMA = "adversarial-adjudication-packet:v1"
-ADJUDICATION_RESULT_SCHEMA = "adversarial-adjudication-result:v1"
-MAX_CORRECTION_CYCLES = 2
-DISPOSITIONS = ("blocker", "patch-now", "follow-up", "reject")
-_IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
+
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _FORBIDDEN_KEYS = frozenset(
     {
@@ -43,107 +75,8 @@ _FORBIDDEN_KEYS = frozenset(
 )
 
 
-class ReviewContractError(ValueError):
-    """Raised when a packet or structured session result is not safe to use."""
-
-
 class ReviewSessionError(RuntimeError):
     """Raised when an isolated reviewer or adjudicator cannot return a result."""
-
-
-_IDENTITY_OUTPUT_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": list(_IDENTITY_FIELDS),
-    "properties": {field: {"type": "string"} for field in _IDENTITY_FIELDS},
-}
-
-_FINDING_OUTPUT_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "finding_id",
-        "severity",
-        "defect_or_invariant",
-        "supporting_evidence",
-        "contract_or_governance",
-        "affected_location",
-        "confidence",
-        "uncertainty",
-    ],
-    "properties": {
-        "finding_id": {"type": "string"},
-        "severity": {"type": "string"},
-        "defect_or_invariant": {"type": "string"},
-        "supporting_evidence": {"type": "array", "items": {"type": "string"}},
-        "contract_or_governance": {"type": "string"},
-        "affected_location": {"type": ["string", "null"]},
-        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-        "uncertainty": {"type": ["string", "null"]},
-    },
-}
-
-REVIEW_RESULT_OUTPUT_SCHEMA = {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["schema", "candidate_identity", "findings"],
-    "properties": {
-        "schema": {"type": "string", "const": REVIEW_RESULT_SCHEMA},
-        "candidate_identity": _IDENTITY_OUTPUT_SCHEMA,
-        "findings": {"type": "array", "items": _FINDING_OUTPUT_SCHEMA},
-    },
-}
-
-_CORRECTION_OUTPUT_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["summary", "locations", "validation"],
-    "properties": {
-        "summary": {"type": "string"},
-        "locations": {"type": "array", "items": {"type": "string"}},
-        "validation": {"type": "array", "items": {"type": "string"}},
-    },
-}
-
-_DISPOSITION_OUTPUT_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["finding_id", "disposition", "basis", "correction"],
-    "properties": {
-        "finding_id": {"type": "string"},
-        "disposition": {"type": "string", "enum": list(DISPOSITIONS)},
-        "basis": {"type": "string"},
-        "correction": {"anyOf": [{"type": "null"}, _CORRECTION_OUTPUT_SCHEMA]},
-    },
-}
-
-ADJUDICATION_RESULT_OUTPUT_SCHEMA = {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "schema",
-        "candidate_identity",
-        "dispositions",
-        "human_handoff",
-    ],
-    "properties": {
-        "schema": {"type": "string", "const": ADJUDICATION_RESULT_SCHEMA},
-        "candidate_identity": _IDENTITY_OUTPUT_SCHEMA,
-        "dispositions": {"type": "array", "items": _DISPOSITION_OUTPUT_SCHEMA},
-        "human_handoff": {
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["required", "reason"],
-            "properties": {
-                "required": {"type": "boolean"},
-                "reason": {"type": ["string", "null"]},
-            },
-        },
-    },
-}
-
 
 def _mapping(value: object, subject: str) -> dict:
     if not isinstance(value, Mapping):
@@ -417,17 +350,23 @@ def build_review_packet(
     """Build the bounded packet supplied to the fresh reviewer session."""
     contract = _contract(issue_contract)
     full_candidate = _candidate(candidate)
+    governance = _governance(applicable_governance)
+    stage2 = _stage2(
+        stage2_evidence,
+        {field: full_candidate[field] for field in _IDENTITY_FIELDS},
+        contract["revision"],
+    )
+    review_scope = _scope(scope)
     packet = {
         "schema": REVIEW_PACKET_SCHEMA,
         "issue_contract": contract,
         "candidate": full_candidate,
-        "applicable_governance": _governance(applicable_governance),
-        "stage2_evidence": _stage2(
-            stage2_evidence,
-            {field: full_candidate[field] for field in _IDENTITY_FIELDS},
-            contract["revision"],
+        "applicable_governance": governance,
+        "stage2_evidence": stage2,
+        "scope": review_scope,
+        "evidence_catalog": build_evidence_catalog(
+            contract, full_candidate, governance, stage2, review_scope
         ),
-        "scope": _scope(scope),
     }
     return validate_review_packet(packet)
 
@@ -446,6 +385,7 @@ def validate_review_packet(packet: Mapping[str, object]) -> dict:
             "applicable_governance",
             "stage2_evidence",
             "scope",
+            "evidence_catalog",
         ),
         (
             "schema",
@@ -454,6 +394,7 @@ def validate_review_packet(packet: Mapping[str, object]) -> dict:
             "applicable_governance",
             "stage2_evidence",
             "scope",
+            "evidence_catalog",
         ),
         "review packet",
     )
@@ -463,13 +404,24 @@ def validate_review_packet(packet: Mapping[str, object]) -> dict:
     candidate = _candidate(raw["candidate"])
     identity = {field: candidate[field] for field in _IDENTITY_FIELDS}
     stage2 = _stage2(raw["stage2_evidence"], identity, contract["revision"])
+    governance = _governance(raw["applicable_governance"])
+    scope = _scope(raw["scope"])
+    catalog = validate_evidence_catalog(raw["evidence_catalog"])
+    expected_catalog = build_evidence_catalog(
+        contract, candidate, governance, stage2, scope
+    )
+    if catalog != expected_catalog:
+        raise ReviewContractError(
+            "review packet evidence catalog is not derived from its authorized sources"
+        )
     normalized = {
         "schema": REVIEW_PACKET_SCHEMA,
         "issue_contract": contract,
         "candidate": candidate,
-        "applicable_governance": _governance(raw["applicable_governance"]),
+        "applicable_governance": governance,
         "stage2_evidence": stage2,
-        "scope": _scope(raw["scope"]),
+        "scope": scope,
+        "evidence_catalog": catalog,
     }
     return normalized
 
@@ -567,33 +519,45 @@ def validate_review_result(
     expected = candidate_identity(validated_packet["candidate"])
     if _identity(raw["candidate_identity"]) != expected:
         raise ReviewContractError("review result targets a different candidate")
+    findings = validate_findings(raw["findings"])
+    authorized_ids = evidence_ids(validated_packet["evidence_catalog"])
+    for index, finding in enumerate(findings):
+        missing = sorted(set(finding["supporting_evidence"]) - authorized_ids)
+        if missing:
+            raise ReviewContractError(
+                f"review finding {index} cites unsupported evidence IDs: "
+                + ", ".join(missing)
+            )
     return {
         "schema": REVIEW_RESULT_SCHEMA,
         "candidate_identity": expected,
-        "findings": validate_findings(raw["findings"]),
+        "findings": findings,
     }
 
 
 def build_adjudication_packet(
     packet: Mapping[str, object], findings: object
 ) -> dict:
-    """Build the adjudicator packet without the candidate diff or implementation context."""
+    """Build the adjudicator packet with only cited, source-backed evidence."""
     review_packet = validate_review_packet(packet)
     normalized_findings = validate_findings(findings)
+    authorized_ids = evidence_ids(review_packet["evidence_catalog"])
+    for index, finding in enumerate(normalized_findings):
+        missing = sorted(set(finding["supporting_evidence"]) - authorized_ids)
+        if missing:
+            raise ReviewContractError(
+                f"review finding {index} cites unsupported evidence IDs: "
+                + ", ".join(missing)
+            )
     adjudication_packet = {
         "schema": ADJUDICATION_PACKET_SCHEMA,
         "issue_contract": review_packet["issue_contract"],
         "candidate_identity": candidate_identity(review_packet["candidate"]),
         "applicable_governance": review_packet["applicable_governance"],
         "evidence": {
-            "stage2": review_packet["stage2_evidence"],
-            "finding_support": [
-                {
-                    "finding_id": finding["finding_id"],
-                    "supporting_evidence": finding["supporting_evidence"],
-                }
-                for finding in normalized_findings
-            ],
+            "source_items": referenced_evidence(
+                review_packet["evidence_catalog"], normalized_findings
+            ),
         },
         "findings": normalized_findings,
         "scope": review_packet["scope"],
@@ -636,44 +600,32 @@ def validate_adjudication_packet(packet: Mapping[str, object]) -> dict:
     scope = _scope(raw["scope"])
     findings = validate_findings(raw["findings"])
     evidence = _mapping(raw["evidence"], "adjudication evidence")
-    _keys(
-        evidence,
-        ("stage2", "finding_support"),
-        ("stage2", "finding_support"),
-        "adjudication evidence",
+    _keys(evidence, ("source_items",), ("source_items",), "adjudication evidence")
+    source_items = validate_evidence_catalog(
+        evidence["source_items"], "adjudication evidence.source_items", allow_empty=True
     )
-    stage2 = _stage2(evidence["stage2"], identity, contract["revision"])
-    supports = evidence["finding_support"]
-    if not isinstance(supports, list) or len(supports) != len(findings):
-        raise ReviewContractError("adjudication evidence must cite every finding")
-    normalized_supports = []
-    expected_ids = [finding["finding_id"] for finding in findings]
-    for index, support_value in enumerate(supports):
-        support = _mapping(support_value, f"finding support {index}")
-        _keys(
-            support,
-            ("finding_id", "supporting_evidence"),
-            ("finding_id", "supporting_evidence"),
-            f"finding support {index}",
+    source_ids = {item["evidence_id"] for item in source_items}
+    cited_ids = {
+        evidence_id
+        for finding in findings
+        for evidence_id in finding["supporting_evidence"]
+    }
+    missing = sorted(cited_ids - source_ids)
+    extra = sorted(source_ids - cited_ids)
+    if missing:
+        raise ReviewContractError(
+            "adjudication packet omits cited source evidence: " + ", ".join(missing)
         )
-        finding_id = _string(support["finding_id"], f"finding support {index}.finding_id")
-        if finding_id != expected_ids[index]:
-            raise ReviewContractError("adjudication evidence finding order does not match findings")
-        normalized_supports.append(
-            {
-                "finding_id": finding_id,
-                "supporting_evidence": _string_list(
-                    support["supporting_evidence"],
-                    f"finding support {index}.supporting_evidence",
-                ),
-            }
+    if extra:
+        raise ReviewContractError(
+            "adjudication packet contains uncited source evidence: " + ", ".join(extra)
         )
     return {
         "schema": ADJUDICATION_PACKET_SCHEMA,
         "issue_contract": contract,
         "candidate_identity": identity,
         "applicable_governance": governance,
-        "evidence": {"stage2": stage2, "finding_support": normalized_supports},
+        "evidence": {"source_items": source_items},
         "findings": findings,
         "scope": scope,
     }
@@ -739,8 +691,20 @@ def validate_adjudication_result(
         disposition = _mapping(disposition_value, subject)
         _keys(
             disposition,
-            ("finding_id", "disposition", "basis", "correction"),
-            ("finding_id", "disposition", "basis", "correction"),
+            (
+                "finding_id",
+                "disposition",
+                "basis",
+                "correction",
+                "correction_accepted",
+            ),
+            (
+                "finding_id",
+                "disposition",
+                "basis",
+                "correction",
+                "correction_accepted",
+            ),
             subject,
         )
         finding_id = _string(disposition["finding_id"], f"{subject}.finding_id")
@@ -769,12 +733,22 @@ def validate_adjudication_result(
             raise ReviewContractError(
                 f"{subject} cannot change the candidate for {decision}"
             )
+        correction_accepted = disposition["correction_accepted"]
+        if not isinstance(correction_accepted, bool):
+            raise ReviewContractError(
+                f"{subject}.correction_accepted must be boolean"
+            )
+        if correction_accepted != (correction is not None):
+            raise ReviewContractError(
+                f"{subject}.correction_accepted does not match correction"
+            )
         normalized_dispositions.append(
             {
                 "finding_id": finding_id,
                 "disposition": decision,
                 "basis": _string(disposition["basis"], f"{subject}.basis"),
                 "correction": correction,
+                "correction_accepted": correction_accepted,
             }
         )
     return {

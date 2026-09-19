@@ -1,6 +1,8 @@
 import hashlib
 import json
 import os
+import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -117,7 +119,7 @@ def finding(
         "finding_id": finding_id,
         "severity": severity,
         "defect_or_invariant": claim,
-        "supporting_evidence": [f"evidence for {finding_id}"],
+        "supporting_evidence": ["issue_contract.body"],
         "contract_or_governance": "accepted contract",
     }
     if location is not None:
@@ -162,6 +164,7 @@ def decision(finding_id: str, disposition: str, value: dict | None = None) -> di
         "disposition": disposition,
         "basis": f"supported basis for {finding_id}",
         "correction": value,
+        "correction_accepted": value is not None,
     }
 
 
@@ -176,6 +179,9 @@ class ReviewPacketTests(unittest.TestCase):
             candidate_identity(value["candidate"]),
         )
         self.assertEqual(value["scope"]["exclusions"], ["readiness", "merge", "release"])
+        evidence = {item["evidence_id"]: item for item in value["evidence_catalog"]}
+        self.assertEqual(evidence["candidate.diff"]["text"], DIFF)
+        self.assertEqual(evidence["issue_contract.body"]["text"], issue_contract()["body"])
 
     def test_packet_rejects_stale_or_hidden_context(self):
         stale = packet()
@@ -187,6 +193,11 @@ class ReviewPacketTests(unittest.TestCase):
         hidden["implementation_context"] = "implementation scratchpad"
         with self.assertRaises(ReviewContractError):
             validate_review_packet(hidden)
+
+        tampered_evidence = packet()
+        tampered_evidence["evidence_catalog"][0]["text"] = "reviewer paraphrase"
+        with self.assertRaisesRegex(ReviewContractError, "not derived"):
+            validate_review_packet(tampered_evidence)
 
     def test_packet_rejects_candidate_diff_mismatch_and_non_open_contract(self):
         broken_candidate = packet()
@@ -368,22 +379,20 @@ class GovernanceBoundaryFixtureTests(unittest.TestCase):
             ),
         ]
         cases[0]["supporting_evidence"] = [
-            "accepted invariant is absent from the candidate",
-            "contract requirement is not satisfied",
+            "candidate.diff",
+            "issue_contract.body",
         ]
         cases[1]["supporting_evidence"] = [
-            "Python 3.13+ concern is non-blocking",
-            "the correction remains in the same outcome",
+            "governance.0",
         ]
         cases[2]["supporting_evidence"] = [
-            "the concern is outside accepted outcome",
-            "separate authority would be needed",
+            "scope.boundary",
         ]
         cases[3]["supporting_evidence"] = [
-            "existing python3.12 documentation already satisfies the contract",
+            "issue_contract.body",
         ]
         cases[4]["supporting_evidence"] = [
-            "no independent compatibility evidence was supplied",
+            "governance.doctrine",
         ]
         calls = []
 
@@ -405,16 +414,23 @@ class GovernanceBoundaryFixtureTests(unittest.TestCase):
             )
             self.assertNotIn("candidate", payload)
             self.assertNotIn("diff", payload)
+            source_items = payload["evidence"]["source_items"]
+            self.assertTrue(source_items)
+            self.assertTrue(all(item["text"].strip() for item in source_items))
+            self.assertNotIn(
+                "accepted invariant is absent from the candidate",
+                [item["text"] for item in source_items],
+            )
             decisions = []
             for item in payload["findings"]:
-                evidence = " ".join(item["supporting_evidence"])
-                if "accepted invariant" in evidence:
+                evidence_ids = set(item["supporting_evidence"])
+                if "candidate.diff" in evidence_ids:
                     disposition = "blocker"
                     value = correction()
-                elif "same outcome" in evidence:
+                elif "governance.0" in evidence_ids:
                     disposition = "patch-now"
                     value = correction()
-                elif "outside accepted outcome" in evidence:
+                elif "scope.boundary" in evidence_ids:
                     disposition = "follow-up"
                     value = None
                 else:
@@ -652,6 +668,9 @@ class IsolatedSessionTests(unittest.TestCase):
         with patch(
             "tools.ci.adversarial_review_session.subprocess.run",
             side_effect=fake_run,
+        ), patch(
+            "tools.ci.adversarial_review_session._sandbox_path",
+            return_value="/usr/bin/sandbox-exec",
         ):
             result = run_adversarial_review(
                 review_packet,
@@ -661,8 +680,11 @@ class IsolatedSessionTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertNotEqual(calls[0][1]["cwd"], calls[1][1]["cwd"])
         for command, kwargs in calls:
-            self.assertEqual(command[0], "/fake/codex")
-            self.assertEqual(command[1], "exec")
+            self.assertEqual(command[0], "/usr/bin/sandbox-exec")
+            self.assertEqual(command[1], "-f")
+            self.assertEqual(command[3], "--")
+            self.assertEqual(command[4], "/fake/codex")
+            self.assertEqual(command[5], "exec")
             self.assertIn("--ephemeral", command)
             self.assertIn("--ignore-user-config", command)
             self.assertIn("--ignore-rules", command)
@@ -674,82 +696,100 @@ class IsolatedSessionTests(unittest.TestCase):
             self.assertNotIn("--worktree", command)
             self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", command)
             self.assertNotIn(str(Path.cwd()), str(kwargs["cwd"]))
+            self.assertEqual(
+                set(kwargs["env"]) - {"PATH", "HOME", "TMPDIR", "CODEX_HOME", "LANG", "LC_CTYPE"},
+                set(),
+            )
         self.assertNotIn("findings", result)
 
-    def test_real_subprocesses_have_separate_packet_only_workspaces(self):
+    @unittest.skipUnless(shutil.which("sandbox-exec"), "requires macOS Seatbelt")
+    def test_real_subprocesses_cannot_read_external_sentinels(self):
         review_packet = packet()
+        identity_json = json.dumps(candidate_identity(review_packet["candidate"]))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            executable = root / "fake-codex.py"
-            log = root / "observations.jsonl"
-            executable.write_text(
-                """#!/usr/bin/env python3
-import json
-import os
-import sys
-from pathlib import Path
-
-prompt = sys.stdin.read()
-payload = json.loads(prompt.split("BOUNDARY-PACKET (JSON):\\n", 1)[1])
-record = {
-    "pid": os.getpid(),
-    "cwd": os.getcwd(),
-    "keys": sorted(payload),
-    "repo_files": {
-        name: (Path.cwd() / name).exists()
-        for name in (".git", "AGENTS.md", "GOVERNANCE.md")
-    },
-    "args": sys.argv[1:],
+            provider_root = root / "provider"
+            sentinel_root = root / "sentinels"
+            provider_root.mkdir()
+            sentinel_root.mkdir()
+            external_sentinel = sentinel_root / "external.txt"
+            repository_sentinel = Path.cwd() / "GOVERNANCE.md"
+            implementation_sentinel = Path.cwd() / "tools/ci/adversarial_review.py"
+            reviewer_sentinel = sentinel_root / "reviewer-artifact.txt"
+            for path in (external_sentinel, reviewer_sentinel):
+                path.write_text("must remain unreadable", encoding="utf-8")
+            executable = provider_root / "fake-codex"
+            script = """#!/bin/sh
+set -eu
+packet_path="$(pwd)/packet.json"
+cat > "$packet_path"
+blocked_file() {
+    if /bin/cat "$1" >/dev/null 2>&1; then
+        return 1
+    fi
+    return 0
 }
-with Path(os.environ["ADVERSARIAL_REVIEW_TEST_LOG"]).open("a", encoding="utf-8") as stream:
-    stream.write(json.dumps(record) + "\\n")
-fields = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
-if "candidate" in payload:
-    identity = {field: payload["candidate"][field] for field in fields}
-    result = {
-        "schema": "adversarial-review-result:v1",
-        "candidate_identity": identity,
-        "findings": [],
-    }
-else:
-    result = {
-        "schema": "adversarial-adjudication-result:v1",
-        "candidate_identity": payload["candidate_identity"],
-        "dispositions": [],
-        "human_handoff": {"required": False, "reason": None},
-    }
-output_path = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
-output_path.write_text(json.dumps(result), encoding="utf-8")
-""",
-                encoding="utf-8",
-            )
+for sentinel in \
+    "EXTERNAL_SENTINEL" \
+    "REVIEWER_SENTINEL" \
+    "REPOSITORY_SENTINEL" \
+    "IMPLEMENTATION_SENTINEL"; do
+    blocked_file "$sentinel" || exit 91
+done
+[ -z "${PARENT_SECRET:-}" ] || exit 92
+if /usr/bin/grep -q '"candidate":' "$packet_path"; then
+    role=reviewer
+    /usr/bin/grep -q '"evidence_catalog"' "$packet_path"
+else
+    role=adjudicator
+    ! /usr/bin/grep -q '"candidate":' "$packet_path"
+    /usr/bin/grep -q '"source_items"' "$packet_path"
+fi
+output=""
+previous=""
+for argument in "$@"; do
+    if [ "$previous" = "--output-last-message" ]; then
+        output="$argument"
+    fi
+    previous="$argument"
+done
+[ -n "$output" ]
+cwd="$(pwd)"
+record="role=$role;pid=$$;cwd=$cwd;sentinel=blocked;env=clean"
+escaped_record="$(printf '%s' "$record" | /usr/bin/sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g')"
+if [ "$role" = reviewer ]; then
+    cat > "$output" <<EOF
+{"schema":"adversarial-review-result:v2","candidate_identity":IDENTITY_JSON,"findings":[{"finding_id":"isolation-observation","severity":"low","defect_or_invariant":"isolation fixture observed no ambient access","supporting_evidence":["candidate.diff"],"contract_or_governance":"packet boundary","affected_location":null,"confidence":1,"uncertainty":"$escaped_record"}]}
+EOF
+else
+    reviewer_record="$(/usr/bin/grep -Eo '"uncertainty"[[:space:]]*:[[:space:]]*"[^" ]*"' "$packet_path" | /usr/bin/sed -E 's/^"uncertainty"[[:space:]]*:[[:space:]]*"//; s/"$//')"
+    record="$record;reviewer=$reviewer_record"
+    escaped_record="$(printf '%s' "$record" | /usr/bin/sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g')"
+    cat > "$output" <<EOF
+{"schema":"adversarial-adjudication-result:v2","candidate_identity":IDENTITY_JSON,"dispositions":[{"finding_id":"isolation-observation","disposition":"reject","basis":"fixture observation is not an implementation finding","correction":null,"correction_accepted":false}],"human_handoff":{"required":true,"reason":"$escaped_record"}}
+EOF
+fi
+"""
+            script = script.replace("EXTERNAL_SENTINEL", str(external_sentinel))
+            script = script.replace("REVIEWER_SENTINEL", str(reviewer_sentinel))
+            script = script.replace("REPOSITORY_SENTINEL", str(repository_sentinel))
+            script = script.replace("IMPLEMENTATION_SENTINEL", str(implementation_sentinel))
+            script = script.replace("IDENTITY_JSON", identity_json)
+            executable.write_text(script, encoding="utf-8")
             executable.chmod(0o755)
-            with patch.dict(
-                os.environ, {"ADVERSARIAL_REVIEW_TEST_LOG": str(log)}
-            ):
+            with patch.dict(os.environ, {"PARENT_SECRET": "must-not-inherit"}):
                 result = run_adversarial_review(
                     review_packet,
                     codex_executable=str(executable),
                 )
-            observations = [
-                json.loads(line)
-                for line in log.read_text(encoding="utf-8").splitlines()
-            ]
 
-        self.assertEqual(len(observations), 2)
-        self.assertEqual(len({item["pid"] for item in observations}), 2)
-        self.assertNotEqual(observations[0]["cwd"], observations[1]["cwd"])
-        self.assertIn("candidate", observations[0]["keys"])
-        self.assertNotIn("candidate", observations[1]["keys"])
-        for observation in observations:
-            self.assertFalse(any(observation["repo_files"].values()))
-            args = observation["args"]
-            self.assertIn("--ephemeral", args)
-            self.assertIn("--ignore-user-config", args)
-            self.assertIn("--ignore-rules", args)
-            self.assertEqual(args[args.index("--sandbox") + 1], "read-only")
-            self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", args)
-        self.assertEqual(result["dispositions"], [])
+        reason = result["human_handoff"]["reason"]
+        self.assertIn("role=reviewer", reason)
+        self.assertIn("role=adjudicator", reason)
+        self.assertIn("sentinel=blocked", reason)
+        self.assertIn("env=clean", reason)
+        self.assertEqual(len(set(re.findall(r"pid=([0-9]+)", reason))), 2)
+        self.assertEqual(len(set(re.findall(r"cwd=([^;]+)", reason))), 2)
         self.assertNotIn("findings", result)
 
 
