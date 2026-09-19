@@ -30,7 +30,7 @@ from tools.ci.adversarial_review_state import (
 from tools.ci.adversarial_review_session import run_adversarial_review
 
 
-REVISION = "a" * 64
+REVISION = "220cc0114ced1c521c25b5f26d3ec0a597469afb50429b1699615497fce0f372"
 DIFF = "diff --git a/tools/ci/adversarial_review.py b/tools/ci/adversarial_review.py\n"
 DIFF_SHA = hashlib.sha256(DIFF.encode("utf-8")).hexdigest()
 INCLUDED = [
@@ -349,7 +349,7 @@ class GovernanceBoundaryFixtureTests(unittest.TestCase):
             ["reject"] * 5,
         )
 
-    def test_evidence_sensitive_fixture_reaches_independent_adjudication(self):
+    def test_packet_transport_fixture_keeps_source_items_separate(self):
         review_packet = packet()
         cases = [
             finding(
@@ -716,7 +716,8 @@ class IsolatedSessionTests(unittest.TestCase):
             repository_sentinel = Path.cwd() / "GOVERNANCE.md"
             implementation_sentinel = Path.cwd() / "tools/ci/adversarial_review.py"
             reviewer_sentinel = sentinel_root / "reviewer-artifact.txt"
-            for path in (external_sentinel, reviewer_sentinel):
+            provider_sibling_sentinel = provider_root / "sibling-artifact.txt"
+            for path in (external_sentinel, reviewer_sentinel, provider_sibling_sentinel):
                 path.write_text("must remain unreadable", encoding="utf-8")
             executable = provider_root / "fake-codex"
             script = """#!/bin/sh
@@ -732,6 +733,7 @@ blocked_file() {
 for sentinel in \
     "EXTERNAL_SENTINEL" \
     "REVIEWER_SENTINEL" \
+    "PROVIDER_SIBLING_SENTINEL" \
     "REPOSITORY_SENTINEL" \
     "IMPLEMENTATION_SENTINEL"; do
     blocked_file "$sentinel" || exit 91
@@ -772,6 +774,7 @@ fi
 """
             script = script.replace("EXTERNAL_SENTINEL", str(external_sentinel))
             script = script.replace("REVIEWER_SENTINEL", str(reviewer_sentinel))
+            script = script.replace("PROVIDER_SIBLING_SENTINEL", str(provider_sibling_sentinel))
             script = script.replace("REPOSITORY_SENTINEL", str(repository_sentinel))
             script = script.replace("IMPLEMENTATION_SENTINEL", str(implementation_sentinel))
             script = script.replace("IDENTITY_JSON", identity_json)

@@ -106,6 +106,33 @@ def _sbpl_path(path: Path) -> str:
     return str(path.resolve()).replace("\\", "\\\\").replace('"', '\\"')
 
 
+_RUNTIME_FRAMEWORKS = (
+    Path("/System/Library/Frameworks/AppKit.framework"),
+    Path("/System/Library/Frameworks/CFNetwork.framework"),
+    Path("/System/Library/Frameworks/CoreFoundation.framework"),
+    Path("/System/Library/Frameworks/CoreGraphics.framework"),
+    Path("/System/Library/Frameworks/CoreServices.framework"),
+    Path("/System/Library/Frameworks/Foundation.framework"),
+    Path("/System/Library/Frameworks/IOKit.framework"),
+    Path("/System/Library/Frameworks/LocalAuthentication.framework"),
+    Path("/System/Library/Frameworks/Security.framework"),
+    Path("/System/Library/Frameworks/SystemConfiguration.framework"),
+)
+_RUNTIME_FILES = (
+    Path("/bin/cat"),
+    Path("/bin/sh"),
+    Path("/usr/bin/git"),
+    Path("/usr/bin/grep"),
+    Path("/usr/bin/sed"),
+    Path("/usr/lib/dyld"),
+    Path("/usr/lib/libSystem.B.dylib"),
+    Path("/usr/lib/libobjc.A.dylib"),
+    Path("/usr/lib/libbz2.1.0.dylib"),
+    Path("/usr/lib/libiconv.2.dylib"),
+    Path("/usr/lib/liblzma.5.dylib"),
+)
+
+
 def _session_environment(working_directory: Path) -> tuple[dict[str, str], Path]:
     configured_home = os.environ.get("CODEX_HOME")
     source_home = (
@@ -139,14 +166,6 @@ def _write_sandbox_profile(
     command_path: Path,
     codex_home: Path,
 ) -> None:
-    system_roots = (
-        Path("/System"),
-        Path("/usr"),
-        Path("/bin"),
-        Path("/sbin"),
-        Path("/Applications/ChatGPT.app/Contents/Resources"),
-    )
-    read_roots = [*system_roots, command_path.parent, working_directory]
     lines = [
         "(version 1)",
         "(deny default)",
@@ -165,10 +184,17 @@ def _write_sandbox_profile(
         "(allow signal (target self))",
         "(allow network-outbound)",
     ]
-    for root in read_roots:
+    for root in _RUNTIME_FRAMEWORKS:
         encoded = _sbpl_path(root)
         lines.append(f'(allow file-read* (subpath "{encoded}"))')
         lines.append(f'(allow file-map-executable (subpath "{encoded}"))')
+    for runtime_file in (command_path, *_RUNTIME_FILES):
+        encoded = _sbpl_path(runtime_file)
+        lines.append(f'(allow file-read* (literal "{encoded}"))')
+        lines.append(f'(allow file-map-executable (literal "{encoded}"))')
+        lines.append(
+            f'(allow file-read-metadata file-test-existence (path-ancestors "{encoded}"))'
+        )
     workspace = _sbpl_path(working_directory)
     lines.append(
         f'(allow file-read-metadata file-test-existence (path-ancestors "{workspace}"))'
@@ -250,13 +276,17 @@ def _run_fresh_codex_session(
                 check=False,
                 timeout=300,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise ReviewSessionError(f"{role} session could not start: {exc}") from exc
+        except OSError as exc:
+            raise ReviewSessionError(
+                f"{role} session could not start: {type(exc).__name__}"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ReviewSessionError(
+                f"{role} session timed out after 300 seconds"
+            ) from exc
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip()
             raise ReviewSessionError(
                 f"{role} session failed with exit status {completed.returncode}"
-                + (f": {detail[:1000]}" if detail else "")
             )
         try:
             output = result_path.read_text(encoding="utf-8")
@@ -354,6 +384,33 @@ def _handoff_summary(
     }
 
 
+def _session_failure_outcome(
+    candidate: Mapping[str, object], lifecycle: Mapping[str, object]
+) -> dict:
+    """Return a bounded handoff without exposing unvalidated provider output."""
+    reason = (
+        "a fresh reviewer or adjudicator session failed bounded validation or "
+        "execution; human disposition is required before rerun"
+    )
+    transition = {
+        "status": "human-handoff",
+        "cycle": lifecycle["cycle"],
+        "corrections": [],
+        "reason": reason,
+        "requirements": [
+            "human disposition of the failed review session",
+            "fresh reviewer and adjudicator sessions",
+        ],
+    }
+    return {
+        "schema": "adversarial-review-outcome:v1",
+        "candidate_identity": candidate_identity(candidate),
+        "adjudication": None,
+        "transition": transition,
+        "human_handoff": _handoff_summary(candidate, None, transition),
+    }
+
+
 def run_review_lifecycle(
     packet: Mapping[str, object],
     *,
@@ -391,17 +448,20 @@ def run_review_lifecycle(
         }
         adjudication = None
     else:
-        adjudication, adjudication_packet = _run_adversarial_review_sessions(
-            review_packet,
-            session_runner=session_runner,
-            codex_executable=codex_executable,
-        )
-        transition = review_lifecycle_decision(
-            adjudication,
-            review_packet,
-            adjudication_packet,
-            state=lifecycle,
-        )
+        try:
+            adjudication, adjudication_packet = _run_adversarial_review_sessions(
+                review_packet,
+                session_runner=session_runner,
+                codex_executable=codex_executable,
+            )
+            transition = review_lifecycle_decision(
+                adjudication,
+                review_packet,
+                adjudication_packet,
+                state=lifecycle,
+            )
+        except (ReviewContractError, ReviewSessionError):
+            return _session_failure_outcome(review_packet["candidate"], lifecycle)
     return {
         "schema": "adversarial-review-outcome:v1",
         "candidate_identity": candidate_identity(review_packet["candidate"]),

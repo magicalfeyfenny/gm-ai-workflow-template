@@ -710,6 +710,9 @@ included scope and exclusions. It also contains a repository-owned evidence
 catalog with stable IDs derived from those same sources. It contains no implementation chain-of-thought,
 scratchpad, conversation history, provider metadata, or instructions from the
 implementation session.
+The packet validator recomputes the canonical issue-contract digest before it
+admits the snapshot or binds Stage 2 evidence, so changing revision-bound
+fields without a fresh accepted issue revision is stale evidence.
 
 The concrete session mechanism is the local Codex CLI invoked by
 [adversarial_review_session.py](tools/ci/adversarial_review_session.py). The
@@ -779,6 +782,10 @@ initially. A disputed or uncertain finding, oscillating candidate, missing
 candidate identity, scope or authority conflict, invalid session result, or
 reached cycle cap stops the lifecycle for human disposition; it must not be
 silently accepted or turned into a new authority path.
+Invalid session results and provider execution failures are written as a
+bounded `human-handoff` outcome with the exact candidate identity and a
+repository-owned sanitized reason; provider stdout, stderr, and raw findings
+are not forwarded to the implementation route.
 
 The production `adversarial_review_session.py run` command consumes an
 optional lifecycle-state JSON document and always invokes the repository-owned

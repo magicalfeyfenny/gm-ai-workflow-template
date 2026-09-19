@@ -13,6 +13,11 @@ import re
 from collections.abc import Mapping, Sequence
 
 try:
+    from .issue_contract import contract_digest
+except ImportError:  # pragma: no cover - direct script compatibility
+    from issue_contract import contract_digest  # type: ignore[no-redef]
+
+try:
     from .adversarial_review_contracts import (
         ADJUDICATION_PACKET_SCHEMA,
         ADJUDICATION_RESULT_OUTPUT_SCHEMA,
@@ -186,6 +191,23 @@ def _contract(value: object) -> dict:
         ),
         "revision": _digest(revision, "issue contract.revision"),
     }
+    digest_input = {
+        key: normalized[key]
+        for key in (
+            "repository",
+            "id",
+            "number",
+            "title",
+            "body",
+            "state",
+            "work_blocked",
+            "open_blocker_ids",
+        )
+    }
+    if normalized["revision"] != contract_digest(digest_input):
+        raise ReviewContractError(
+            "issue contract.revision does not match the accepted snapshot"
+        )
     if (
         not isinstance(normalized["number"], int)
         or isinstance(normalized["number"], bool)

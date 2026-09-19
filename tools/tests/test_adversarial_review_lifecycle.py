@@ -17,7 +17,7 @@ from tools.ci.adversarial_review import (
 from tools.ci.adversarial_review_session import main, run_review_lifecycle
 
 
-REVISION = "a" * 64
+REVISION = "220cc0114ced1c521c25b5f26d3ec0a597469afb50429b1699615497fce0f372"
 DIFF = "diff --git a/tools/ci/adversarial_review.py b/tools/ci/adversarial_review.py\n"
 INCLUDED = [
     "tools/ci/adversarial_review.py",
