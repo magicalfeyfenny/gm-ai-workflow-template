@@ -711,20 +711,12 @@ class IsolatedSessionTests(unittest.TestCase):
             provider_root = root / "provider"
             sentinel_root = root / "sentinels"
             for path in (provider_root, sentinel_root): path.mkdir()
-            configured_home = root / "configured-codex-home"
-            configured_home.mkdir()
             external_sentinel = sentinel_root / "external.txt"
-            configured_home_sentinel = configured_home / "configured-home.txt"
             repository_sentinel = Path.cwd() / "GOVERNANCE.md"
             implementation_sentinel = Path.cwd() / "tools/ci/adversarial_review.py"
             reviewer_sentinel = sentinel_root / "reviewer-artifact.txt"
             provider_sibling_sentinel = provider_root / "sibling-artifact.txt"
-            for path in (
-                external_sentinel,
-                configured_home_sentinel,
-                reviewer_sentinel,
-                provider_sibling_sentinel,
-            ):
+            for path in (external_sentinel, reviewer_sentinel, provider_sibling_sentinel):
                 path.write_text("must remain unreadable", encoding="utf-8")
             executable = provider_root / "fake-codex"
             script = """#!/bin/bash
@@ -734,12 +726,8 @@ set -eu
         prompt="$prompt$line
 "
 done
-if : > "$PWD/packet-write-sentinel"; then
-    exit 96
-fi
 for sentinel in \
     "EXTERNAL_SENTINEL" \
-    "CONFIGURED_HOME_SENTINEL" \
     "REVIEWER_SENTINEL" \
     "PROVIDER_SIBLING_SENTINEL" \
     "REPOSITORY_SENTINEL" \
@@ -786,7 +774,6 @@ else
 fi
 """
             script = script.replace("EXTERNAL_SENTINEL", str(external_sentinel))
-            script = script.replace("CONFIGURED_HOME_SENTINEL", str(configured_home_sentinel))
             script = script.replace("REVIEWER_SENTINEL", str(reviewer_sentinel))
             script = script.replace("PROVIDER_SIBLING_SENTINEL", str(provider_sibling_sentinel))
             script = script.replace("REPOSITORY_SENTINEL", str(repository_sentinel))
@@ -794,13 +781,7 @@ fi
             script = script.replace("IDENTITY_JSON", identity_json)
             executable.write_text(script, encoding="utf-8")
             executable.chmod(0o755)
-            with patch.dict(
-                os.environ,
-                {
-                    "PARENT_SECRET": "must-not-inherit",
-                    "CODEX_HOME": str(configured_home),
-                },
-            ):
+            with patch.dict(os.environ, {"PARENT_SECRET": "must-not-inherit"}):
                 result = run_adversarial_review(
                     review_packet,
                     codex_executable=str(executable),

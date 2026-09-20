@@ -431,6 +431,8 @@ class SandboxBoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source_home = Path(directory) / "source-codex-home"
             source_home.mkdir()
+            source_sentinel = source_home / "configured-home-sentinel"
+            source_sentinel.write_text("must-remain-unreadable", encoding="utf-8")
             source_auth = source_home / "auth.json"
             original = '{"access_token":"must-remain-unchanged"}'
             source_auth.write_text(original, encoding="utf-8")
@@ -438,6 +440,12 @@ class SandboxBoundaryTests(unittest.TestCase):
             executable.write_text(
                 """#!/bin/bash
 set -eu
+if [ -r "CONFIGURED_HOME_SENTINEL" ]; then
+    exit 97
+fi
+if : > "$PWD/packet-write-sentinel"; then
+    exit 98
+fi
 printf '%s' runtime-state > "$CODEX_HOME/runtime-state"
 if printf '%s' tampered > "$CODEX_HOME/auth.json"; then
     exit 96
@@ -453,6 +461,12 @@ done
 [ -n "$output" ]
 printf '%s' '{}' > "$output"
 """,
+                encoding="utf-8",
+            )
+            executable.write_text(
+                executable.read_text(encoding="utf-8").replace(
+                    "CONFIGURED_HOME_SENTINEL", str(source_sentinel)
+                ),
                 encoding="utf-8",
             )
             executable.chmod(0o755)
