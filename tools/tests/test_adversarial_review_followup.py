@@ -320,6 +320,111 @@ class SandboxBoundaryTests(unittest.TestCase):
                         executable=str(executable),
                     )
 
+    def test_runtime_home_is_writable_but_authentication_stays_external(self):
+        calls: list[dict[str, object]] = []
+
+        def fake_run(command, **kwargs):
+            profile = Path(command[2]).read_text(encoding="utf-8")
+            output_path = Path(command[command.index("--output-last-message") + 1])
+            runtime_home = Path(kwargs["env"]["CODEX_HOME"])
+            authentication_link = runtime_home / "auth.json"
+            calls.append(
+                {
+                    "profile": profile,
+                    "cwd": Path(kwargs["cwd"]),
+                    "runtime_home": runtime_home,
+                    "authentication_target": authentication_link.resolve(),
+                    "authentication_mode": authentication_link.stat().st_mode & 0o777,
+                }
+            )
+            output_path.write_text("{}", encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as directory:
+            source_home = Path(directory) / "source-codex-home"
+            source_home.mkdir()
+            source_auth = source_home / "auth.json"
+            source_auth.write_text('{"access_token":"sentinel"}', encoding="utf-8")
+            with patch.dict(os.environ, {"CODEX_HOME": str(source_home)}), patch(
+                "tools.ci.adversarial_review_session._sandbox_path",
+                return_value="/usr/bin/sandbox-exec",
+            ), patch(
+                "tools.ci.adversarial_review_session.subprocess.run",
+                side_effect=fake_run,
+            ):
+                _run_fresh_codex_session(
+                    "reviewer",
+                    {},
+                    {"type": "object"},
+                    executable="/fake/codex",
+                )
+
+        self.assertEqual(len(calls), 1)
+        call = calls[0]
+        cwd = call["cwd"]
+        runtime_home = call["runtime_home"]
+        authentication_target = call["authentication_target"]
+        self.assertIsInstance(cwd, Path)
+        self.assertIsInstance(runtime_home, Path)
+        self.assertIsInstance(authentication_target, Path)
+        self.assertIn(cwd, runtime_home.parents)
+        self.assertNotIn(cwd, authentication_target.parents)
+        self.assertEqual(runtime_home.name, "codex-home")
+        self.assertEqual(call["authentication_mode"], 0o400)
+        profile = call["profile"]
+        self.assertIn(
+            f'(allow file-read* file-write* (subpath "{runtime_home}"))',
+            profile,
+        )
+        self.assertNotIn(
+            f'(allow file-read* file-write* (subpath "{cwd}"))',
+            profile,
+        )
+        self.assertIn(
+            f'(deny file-write* (literal "{authentication_target}"))',
+            profile,
+        )
+
+    @unittest.skipUnless(shutil.which("sandbox-exec"), "requires macOS Seatbelt")
+    def test_runtime_state_is_writable_without_modifying_copied_authentication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_home = Path(directory) / "source-codex-home"
+            source_home.mkdir()
+            source_auth = source_home / "auth.json"
+            original = '{"access_token":"must-remain-unchanged"}'
+            source_auth.write_text(original, encoding="utf-8")
+            executable = Path(directory) / "fake-codex"
+            executable.write_text(
+                """#!/bin/bash
+set -eu
+printf '%s' runtime-state > "$CODEX_HOME/runtime-state"
+if printf '%s' tampered > "$CODEX_HOME/auth.json"; then
+    exit 96
+fi
+output=""
+previous=""
+for argument in "$@"; do
+    if [ "$previous" = "--output-last-message" ]; then
+        output="$argument"
+    fi
+    previous="$argument"
+done
+[ -n "$output" ]
+printf '%s' '{}' > "$output"
+""",
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+            with patch.dict(os.environ, {"CODEX_HOME": str(source_home)}):
+                result = _run_fresh_codex_session(
+                    "reviewer",
+                    {},
+                    {"type": "object"},
+                    executable=str(executable),
+                )
+            self.assertEqual(result, {})
+            self.assertEqual(source_auth.read_text(encoding="utf-8"), original)
+
 
 class SessionFailureTests(unittest.TestCase):
     def test_invalid_session_result_becomes_bounded_handoff(self):
@@ -359,6 +464,92 @@ class SessionFailureTests(unittest.TestCase):
         self.assertEqual(result["transition"]["status"], "human-handoff")
         self.assertEqual(result["human_handoff"]["finding_dispositions"], [])
         self.assertNotIn("raw-provider-instruction", json.dumps(result))
+        self.assertEqual(result["human_handoff"]["session_failure"]["role"], "reviewer")
+        self.assertEqual(
+            result["human_handoff"]["session_failure"]["failure_class"],
+            "startup",
+        )
+        self.assertIsNone(result["human_handoff"]["session_failure"]["exit_status"])
+        self.assertFalse(result["human_handoff"]["session_failure"]["output_exists"])
+
+    def test_provider_failure_handoff_has_sanitized_machine_diagnostics(self):
+        packet = semantic_packet()
+
+        def run_case(*, returncode=None, output=None, timeout=False, auth=True):
+            def fake_run(command, **kwargs):
+                if output is not None:
+                    Path(command[command.index("--output-last-message") + 1]).write_text(
+                        output, encoding="utf-8"
+                    )
+                if timeout:
+                    raise subprocess.TimeoutExpired(command, 300)
+                return subprocess.CompletedProcess(command, returncode, "", "raw-secret")
+
+            with tempfile.TemporaryDirectory() as directory:
+                source_home = Path(directory) / "source-codex-home"
+                source_home.mkdir()
+                if auth:
+                    (source_home / "auth.json").write_text(
+                        '{"access_token":"sentinel"}', encoding="utf-8"
+                    )
+                with patch.dict(os.environ, {"CODEX_HOME": str(source_home)}), patch(
+                    "tools.ci.adversarial_review_session._sandbox_path",
+                    return_value="/usr/bin/sandbox-exec",
+                ), patch(
+                    "tools.ci.adversarial_review_session.subprocess.run",
+                    side_effect=fake_run,
+                ):
+                    result = run_review_lifecycle(
+                        packet, initial=True, codex_executable="/fake/codex"
+                    )
+            return result
+
+        cases = [
+            ("sandbox", run_case(returncode=23, auth=True)),
+            ("authentication", run_case(returncode=23, auth=False)),
+            ("timeout", run_case(timeout=True)),
+            ("invalid-output", run_case(returncode=0, output="not-json")),
+        ]
+        for failure_class, result in cases:
+            with self.subTest(failure_class=failure_class):
+                diagnostic = result["human_handoff"]["session_failure"]
+                self.assertEqual(diagnostic["schema"], "adversarial-review-session-failure:v1")
+                self.assertEqual(diagnostic["role"], "reviewer")
+                self.assertEqual(diagnostic["failure_class"], failure_class)
+                self.assertNotIn("raw-secret", json.dumps(result))
+                self.assertNotIn("sentinel", json.dumps(result))
+                self.assertNotIn("BOUNDARY-PACKET", json.dumps(result))
+
+    def test_provider_startup_failure_is_classified_without_raw_error_text(self):
+        packet = semantic_packet()
+        with patch(
+            "tools.ci.adversarial_review_session._codex_path",
+            side_effect=ReviewSessionError("raw-startup-detail"),
+        ):
+            result = run_review_lifecycle(
+                packet, initial=True, codex_executable="/fake/codex"
+            )
+        diagnostic = result["human_handoff"]["session_failure"]
+        self.assertEqual(diagnostic["role"], "reviewer")
+        self.assertEqual(diagnostic["failure_class"], "startup")
+        self.assertFalse(diagnostic["output_exists"])
+        self.assertNotIn("raw-startup-detail", json.dumps(result))
+
+    def test_adjudicator_failure_identifies_the_adjudicator_role(self):
+        packet = semantic_packet()
+
+        def failing_runner(role, payload, output_schema):
+            if role == "reviewer":
+                return review_result(payload, [])
+            raise ReviewSessionError("raw-adjudicator-detail")
+
+        result = run_review_lifecycle(
+            packet, initial=True, session_runner=failing_runner
+        )
+        diagnostic = result["human_handoff"]["session_failure"]
+        self.assertEqual(diagnostic["role"], "adjudicator")
+        self.assertEqual(diagnostic["failure_class"], "startup")
+        self.assertNotIn("raw-adjudicator-detail", json.dumps(result))
 
 
 class ProviderOutputBoundaryTests(unittest.TestCase):

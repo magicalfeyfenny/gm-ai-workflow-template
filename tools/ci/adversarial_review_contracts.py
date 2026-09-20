@@ -11,9 +11,39 @@ REVIEW_PACKET_SCHEMA = "adversarial-review-packet:v2"
 REVIEW_RESULT_SCHEMA = "adversarial-review-result:v2"
 ADJUDICATION_PACKET_SCHEMA = "adversarial-adjudication-packet:v2"
 ADJUDICATION_RESULT_SCHEMA = "adversarial-adjudication-result:v2"
+SESSION_FAILURE_SCHEMA = "adversarial-review-session-failure:v1"
+SESSION_FAILURE_CLASSES = (
+    "startup",
+    "sandbox",
+    "authentication",
+    "timeout",
+    "invalid-output",
+)
 MAX_CORRECTION_CYCLES = 2
 DISPOSITIONS = ("blocker", "patch-now", "follow-up", "reject")
 _IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
+
+SESSION_FAILURE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "schema",
+        "role",
+        "exit_status",
+        "output_exists",
+        "failure_class",
+    ],
+    "properties": {
+        "schema": {"type": "string", "const": SESSION_FAILURE_SCHEMA},
+        "role": {"type": "string", "enum": ["reviewer", "adjudicator", "unknown"]},
+        "exit_status": {"type": ["integer", "null"]},
+        "output_exists": {"type": "boolean"},
+        "failure_class": {
+            "type": "string",
+            "enum": list(SESSION_FAILURE_CLASSES),
+        },
+    },
+}
 
 
 _IDENTITY_OUTPUT_SCHEMA = {

@@ -721,13 +721,11 @@ class IsolatedSessionTests(unittest.TestCase):
             executable = provider_root / "fake-codex"
             script = """#!/bin/bash
 set -eu
-packet_path="$PWD/packet.json"
-prompt=""
-while IFS= read -r line; do
-    prompt="$prompt$line
+    prompt=""
+    while IFS= read -r line; do
+        prompt="$prompt$line
 "
-done
-printf '%s' "$prompt" > "$packet_path"
+    done
 for sentinel in \
     "EXTERNAL_SENTINEL" \
     "REVIEWER_SENTINEL" \

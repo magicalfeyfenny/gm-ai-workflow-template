@@ -14,6 +14,32 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 try:
+    from .adversarial_review_sandbox import (
+        _session_environment,
+        _write_sandbox_profile,
+    )
+except ImportError:  # pragma: no cover - direct script compatibility
+    from adversarial_review_sandbox import (  # type: ignore[no-redef]
+        _session_environment,
+        _write_sandbox_profile,
+    )
+
+try:
+    from .adversarial_review_failures import (
+        process_failure_class,
+        session_error,
+        session_error_with_role,
+        session_failure_diagnostic,
+    )
+except ImportError:  # pragma: no cover - direct script compatibility
+    from adversarial_review_failures import (  # type: ignore[no-redef]
+        process_failure_class,
+        session_error,
+        session_error_with_role,
+        session_failure_diagnostic,
+    )
+
+try:
     from .adversarial_review import (
         ADJUDICATION_RESULT_OUTPUT_SCHEMA,
         ReviewContractError,
@@ -211,130 +237,6 @@ def _sandbox_path() -> str:
     return path
 
 
-def _sbpl_path(path: Path) -> str:
-    return str(path.resolve()).replace("\\", "\\\\").replace('"', '\\"')
-
-
-_RUNTIME_FRAMEWORKS = (
-    Path("/System/Library/Frameworks/AppKit.framework"),
-    Path("/System/Library/Frameworks/CFNetwork.framework"),
-    Path("/System/Library/Frameworks/CoreFoundation.framework"),
-    Path("/System/Library/Frameworks/CoreGraphics.framework"),
-    Path("/System/Library/Frameworks/CoreServices.framework"),
-    Path("/System/Library/Frameworks/Foundation.framework"),
-    Path("/System/Library/Frameworks/IOKit.framework"),
-    Path("/System/Library/Frameworks/LocalAuthentication.framework"),
-    Path("/System/Library/Frameworks/Security.framework"),
-    Path("/System/Library/Frameworks/SystemConfiguration.framework"),
-)
-_RUNTIME_FILES = (
-    Path("/bin/bash"),
-    Path("/bin/cat"),
-    Path("/bin/sh"),
-    Path("/usr/bin/git"),
-    Path("/usr/bin/grep"),
-    Path("/usr/bin/sed"),
-    Path("/usr/lib/dyld"),
-    Path("/usr/lib/libSystem.B.dylib"),
-    Path("/usr/lib/libobjc.A.dylib"),
-    Path("/usr/lib/libbz2.1.0.dylib"),
-    Path("/usr/lib/libiconv.2.dylib"),
-    Path("/usr/lib/liblzma.5.dylib"),
-)
-
-
-def _session_environment(
-    working_directory: Path, auth_directory: Path
-) -> tuple[dict[str, str], Path]:
-    configured_home = os.environ.get("CODEX_HOME")
-    source_home = (
-        Path(configured_home).expanduser().resolve()
-        if configured_home
-        else Path.home().joinpath(".codex").resolve()
-    )
-    codex_home = auth_directory.resolve()
-    codex_home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    source_auth = source_home / "auth.json"
-    if source_auth.is_file():
-        target_auth = codex_home / "auth.json"
-        shutil.copyfile(source_auth, target_auth)
-        target_auth.chmod(0o600)
-    environment = {
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-        "HOME": str(working_directory),
-        "TMPDIR": str(working_directory),
-        "CODEX_HOME": str(codex_home),
-        "LANG": os.environ.get("LANG", "C"),
-        "LC_CTYPE": os.environ.get("LC_CTYPE", "C"),
-    }
-    return environment, codex_home
-
-
-def _write_sandbox_profile(
-    path: Path,
-    working_directory: Path,
-    command_path: Path,
-    codex_home: Path,
-) -> None:
-    lines = [
-        "(version 1)",
-        "(deny default)",
-        '(import "system.sb")',
-        "(allow ipc-posix*)",
-        "(allow socket-ioctl)",
-        "(allow socket-option*)",
-        "(allow syscall*)",
-        "(allow system-fcntl)",
-        "(allow system-mac-syscall)",
-        "(allow system-socket)",
-        "(allow mach-lookup)",
-        "(allow darwin-notification-post)",
-        "(allow signal (target self))",
-        "(allow network-outbound)",
-    ]
-    for root in _RUNTIME_FRAMEWORKS:
-        encoded = _sbpl_path(root)
-        lines.append(f'(allow file-read* (subpath "{encoded}"))')
-        lines.append(f'(allow file-map-executable (subpath "{encoded}"))')
-    for runtime_file in (command_path, *_RUNTIME_FILES):
-        encoded = _sbpl_path(runtime_file)
-        lines.append(f'(allow file-read* (literal "{encoded}"))')
-        lines.append(f'(allow file-map-executable (literal "{encoded}"))')
-        lines.append(
-            f'(allow file-read-metadata file-test-existence (path-ancestors "{encoded}"))'
-        )
-    lines.append(f'(allow process-exec (literal "{_sbpl_path(command_path)}"))')
-    try:
-        first_line = command_path.read_bytes().splitlines()[0].decode("utf-8")
-    except (OSError, IndexError, UnicodeDecodeError):
-        first_line = ""
-    if first_line.startswith("#!"):
-        interpreter = first_line[2:].strip().split(maxsplit=1)[0]
-        if interpreter.startswith("/"):
-            lines.append(
-                f'(allow process-exec (literal "{_sbpl_path(Path(interpreter))}"))'
-            )
-    workspace = _sbpl_path(working_directory)
-    lines.append(
-        f'(allow file-read-metadata file-test-existence (path-ancestors "{workspace}"))'
-    )
-    lines.append(f'(allow file-read* file-write* (subpath "{workspace}"))')
-    if codex_home.is_dir():
-        encoded_home = _sbpl_path(codex_home)
-        lines.append(f'(allow file-read-metadata (literal "{encoded_home}"))')
-        auth_path = codex_home / "auth.json"
-        if auth_path.is_file():
-            lines.append(f'(allow file-read* (literal "{_sbpl_path(auth_path)}"))')
-    lines.extend(
-        [
-            '(allow file-read* (literal "/private/etc/ssl/cert.pem"))',
-            '(allow file-read* (literal "/private/etc/hosts"))',
-            '(allow file-read* (literal "/private/etc/resolv.conf"))',
-        ]
-    )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 def _run_fresh_codex_session(
     role: str,
     packet: Mapping[str, object],
@@ -356,24 +258,50 @@ def _run_fresh_codex_session(
         else model_config
     )
     selection = _role_model_config(configured_roles, role)
-    command_path = Path(_codex_path(executable)).resolve()
-    sandbox_path = _sandbox_path()
+    try:
+        command_path = Path(_codex_path(executable)).resolve()
+    except ReviewSessionError as exc:
+        raise session_error(
+            f"{role} session could not start",
+            role=role,
+            failure_class="startup",
+        ) from exc
+    try:
+        sandbox_path = _sandbox_path()
+    except ReviewSessionError as exc:
+        raise session_error(
+            f"{role} session sandbox is unavailable",
+            role=role,
+            failure_class="sandbox",
+        ) from exc
     with tempfile.TemporaryDirectory(prefix=f"governed-{role}-") as directory, tempfile.TemporaryDirectory(
         prefix=f"governed-auth-{role}-"
     ) as auth_directory:
         working_directory = Path(directory).resolve()
         auth_root = Path(auth_directory).resolve()
         schema_path = working_directory / "output-schema.json"
-        result_path = working_directory / "last-message.json"
+        result_path = working_directory / "codex-home" / "last-message.json"
         profile_path = working_directory / "sandbox.sb"
-        environment, codex_home = _session_environment(working_directory, auth_root)
-        schema_path.write_text(
-            json.dumps(schema, ensure_ascii=False, sort_keys=True),
-            encoding="utf-8",
-        )
-        _write_sandbox_profile(
-            profile_path, working_directory, command_path, codex_home
-        )
+        try:
+            environment, codex_home = _session_environment(working_directory, auth_root)
+            schema_path.write_text(
+                json.dumps(schema, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+            _write_sandbox_profile(
+                profile_path,
+                working_directory,
+                command_path,
+                codex_home,
+                authentication_path=auth_root / "auth.json",
+            )
+        except OSError as exc:
+            raise session_error(
+                f"{role} session could not initialize its temporary runtime",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="startup",
+            ) from exc
         command = [
             sandbox_path,
             "-f",
@@ -411,30 +339,67 @@ def _run_fresh_codex_session(
                 timeout=300,
             )
         except OSError as exc:
-            raise ReviewSessionError(
-                f"{role} session could not start: {type(exc).__name__}"
+            raise session_error(
+                f"{role} session could not start: {type(exc).__name__}",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="startup",
             ) from exc
         except subprocess.TimeoutExpired as exc:
-            raise ReviewSessionError(
-                f"{role} session timed out after 300 seconds"
+            raise session_error(
+                f"{role} session timed out after 300 seconds",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="timeout",
             ) from exc
         except UnicodeError as exc:
-            raise ReviewSessionError(
-                f"{role} session output could not be decoded"
+            raise session_error(
+                f"{role} session output could not be decoded",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="invalid-output",
             ) from exc
+        output_exists = result_path.exists()
         if completed.returncode != 0:
-            raise ReviewSessionError(
-                f"{role} session failed with exit status {completed.returncode}"
+            failure_class = process_failure_class(
+                result_path,
+                output_exists=output_exists,
+                authentication_available=(auth_root / "auth.json").is_file(),
+            )
+            raise session_error(
+                f"{role} session failed with exit status {completed.returncode}",
+                role=role,
+                exit_status=completed.returncode,
+                output_exists=output_exists,
+                failure_class=failure_class,
+            )
+        if not output_exists:
+            raise session_error(
+                f"{role} session returned no output file",
+                role=role,
+                output_exists=False,
+                failure_class="invalid-output",
             )
         try:
             output = result_path.read_text(encoding="utf-8")
             parsed = json.loads(output)
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            raise ReviewSessionError(f"{role} session returned invalid JSON: {exc}") from exc
-    parsed_mapping = _mapping(parsed, f"{role} session result")
+            raise session_error(
+                f"{role} session returned invalid JSON",
+                role=role,
+                output_exists=True,
+                failure_class="invalid-output",
+            ) from exc
+    try:
+        parsed_mapping = _mapping(parsed, f"{role} session result")
+    except ReviewContractError as exc:
+        raise session_error(
+            f"{role} session returned a non-object result",
+            role=role,
+            output_exists=True,
+            failure_class="invalid-output",
+        ) from exc
     return parsed_mapping
-
-
 SessionRunner = Callable[[str, Mapping[str, object], Mapping[str, object]], Mapping[str, object]]
 
 
@@ -461,19 +426,41 @@ def _run_adversarial_review_sessions(
                 model_config=model_config,
             )
 
-    reviewer_raw = session_runner(
-        "reviewer", review_packet, REVIEW_RESULT_OUTPUT_SCHEMA
-    )
-    reviewer_result = validate_review_result(reviewer_raw, review_packet)
-    adjudication_packet = build_adjudication_packet(
-        review_packet, reviewer_result["findings"]
-    )
-    adjudicator_raw = session_runner(
-        "adjudicator", adjudication_packet, ADJUDICATION_RESULT_OUTPUT_SCHEMA
-    )
-    adjudication = validate_adjudication_result(
-        adjudicator_raw, adjudication_packet
-    )
+    try:
+        reviewer_raw = session_runner(
+            "reviewer", review_packet, REVIEW_RESULT_OUTPUT_SCHEMA
+        )
+    except ReviewSessionError as exc:
+        raise session_error_with_role(exc, "reviewer") from exc
+    try:
+        reviewer_result = validate_review_result(reviewer_raw, review_packet)
+        adjudication_packet = build_adjudication_packet(
+            review_packet, reviewer_result["findings"]
+        )
+    except ReviewContractError as exc:
+        raise session_error(
+            "reviewer session returned an invalid structured result",
+            role="reviewer",
+            output_exists=True,
+            failure_class="invalid-output",
+        ) from exc
+    try:
+        adjudicator_raw = session_runner(
+            "adjudicator", adjudication_packet, ADJUDICATION_RESULT_OUTPUT_SCHEMA
+        )
+    except ReviewSessionError as exc:
+        raise session_error_with_role(exc, "adjudicator") from exc
+    try:
+        adjudication = validate_adjudication_result(
+            adjudicator_raw, adjudication_packet
+        )
+    except ReviewContractError as exc:
+        raise session_error(
+            "adjudicator session returned an invalid structured result",
+            role="adjudicator",
+            output_exists=True,
+            failure_class="invalid-output",
+        ) from exc
     return adjudication, adjudication_packet
 
 
@@ -525,31 +512,45 @@ def _handoff_summary(
 
 
 def _session_failure_outcome(
-    candidate: Mapping[str, object], lifecycle: Mapping[str, object]
+    candidate: Mapping[str, object],
+    lifecycle: Mapping[str, object],
+    error: BaseException | None = None,
 ) -> dict:
     """Return a bounded handoff without exposing unvalidated provider output."""
+    if isinstance(error, ReviewSessionError):
+        session_failure = session_failure_diagnostic(error)
+    else:
+        session_failure = session_failure_diagnostic(
+            session_error(
+                "isolated session returned an invalid result",
+                failure_class="invalid-output",
+            )
+        )
     reason = (
-        "a fresh reviewer or adjudicator session failed bounded validation or "
-        "execution; human disposition is required before rerun"
+        f"{session_failure['role']} isolated session failed with "
+        f"{session_failure['failure_class']}; human disposition is required before rerun"
     )
     transition = {
         "status": "human-handoff",
         "cycle": lifecycle["cycle"],
         "corrections": [],
         "reason": reason,
+        "session_failure": session_failure,
         "requirements": [
             "human disposition of the failed review session",
             "fresh reviewer and adjudicator sessions",
         ],
         "continuation_state": None,
     }
+    handoff = _handoff_summary(candidate, None, transition)
+    handoff["session_failure"] = session_failure
     return {
         "schema": "adversarial-review-outcome:v1",
         "candidate_identity": candidate_identity(candidate),
         "adjudication": None,
         "transition": transition,
         "continuation_state": None,
-        "human_handoff": _handoff_summary(candidate, None, transition),
+        "human_handoff": handoff,
     }
 
 
@@ -662,8 +663,10 @@ def run_review_lifecycle(
                 state=None if initial else state,
                 initial=initial,
             )
-        except (ReviewContractError, ReviewSessionError):
-            return _session_failure_outcome(review_packet["candidate"], lifecycle)
+        except (ReviewContractError, ReviewSessionError) as exc:
+            return _session_failure_outcome(
+                review_packet["candidate"], lifecycle, exc
+            )
     return {
         "schema": "adversarial-review-outcome:v1",
         "candidate_identity": candidate_identity(review_packet["candidate"]),
