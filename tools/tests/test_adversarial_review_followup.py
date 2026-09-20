@@ -320,6 +320,47 @@ class SandboxBoundaryTests(unittest.TestCase):
                         executable=str(executable),
                     )
 
+    @unittest.skipUnless(shutil.which("sandbox-exec"), "requires macOS Seatbelt")
+    def test_legacy_read_only_runtime_home_fails_before_provider_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / "fake-codex"
+            executable.write_text(
+                "#!/bin/bash\nset -eu\nmkdir \"$CODEX_HOME/runtime-state\"\n",
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+            codex_home = root / "codex-home"
+            codex_home.mkdir()
+            profile = root / "sandbox.sb"
+            _write_sandbox_profile(profile, root, executable, codex_home)
+            writable_runtime = (
+                f'(allow file-read* file-write* (subpath "{codex_home.resolve()}"))'
+            )
+            profile.write_text(
+                profile.read_text(encoding="utf-8").replace(
+                    writable_runtime,
+                    f'(allow file-read* (subpath "{codex_home.resolve()}"))',
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    shutil.which("sandbox-exec"),
+                    "-f",
+                    str(profile),
+                    "--",
+                    str(executable),
+                ],
+                cwd=root,
+                env={"CODEX_HOME": str(codex_home)},
+                capture_output=True,
+                check=False,
+            )
+            created = (codex_home / "runtime-state").exists()
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertFalse(created)
+
     def test_runtime_home_is_writable_but_authentication_stays_external(self):
         calls: list[dict[str, object]] = []
 
