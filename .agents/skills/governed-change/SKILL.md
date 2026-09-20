@@ -35,7 +35,7 @@ with the narrower selection and authority in its automation template.
 - Completion: [Risk](../../../GOVERNANCE.md#risk),
   [Completion transition](../../../GOVERNANCE.md#completion-transition), and
   [Issue contract evidence](../../../GOVERNANCE.md#issue-contract-evidence), then
-  the applicable [low-risk](../../../GOVERNANCE.md#low-risk-changes) or
+  the applicable [low/medium automatic](../../../GOVERNANCE.md#low-risk-and-medium-risk-changes) or
   [manual](../../../GOVERNANCE.md#manual-and-high-risk-changes) path.
 - Executable values: only the affected tables in
   [PROJECT_POLICY.toml](../../../PROJECT_POLICY.toml).

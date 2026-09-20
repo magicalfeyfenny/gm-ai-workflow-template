@@ -100,6 +100,8 @@ source_extensions = [".blend", ".obj", ".mtl"]
 runtime_extensions = [".vbuff"]
 
 [risk]
+risk_labels = ["risk:low", "risk:medium", "risk:high"]
+automatic_risk_labels = ["risk:low", "risk:medium"]
 max_changed_files = 100
 max_changed_lines = 10000
 

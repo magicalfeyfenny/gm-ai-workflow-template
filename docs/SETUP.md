@@ -219,17 +219,17 @@ complete the reported items that apply:
    evidence-backed issue audits and the
    [Governed Change template](../templates/codex/governed-change.txt) for
    executing one existing issue at a time.
-5. If automatic low-risk merging is wanted, provision the dedicated GitHub App
+5. If automatic low/medium merging is wanted, provision the dedicated GitHub App
    described in [governed merge authentication](#configure-governed-merge-authentication).
 
 ### Configure governed merge authentication
 
-The low-risk merge workflow needs a repository-scoped GitHub App for its final
+The low/medium automatic merge workflow needs a repository-scoped GitHub App for its final
 linked-issue merge call. A human repository owner must register and install a
 private App with only Contents, Issues, and Pull requests read/write access,
 then store its client ID as `GOVERNED_MERGE_APP_CLIENT_ID` and its complete PEM
 private key as `GOVERNED_MERGE_APP_PRIVATE_KEY`. Never commit the key. Verify
-the identity path with a fresh bounded low-risk documentation change, as
+the identity path with a fresh bounded automatic-path documentation change, as
 described in the existing workflow policy; provisioning and revocation remain
 human-owned.
 

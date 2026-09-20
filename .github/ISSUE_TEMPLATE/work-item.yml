@@ -58,9 +58,13 @@ body:
     id: expected-risk
     attributes:
       label: Expected risk
-      description: Classify this issue's own scope; do not inherit risk from a parent issue.
+      description: >-
+        Classify this issue's own scope; Low is routine, Medium is substantial
+        but operationally safe, and High requires concrete structural or
+        operational danger. Do not inherit risk from a parent issue.
       options:
         - Low
+        - Medium
         - High
     validations:
       required: true

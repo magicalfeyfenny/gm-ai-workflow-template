@@ -8,6 +8,17 @@ State the completed outcome and what now works or is possible.
 
 What checks were run, if any?
 
+For `risk:medium`, include at least one change-specific machine-verifiable
+item using this exact form. Do not list only repository-policy, formatting, or
+other generic checks:
+
+`Focused validation: \`<test command or deterministic contract check>\``
+
+For voluntary `risk:high` without an automatic-high trigger, include a
+concrete structural or operational reason using this exact form:
+
+`High-risk rationale: <authority, security, compatibility, destructive, or other concrete danger>`
+
 At completion, record the accepted issue revision and marker under
 [Issue contract evidence](../GOVERNANCE.md#issue-contract-evidence).
 

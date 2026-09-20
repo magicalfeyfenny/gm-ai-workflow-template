@@ -237,7 +237,7 @@ class FakeGitHub:
 
 
 class LowRiskMergeTests(unittest.TestCase):
-    """Verify the low-risk merge boundary through meaningful state changes."""
+    """Verify the automatic low/medium merge boundary through state changes."""
 
     def test_ready_pr_uses_one_owned_window_and_exact_final_call(self) -> None:
         """A stable ready candidate needs two snapshots and one file fetch."""
@@ -261,6 +261,26 @@ class LowRiskMergeTests(unittest.TestCase):
             github.events,
             ["attestation", "snapshot", "files", "snapshot", "configure"],
         )
+
+    def test_medium_ready_pr_uses_the_same_automatic_boundary(self) -> None:
+        """A completed medium PR remains eligible for automatic merging."""
+        current = pull_request_snapshot(
+            body=(
+                "Closes #42\n"
+                "Focused validation: `python3 -m unittest "
+                "tools.tests.test_titan_finale`\n"
+            ),
+            labels=("risk:medium", "work:complete"),
+        )
+        github = FakeGitHub(
+            [current, current],
+            attestation=attestation_for(current),
+        )
+
+        outcome = run_low_risk_merge(ci_context(), github)
+
+        self.assertEqual(outcome.outcome, MergeOutcome.CONFIGURED)
+        self.assertEqual(github.configurations, [(HEAD_SHA, MERGE_TOKEN)])
 
     def test_draft_is_revalidated_after_readiness_mutation(self) -> None:
         """Readiness opens a fresh full ownership window before auto-merge."""

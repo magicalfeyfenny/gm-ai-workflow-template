@@ -56,7 +56,7 @@ class CodexAutomationTemplateTests(unittest.TestCase):
             "immediately before the completion transition",
             "exactly one physical-line `closes #<issue>` line",
             "fresh stage 3 exact-head hosted evidence",
-            "existing low-risk automation",
+            "existing automatic workflow",
         )
         positions = []
         for stage in ordered_stages:
@@ -125,8 +125,8 @@ class CodexAutomationTemplateTests(unittest.TestCase):
                 "stage 3 is not a prerequisite",
                 "blocks readiness and auto-merge",
             ),
-            "low risk actor": (
-                "existing low-risk automation",
+            "low/medium actor": (
+                "existing automatic workflow",
                 "mark the pr ready",
                 "configure squash auto-merge",
             ),

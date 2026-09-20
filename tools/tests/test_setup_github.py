@@ -347,6 +347,10 @@ class ConfigureRepositoryTests(unittest.TestCase):
             {label["name"] for label in created_labels},
         )
         self.assertIn(
+            "risk:medium",
+            {label["name"] for label in created_labels},
+        )
+        self.assertIn(
             "work:review-ready",
             {label["name"] for label in created_labels},
         )

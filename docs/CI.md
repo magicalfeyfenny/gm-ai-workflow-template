@@ -208,7 +208,7 @@ Comparison re-fetches the governing issue. Exit 0 means the live PR and issue
 match; exit 3 means stale evidence; invalid, missing, or unavailable evidence
 fails closed. Optional `capture --issue-path` and `compare
 --current-issue-path` inputs support synthetic fixtures; a saved fixture is not
-a live completion check. Low-risk automation uses its read token to re-fetch
+a live completion check. Automatic low/medium automation uses its read token to re-fetch
 the issue in both existing PR/file windows, including after readiness. These
 reads reject issue drift and revoke a pending merge request when the PR still
 matches the attested metadata. Older runs leave newer PR metadata alone. These

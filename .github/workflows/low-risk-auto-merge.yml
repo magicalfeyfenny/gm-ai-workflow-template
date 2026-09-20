@@ -1,4 +1,4 @@
-name: Low-risk auto-merge
+name: Low/medium automatic merge
 
 on:
   pull_request_target:

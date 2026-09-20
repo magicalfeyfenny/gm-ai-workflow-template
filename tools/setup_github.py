@@ -32,7 +32,14 @@ REQUIRED_LABELS: tuple[dict[str, str], ...] = (
     {
         "name": "risk:low",
         "color": "5c881b",
-        "description": "Auto-merges after work:complete and required CI.",
+        "description": "Automatic path after work:complete and required CI.",
+    },
+    {
+        "name": "risk:medium",
+        "color": "fbca04",
+        "description": (
+            "Substantial safe work; automatic path with focused evidence."
+        ),
     },
     {
         "name": "risk:high",

@@ -201,7 +201,7 @@ class GovernanceRoutingTests(unittest.TestCase):
                 "risk",
                 "completion-transition",
                 "issue-contract-evidence",
-                "low-risk-changes",
+                "low-risk-and-medium-risk-changes",
                 "manual-and-high-risk-changes",
             }.issubset(governed)
         )
@@ -498,7 +498,7 @@ class GovernanceRoutingTests(unittest.TestCase):
         governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
         completion = " ".join(
             governance.split("## Completion transition", 1)[1].split(
-                "## Low-risk changes", 1
+                "## Low-risk and medium-risk changes", 1
             )[0].casefold().split()
         )
         for marker in (
@@ -573,8 +573,8 @@ class GovernanceRoutingTests(unittest.TestCase):
             "issue-contract revision",
             "immediate pre-transition re-fetch",
             "fresh stage 3 hosted evidence",
-            "eligible low-risk continuation",
-            "existing low-risk readiness and squash auto-merge automation",
+            "eligible low- or medium-risk continuation",
+            "existing automatic readiness and squash auto-merge automation",
             "high-risk and manual-path continuations",
             "authority boundaries",
         ):
@@ -588,11 +588,11 @@ class GovernanceRoutingTests(unittest.TestCase):
         )
         for marker in (
             "completion metadata remains an evidence-backed transition",
-            "scheduled worker may carry eligible low-risk work",
+            "scheduled worker may carry eligible low- or medium-risk work",
             "whole-issue stage 2 evidence",
             "immediate pre-transition issue re-fetch",
             "fresh stage 3 evidence",
-            "existing low-risk automation owns readiness and squash auto-merge",
+            "existing automatic low/medium automation owns readiness and squash auto-merge",
             "high-risk and manual-path work waits for human review, readiness, and merge",
         ):
             with self.subTest(marker=marker):
