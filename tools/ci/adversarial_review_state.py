@@ -1,7 +1,9 @@
-"""Bound the correction and evidence transitions for adversarial review."""
+"""Bound correction and evidence transitions for adversarial review."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
 
 try:
@@ -27,12 +29,22 @@ except ImportError:  # pragma: no cover - direct script compatibility
 
 
 _CONTENT_FIELDS = ("tree_sha", "diff_sha256")
-_LIFECYCLE_STATE_FIELDS = (
+_CANDIDATE_IDENTITY_FIELDS = (
+    "base_ref",
+    "head_ref",
+    "head_sha",
+    "tree_sha",
+    "diff_sha256",
+)
+CONTINUATION_STATE_SCHEMA = "adversarial-review-continuation:v1"
+_CONTINUATION_STATE_FIELDS = (
+    "schema",
+    "state_digest",
     "cycle",
-    "candidate_changed",
+    "candidate_history",
     "accepted_correction",
-    "expected_candidate",
-    "previous_candidates",
+    "previous_candidate",
+    "authorized_locations",
     "issue_contract_revision",
 )
 
@@ -40,6 +52,304 @@ _LIFECYCLE_STATE_FIELDS = (
 def _content_key(value: Mapping[str, object]) -> tuple[str, ...]:
     identity = candidate_identity(value)
     return tuple(identity[field] for field in _CONTENT_FIELDS)
+
+
+def _canonical_digest(value: Mapping[str, object]) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _identity_snapshot(value: object, subject: str) -> dict[str, str]:
+    if not isinstance(value, Mapping) or set(value) != set(_CANDIDATE_IDENTITY_FIELDS):
+        raise ReviewContractError(
+            f"{subject} must contain exactly the candidate identity fields"
+        )
+    return candidate_identity(value)
+
+
+def _candidate_snapshot(value: object, subject: str = "candidate") -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise ReviewContractError(f"{subject} must be an object")
+    if set(value) != set(_CANDIDATE_IDENTITY_FIELDS) | {"diff"}:
+        raise ReviewContractError(
+            f"{subject} must contain exactly its identity fields and diff"
+        )
+    identity = candidate_identity(value)
+    diff = value.get("diff")
+    if not isinstance(diff, str):
+        raise ReviewContractError(f"{subject}.diff must be a string")
+    return {**identity, "diff": diff}
+
+
+def _path_list(value: object, subject: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ReviewContractError(f"{subject} must be a list")
+    paths: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item or item.startswith("/"):
+            raise ReviewContractError(f"{subject} contains an invalid repository path")
+        parts = item.split("/")
+        if ".." in parts or "" in parts or "\\" in item:
+            raise ReviewContractError(f"{subject} contains an invalid repository path")
+        paths.append(item)
+    return paths
+
+
+def _initial_lifecycle_state(issue_contract_revision: str) -> dict[str, object]:
+    return {
+        "cycle": 0,
+        "candidate_history": [],
+        "accepted_correction": False,
+        "previous_candidate": None,
+        "authorized_locations": [],
+        "issue_contract_revision": _digest(
+            issue_contract_revision, "issue contract revision"
+        ),
+    }
+
+
+def initial_lifecycle_state(issue_contract_revision: str) -> dict[str, object]:
+    """Return the internal, explicitly requested first-candidate state."""
+    return _initial_lifecycle_state(issue_contract_revision)
+
+
+def _state_body(
+    *,
+    cycle: int,
+    candidate_history: list[dict[str, str]],
+    accepted_correction: bool,
+    previous_candidate: dict[str, object],
+    authorized_locations: list[str],
+    issue_contract_revision: str,
+) -> dict[str, object]:
+    return {
+        "schema": CONTINUATION_STATE_SCHEMA,
+        "cycle": cycle,
+        "candidate_history": candidate_history,
+        "accepted_correction": accepted_correction,
+        "previous_candidate": previous_candidate,
+        "authorized_locations": authorized_locations,
+        "issue_contract_revision": issue_contract_revision,
+    }
+
+
+def validate_continuation_state(value: Mapping[str, object]) -> dict[str, object]:
+    """Validate the code-emitted state required to continue a correction cycle."""
+    if not isinstance(value, Mapping):
+        raise ReviewContractError("continuation state must be an object")
+    raw = dict(value)
+    if set(raw) != set(_CONTINUATION_STATE_FIELDS):
+        raise ReviewContractError(
+            "continuation state must be complete and contain only code-owned fields"
+        )
+    if raw.get("schema") != CONTINUATION_STATE_SCHEMA:
+        raise ReviewContractError("unsupported continuation state schema")
+    cycle = raw.get("cycle")
+    if (
+        not isinstance(cycle, int)
+        or isinstance(cycle, bool)
+        or cycle < 1
+        or cycle > MAX_CORRECTION_CYCLES
+    ):
+        raise ReviewContractError("continuation state cycle is outside the correction cap")
+    if raw.get("accepted_correction") is not True:
+        raise ReviewContractError(
+            "continuation state must record an accepted correction"
+        )
+    revision = _digest(raw.get("issue_contract_revision"), "issue contract revision")
+    history_value = raw.get("candidate_history")
+    if not isinstance(history_value, list) or not history_value:
+        raise ReviewContractError("continuation state candidate history is incomplete")
+    history = [
+        _identity_snapshot(item, "continuation state candidate history entry")
+        for item in history_value
+    ]
+    history_keys = [_content_key(item) for item in history]
+    if len(history_keys) != len(set(history_keys)):
+        raise ReviewContractError("continuation state candidate history contains a duplicate")
+    previous = _candidate_snapshot(
+        raw.get("previous_candidate"), "continuation state previous candidate"
+    )
+    if candidate_identity(previous) != history[-1]:
+        raise ReviewContractError(
+            "continuation state previous candidate does not match its history"
+        )
+    authorized = _path_list(
+        raw.get("authorized_locations"), "continuation state authorized_locations"
+    )
+    if authorized != sorted(set(authorized)):
+        raise ReviewContractError(
+            "continuation state authorized_locations must be unique and sorted"
+        )
+    body = _state_body(
+        cycle=cycle,
+        candidate_history=history,
+        accepted_correction=True,
+        previous_candidate=previous,
+        authorized_locations=authorized,
+        issue_contract_revision=revision,
+    )
+    state_digest = raw.get("state_digest")
+    if not isinstance(state_digest, str) or state_digest != _canonical_digest(body):
+        raise ReviewContractError("continuation state digest does not match its contents")
+    return {**body, "state_digest": state_digest}
+
+
+def _accepted_corrections(adjudication: Mapping[str, object]) -> list[dict[str, object]]:
+    corrections: list[dict[str, object]] = []
+    for item in adjudication["dispositions"]:
+        if item["correction_accepted"]:
+            correction = item["correction"]
+            if not isinstance(correction, Mapping):
+                raise ReviewContractError("accepted correction is not an object")
+            corrections.append(dict(correction))
+    return corrections
+
+
+def _diff_path(line: str, prefix: str) -> str | None:
+    value = line[len(prefix) :].rstrip("\r\n")
+    value = value.split("\t", 1)[0]
+    if value == "/dev/null":
+        return None
+    if value.startswith("a/") or value.startswith("b/"):
+        value = value[2:]
+    return value
+
+
+def _diff_sections(diff: str) -> dict[str, str]:
+    """Parse only the candidate's supplied patch; never consult live Git state."""
+    lines = diff.splitlines(keepends=True)
+    starts = [index for index, line in enumerate(lines) if line.startswith("diff --git ")]
+    if not starts:
+        raise ReviewContractError("candidate diff has no parseable file sections")
+    sections: dict[str, str] = {}
+    for position, start in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+        section = "".join(lines[start:end])
+        header = lines[start].rstrip("\r\n")
+        pair = header[len("diff --git") :].strip().split(" b/", 1)
+        if len(pair) != 2 or not pair[0].startswith("a/") or not pair[1]:
+            raise ReviewContractError("candidate diff has an invalid file header")
+        paths = {pair[0][2:], pair[1]}
+        for line in lines[start:end]:
+            if line.startswith("--- "):
+                path = _diff_path(line, "--- ")
+                if path is not None:
+                    paths.add(path)
+            elif line.startswith("+++ "):
+                path = _diff_path(line, "+++ ")
+                if path is not None:
+                    paths.add(path)
+            elif line.startswith("rename from "):
+                paths.add(line[len("rename from ") :].rstrip("\r\n"))
+            elif line.startswith("rename to "):
+                paths.add(line[len("rename to ") :].rstrip("\r\n"))
+        for path in paths:
+            if not path or path.startswith("/") or "\\" in path:
+                raise ReviewContractError("candidate diff contains an invalid repository path")
+            if ".." in path.split("/"):
+                raise ReviewContractError("candidate diff contains a parent path")
+            sections[path] = sections.get(path, "") + section
+    return sections
+
+
+def changed_candidate_paths(
+    previous_candidate: Mapping[str, object], current_candidate: Mapping[str, object]
+) -> list[str]:
+    """Return paths whose supplied patch sections changed between candidates."""
+    previous = _candidate_snapshot(previous_candidate, "previous candidate")
+    current = _candidate_snapshot(current_candidate, "current candidate")
+    previous_sections = _diff_sections(previous["diff"])
+    current_sections = _diff_sections(current["diff"])
+    return sorted(
+        path
+        for path in set(previous_sections) | set(current_sections)
+        if previous_sections.get(path) != current_sections.get(path)
+    )
+
+
+def continuation_delta_reason(
+    state: Mapping[str, object],
+    current_candidate: Mapping[str, object],
+    issue_contract_revision: str,
+) -> str | None:
+    """Return a fail-closed reason when a candidate escapes accepted locations."""
+    continuation = validate_continuation_state(state)
+    revision = _digest(issue_contract_revision, "issue contract revision")
+    if continuation["issue_contract_revision"] != revision:
+        return "continuation state belongs to a different issue contract revision"
+    current = _candidate_snapshot(current_candidate, "current candidate")
+    previous = continuation["previous_candidate"]
+    if _content_key(current) == _content_key(previous):
+        return "the continuation candidate did not change the reviewed candidate"
+    history = {
+        _content_key(candidate) for candidate in continuation["candidate_history"]
+    }
+    if _content_key(current) in history:
+        return "candidate correction oscillated to an earlier identity"
+    try:
+        changed_paths = changed_candidate_paths(previous, current)
+    except ReviewContractError:
+        return "the candidate delta could not be determined safely"
+    if not changed_paths:
+        return "the continuation candidate changed identity without changing a repository path"
+    unauthorized = sorted(
+        set(changed_paths) - set(continuation["authorized_locations"])
+    )
+    if unauthorized:
+        return (
+            "the corrected candidate changes paths outside accepted correction locations: "
+            + ", ".join(unauthorized)
+        )
+    return None
+
+
+def build_continuation_state(
+    lifecycle: Mapping[str, object],
+    current_candidate: Mapping[str, object],
+    adjudication: Mapping[str, object],
+    transition: Mapping[str, object],
+    issue_contract_revision: str,
+) -> dict[str, object]:
+    """Emit the only continuation state accepted by the next production run."""
+    corrections = _accepted_corrections(adjudication)
+    if not corrections:
+        raise ReviewContractError(
+            "cannot emit continuation state without an accepted correction"
+        )
+    cycle = transition.get("next_cycle")
+    if not isinstance(cycle, int) or cycle < 1 or cycle > MAX_CORRECTION_CYCLES:
+        raise ReviewContractError("continuation state next cycle exceeds the correction cap")
+    current = _candidate_snapshot(current_candidate, "current candidate")
+    current_identity = candidate_identity(current)
+    prior_history = list(lifecycle.get("candidate_history", []))
+    history = [dict(item) for item in prior_history]
+    if not history or _content_key(history[-1]) != _content_key(current_identity):
+        history.append(current_identity)
+    locations = {
+        location for location in lifecycle.get("authorized_locations", [])
+    }
+    for correction in corrections:
+        correction_locations = correction.get("locations")
+        locations.update(
+            _path_list(correction_locations, "accepted correction locations")
+        )
+    body = _state_body(
+        cycle=cycle,
+        candidate_history=history,
+        accepted_correction=True,
+        previous_candidate=current,
+        authorized_locations=sorted(locations),
+        issue_contract_revision=_digest(
+            issue_contract_revision, "issue contract revision"
+        ),
+    )
+    return {**body, "state_digest": _canonical_digest(body)}
 
 
 def review_loop_decision(
@@ -153,50 +463,27 @@ def stage2_evidence_current(
         return False
 
 
-def validate_lifecycle_state(value: Mapping[str, object] | None = None) -> dict:
-    """Validate the small state handoff consumed by the production CLI route."""
-    raw = {} if value is None else dict(value)
-    unexpected = sorted(set(raw) - set(_LIFECYCLE_STATE_FIELDS))
-    if unexpected:
+def validate_lifecycle_state(
+    value: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Compatibility name for strict continuation-state validation."""
+    if value is None:
         raise ReviewContractError(
-            "review lifecycle state has unsupported fields: " + ", ".join(unexpected)
+            "continuation state is required; explicitly request the initial lifecycle"
         )
-    cycle = raw.get("cycle", 0)
-    if not isinstance(cycle, int) or isinstance(cycle, bool) or cycle < 0:
-        raise ReviewContractError("review lifecycle state cycle must be nonnegative")
-    candidate_changed = raw.get("candidate_changed", False)
-    accepted_correction = raw.get("accepted_correction", False)
-    if not isinstance(candidate_changed, bool):
-        raise ReviewContractError("review lifecycle state candidate_changed must be boolean")
-    if not isinstance(accepted_correction, bool):
-        raise ReviewContractError(
-            "review lifecycle state accepted_correction must be boolean"
-        )
-    expected_value = raw.get("expected_candidate")
-    expected = None if expected_value is None else candidate_identity(expected_value)
-    previous_value = raw.get("previous_candidates", [])
-    if not isinstance(previous_value, list):
-        raise ReviewContractError(
-            "review lifecycle state previous_candidates must be a list"
-        )
-    previous = [candidate_identity(item) for item in previous_value]
-    revision_value = raw.get("issue_contract_revision")
-    revision = (
-        None
-        if revision_value is None
-        else _digest(revision_value, "review lifecycle state issue_contract_revision")
-    )
-    if accepted_correction and expected is None:
-        raise ReviewContractError(
-            "an accepted correction needs an expected exact candidate identity"
-        )
+    return validate_continuation_state(value)
+
+
+def _handoff_transition(
+    cycle: int, reason: str, requirements: list[str] | None = None
+) -> dict:
     return {
+        "status": "human-handoff",
         "cycle": cycle,
-        "candidate_changed": candidate_changed,
-        "accepted_correction": accepted_correction,
-        "expected_candidate": expected,
-        "previous_candidates": previous,
-        "issue_contract_revision": revision,
+        "corrections": [],
+        "reason": reason,
+        "requirements": [] if requirements is None else requirements,
+        "continuation_state": None,
     }
 
 
@@ -206,11 +493,32 @@ def review_lifecycle_decision(
     adjudication_packet: Mapping[str, object],
     *,
     state: Mapping[str, object] | None = None,
+    initial: bool = False,
 ) -> dict:
-    """Apply the deterministic transition to the production review outcome."""
-    lifecycle = validate_lifecycle_state(state)
+    """Apply the deterministic transition to a validated lifecycle state."""
     validated_review = validate_review_packet(review_packet)
+    if state is None:
+        if not initial:
+            raise ReviewContractError(
+                "continuation state is required; explicitly request the initial lifecycle"
+            )
+        lifecycle = _initial_lifecycle_state(
+            validated_review["issue_contract"]["revision"]
+        )
+    else:
+        if initial:
+            raise ReviewContractError(
+                "initial lifecycle cannot also consume continuation state"
+            )
+        lifecycle = validate_continuation_state(state)
     adjudication = validate_adjudication_result(result, adjudication_packet)
+    revision = validated_review["issue_contract"]["revision"]
+    if lifecycle["issue_contract_revision"] != revision:
+        return _handoff_transition(
+            lifecycle["cycle"],
+            "continuation state belongs to a different issue contract revision",
+            ["fresh Stage 2 evidence", "fresh code-emitted continuation state"],
+        )
     if not stage2_evidence_current(
         validated_review,
         validated_review["candidate"],
@@ -222,83 +530,33 @@ def review_lifecycle_decision(
             "corrections": [],
             "reason": "Stage 2 evidence is stale or uses a different issue revision",
             "requirements": ["fresh Stage 2 evidence", "fresh exact candidate"],
+            "continuation_state": None,
         }
-    current_identity = candidate_identity(validated_review["candidate"])
-    if lifecycle["accepted_correction"]:
-        if lifecycle["expected_candidate"] != current_identity:
-            return {
-                "status": "revalidate",
-                "cycle": lifecycle["cycle"],
-                "corrections": [],
-                "reason": "the reviewed candidate does not match the expected correction candidate",
-                "requirements": ["establish the exact corrected candidate identity"],
-            }
-        if not lifecycle["candidate_changed"]:
-            return review_loop_decision(
-                adjudication,
-                adjudication_packet,
-                cycle=lifecycle["cycle"],
-                candidate_changed=False,
-                next_candidate=current_identity,
-                previous_candidates=lifecycle["previous_candidates"],
-            )
-        if _content_key(current_identity) in {
-            _content_key(candidate) for candidate in lifecycle["previous_candidates"]
-        }:
-            return {
-                "status": "human-handoff",
-                "cycle": lifecycle["cycle"],
-                "corrections": [],
-                "reason": "candidate correction oscillated to an earlier identity",
-                "requirements": [],
-            }
-    elif lifecycle["candidate_changed"]:
-        return review_loop_decision(
-            adjudication,
-            adjudication_packet,
-            cycle=lifecycle["cycle"],
-            candidate_changed=True,
-            next_candidate=current_identity,
-            previous_candidates=lifecycle["previous_candidates"],
+    if lifecycle["previous_candidate"] is not None:
+        reason = continuation_delta_reason(
+            lifecycle, validated_review["candidate"], revision
         )
-    elif lifecycle["expected_candidate"] is not None:
-        return {
-            "status": "human-handoff",
-            "cycle": lifecycle["cycle"],
-            "corrections": [],
-            "reason": "an expected corrected candidate was supplied without an accepted correction",
-            "requirements": [],
-        }
-
+        if reason is not None:
+            return _handoff_transition(lifecycle["cycle"], reason)
     if adjudication["human_handoff"]["required"]:
-        return {
-            "status": "human-handoff",
-            "cycle": lifecycle["cycle"],
-            "corrections": [],
-            "reason": adjudication["human_handoff"]["reason"],
-            "requirements": [],
-        }
-    corrections = [
-        item["correction"]
-        for item in adjudication["dispositions"]
-        if item["correction_accepted"]
-    ]
-    if not corrections:
-        return review_loop_decision(
-            adjudication,
-            adjudication_packet,
-            cycle=lifecycle["cycle"],
-            candidate_changed=False,
+        return _handoff_transition(
+            lifecycle["cycle"], adjudication["human_handoff"]["reason"]
         )
-    if lifecycle["cycle"] >= MAX_CORRECTION_CYCLES:
+    corrections = _accepted_corrections(adjudication)
+    if not corrections:
         return {
-            "status": "human-handoff",
+            "status": "complete",
             "cycle": lifecycle["cycle"],
             "corrections": [],
-            "reason": f"correction cycle cap {MAX_CORRECTION_CYCLES} reached",
-            "requirements": [],
+            "reason": None,
+            "continuation_state": None,
         }
-    return {
+    if lifecycle["cycle"] >= MAX_CORRECTION_CYCLES:
+        return _handoff_transition(
+            lifecycle["cycle"],
+            f"correction cycle cap {MAX_CORRECTION_CYCLES} reached",
+        )
+    transition = {
         "status": "revalidate-and-rereview",
         "cycle": lifecycle["cycle"],
         "next_cycle": lifecycle["cycle"] + 1,
@@ -310,4 +568,13 @@ def review_lifecycle_decision(
             "run fresh Stage 2 evidence",
             "run fresh reviewer and adjudicator sessions",
         ],
+        "continuation_state": None,
     }
+    transition["continuation_state"] = build_continuation_state(
+        lifecycle,
+        validated_review["candidate"],
+        adjudication,
+        transition,
+        revision,
+    )
+    return transition

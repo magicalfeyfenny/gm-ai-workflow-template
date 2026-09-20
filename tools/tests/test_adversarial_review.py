@@ -710,8 +710,7 @@ class IsolatedSessionTests(unittest.TestCase):
             root = Path(directory)
             provider_root = root / "provider"
             sentinel_root = root / "sentinels"
-            provider_root.mkdir()
-            sentinel_root.mkdir()
+            for path in (provider_root, sentinel_root): path.mkdir()
             external_sentinel = sentinel_root / "external.txt"
             repository_sentinel = Path.cwd() / "GOVERNANCE.md"
             implementation_sentinel = Path.cwd() / "tools/ci/adversarial_review.py"
@@ -720,32 +719,38 @@ class IsolatedSessionTests(unittest.TestCase):
             for path in (external_sentinel, reviewer_sentinel, provider_sibling_sentinel):
                 path.write_text("must remain unreadable", encoding="utf-8")
             executable = provider_root / "fake-codex"
-            script = """#!/bin/sh
+            script = """#!/bin/bash
 set -eu
-packet_path="$(pwd)/packet.json"
-cat > "$packet_path"
-blocked_file() {
-    if /bin/cat "$1" >/dev/null 2>&1; then
-        return 1
-    fi
-    return 0
-}
+packet_path="$PWD/packet.json"
+prompt=""
+while IFS= read -r line; do
+    prompt="$prompt$line
+"
+done
+printf '%s' "$prompt" > "$packet_path"
 for sentinel in \
     "EXTERNAL_SENTINEL" \
     "REVIEWER_SENTINEL" \
     "PROVIDER_SIBLING_SENTINEL" \
     "REPOSITORY_SENTINEL" \
     "IMPLEMENTATION_SENTINEL"; do
-    blocked_file "$sentinel" || exit 91
+    if [[ -r "$sentinel" ]]; then
+        exit 91
+    fi
 done
-[ -z "${PARENT_SECRET:-}" ] || exit 92
-if /usr/bin/grep -q '"candidate":' "$packet_path"; then
-    role=reviewer
-    /usr/bin/grep -q '"evidence_catalog"' "$packet_path"
+set +u
+parent_secret="$PARENT_SECRET"
+set -u
+[ -z "$parent_secret" ] || exit 92
+case "$prompt" in
+    *'"candidate":'*) role=reviewer ;;
+    *) role=adjudicator ;;
+esac
+if [ "$role" = reviewer ]; then
+    case "$prompt" in *'"evidence_catalog"'*) ;; *) exit 93 ;; esac
 else
-    role=adjudicator
-    ! /usr/bin/grep -q '"candidate":' "$packet_path"
-    /usr/bin/grep -q '"source_items"' "$packet_path"
+    case "$prompt" in *'"candidate":'*) exit 94 ;; esac
+    case "$prompt" in *'"source_items"'*) ;; *) exit 95 ;; esac
 fi
 output=""
 previous=""
@@ -756,20 +761,18 @@ for argument in "$@"; do
     previous="$argument"
 done
 [ -n "$output" ]
-cwd="$(pwd)"
+cwd="$PWD"
 record="role=$role;pid=$$;cwd=$cwd;sentinel=blocked;env=clean"
-escaped_record="$(printf '%s' "$record" | /usr/bin/sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g')"
 if [ "$role" = reviewer ]; then
-    cat > "$output" <<EOF
-{"schema":"adversarial-review-result:v2","candidate_identity":IDENTITY_JSON,"findings":[{"finding_id":"isolation-observation","severity":"low","defect_or_invariant":"isolation fixture observed no ambient access","supporting_evidence":["candidate.diff"],"contract_or_governance":"packet boundary","affected_location":null,"confidence":1,"uncertainty":"$escaped_record"}]}
-EOF
+    printf '%s\n' '{"schema":"adversarial-review-result:v2","candidate_identity":IDENTITY_JSON,"findings":[{"finding_id":"isolation-observation","severity":"low","defect_or_invariant":"isolation fixture observed no ambient access","supporting_evidence":["candidate.diff"],"contract_or_governance":"packet boundary","affected_location":null,"confidence":1,"uncertainty":"'"$record"'"}]}' > "$output"
 else
-    reviewer_record="$(/usr/bin/grep -Eo '"uncertainty"[[:space:]]*:[[:space:]]*"[^" ]*"' "$packet_path" | /usr/bin/sed -E 's/^"uncertainty"[[:space:]]*:[[:space:]]*"//; s/"$//')"
+    reviewer_record=""
+    uncertainty_pattern='"uncertainty"[[:space:]]*:[[:space:]]*"([^"]*)"'
+    if [[ "$prompt" =~ $uncertainty_pattern ]]; then
+        reviewer_record="${BASH_REMATCH[1]}"
+    fi
     record="$record;reviewer=$reviewer_record"
-    escaped_record="$(printf '%s' "$record" | /usr/bin/sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g')"
-    cat > "$output" <<EOF
-{"schema":"adversarial-adjudication-result:v2","candidate_identity":IDENTITY_JSON,"dispositions":[{"finding_id":"isolation-observation","disposition":"reject","basis":"fixture observation is not an implementation finding","correction":null,"correction_accepted":false}],"human_handoff":{"required":true,"reason":"$escaped_record"}}
-EOF
+    printf '%s\n' '{"schema":"adversarial-adjudication-result:v2","candidate_identity":IDENTITY_JSON,"dispositions":[{"finding_id":"isolation-observation","disposition":"reject","basis":"fixture observation is not an implementation finding","correction":null,"correction_accepted":false}],"human_handoff":{"required":true,"reason":"'"$record"'"}}' > "$output"
 fi
 """
             script = script.replace("EXTERNAL_SENTINEL", str(external_sentinel))
@@ -794,7 +797,3 @@ fi
         self.assertEqual(len(set(re.findall(r"pid=([0-9]+)", reason))), 2)
         self.assertEqual(len(set(re.findall(r"cwd=([^;]+)", reason))), 2)
         self.assertNotIn("findings", result)
-
-
-if __name__ == "__main__":
-    unittest.main()

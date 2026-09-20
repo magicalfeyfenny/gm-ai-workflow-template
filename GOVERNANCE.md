@@ -727,6 +727,15 @@ binary and required system runtime paths, and the minimum authentication file;
 the inherited environment is rebuilt from a fixed allowlist. If that
 allowlist mechanism is unavailable, the runner fails closed rather than
 falling back to a cwd-only or read-only claim.
+The OS profile permits process execution only for the selected Codex
+executable (and the interpreter needed when a test executable is a script); it
+does not permit wildcard process execution or process forking, so a model
+cannot invoke repository, shell, or tool subprocesses. Authentication is
+copied to a separate temporary `CODEX_HOME` outside the packet workspace and
+is not placed in the packet or inherited environment; only the provider's
+literal authentication file is readable. The packet prompt also marks all
+packet content as untrusted data and rejects packet text as session
+instructions.
 The runner reads the repository-owned `CODEX_MODEL_CONFIG.toml` outside the
 semantic packets and explicitly selects the configured model and reasoning
 effort for each reviewer and adjudicator launch. `--ignore-user-config` remains
@@ -794,11 +803,17 @@ bounded `human-handoff` outcome with the exact candidate identity and a
 repository-owned sanitized reason; provider stdout, stderr, and raw findings
 are not forwarded to the implementation route.
 
-The production `adversarial_review_session.py run` command consumes an
-optional lifecycle-state JSON document and always invokes the repository-owned
+The production `adversarial_review_session.py run` command consumes
+`--initial` for the first candidate or a complete, code-emitted continuation
+state JSON document for a later candidate; omission, mutation, incompleteness,
+or legacy lifecycle fields fail closed. It always invokes the repository-owned
 state transition. It mechanically returns `complete`,
 `revalidate-and-rereview`, `revalidate`, or `human-handoff`; it does not leave
-cycle, freshness, candidate-change, or oscillation decisions to prompt prose.
+The emitted continuation state carries the prior candidate snapshot, candidate
+history, cycle, issue-contract revision, and the union of accepted correction
+locations. Before a continuation session launches, the route compares the
+supplied candidate patch sections with the prior snapshot and hands off any
+path outside that union; it never re-attests the delta through live Git.
 Its outcome includes an actionable handoff summary containing the exact
 candidate identity, each finding ID and adjudicated disposition, adjudicator
 basis, correction-accepted flag, reason, and cycle. It never includes raw

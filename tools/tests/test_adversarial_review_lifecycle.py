@@ -135,12 +135,15 @@ class LifecycleOrchestrationTests(unittest.TestCase):
 
     def test_production_orchestration_routes_correction_and_fresh_rereview(self):
         original = make_packet()
-        stable = run_review_lifecycle(original, session_runner=self.runner())
+        stable = run_review_lifecycle(
+            original, initial=True, session_runner=self.runner()
+        )
         self.assertEqual(stable["transition"]["status"], "complete")
 
         correction_finding = finding()
         first = run_review_lifecycle(
             original,
+            initial=True,
             session_runner=self.runner(
                 [correction_finding], [decision("F-correction", "patch-now", correction())]
             ),
@@ -154,14 +157,7 @@ class LifecycleOrchestrationTests(unittest.TestCase):
         corrected_packet = make_packet(corrected)
         final = run_review_lifecycle(
             corrected_packet,
-            state={
-                "cycle": 1,
-                "candidate_changed": True,
-                "accepted_correction": True,
-                "expected_candidate": candidate_identity(corrected),
-                "previous_candidates": [candidate_identity(original["candidate"])],
-                "issue_contract_revision": REVISION,
-            },
+            state=first["continuation_state"],
             session_runner=self.runner(),
         )
         self.assertEqual(final["transition"]["status"], "complete")
@@ -194,11 +190,9 @@ class LifecycleOrchestrationTests(unittest.TestCase):
                         str(output_path),
                     ]
                 )
-            output = json.loads(output_path.read_text(encoding="utf-8"))
-        self.assertEqual(exit_code, 3)
-        self.assertEqual(output["transition"]["status"], "revalidate")
+            self.assertEqual(exit_code, 2)
+            self.assertFalse(output_path.exists())
         run_sessions.assert_not_called()
-        self.assertTrue(output["human_handoff"]["required"] is False)
 
     def test_reviewer_paraphrase_cannot_become_adjudicator_evidence(self):
         packet = make_packet()

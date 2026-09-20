@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -288,6 +290,35 @@ class SandboxBoundaryTests(unittest.TestCase):
         self.assertIn(f'(allow file-read* (literal "{executable.resolve()}"))', text)
         self.assertNotIn(f'(allow file-read* (subpath "{provider.resolve()}"))', text)
         self.assertNotIn('(allow file-read* (subpath "/usr"))', text)
+        self.assertIn(
+            f'(allow process-exec (literal "{executable.resolve()}"))', text
+        )
+        self.assertNotIn("(allow process-exec*)", text)
+        self.assertNotIn("(allow process-fork)", text)
+
+    @unittest.skipUnless(shutil.which("sandbox-exec"), "requires macOS Seatbelt")
+    def test_provider_cannot_spawn_a_tool_to_read_authentication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_home = root / "source-codex-home"
+            source_home.mkdir()
+            (source_home / "auth.json").write_text(
+                '{"access_token":"must-not-be-read-by-a-tool"}', encoding="utf-8"
+            )
+            executable = root / "fake-codex"
+            executable.write_text(
+                '#!/bin/bash\n/bin/cat "$CODEX_HOME/auth.json"\n',
+                encoding="utf-8",
+            )
+            executable.chmod(0o755)
+            with patch.dict(os.environ, {"CODEX_HOME": str(source_home)}):
+                with self.assertRaisesRegex(ReviewSessionError, "exit status"):
+                    _run_fresh_codex_session(
+                        "reviewer",
+                        {},
+                        {"type": "object"},
+                        executable=str(executable),
+                    )
 
 
 class SessionFailureTests(unittest.TestCase):
@@ -308,7 +339,9 @@ class SessionFailureTests(unittest.TestCase):
                 }
             raise AssertionError("invalid reviewer output must stop before adjudication")
 
-        result = run_review_lifecycle(packet, session_runner=invalid_runner)
+        result = run_review_lifecycle(
+            packet, initial=True, session_runner=invalid_runner
+        )
         self.assertEqual(result["transition"]["status"], "human-handoff")
         self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
         self.assertEqual(result["human_handoff"]["finding_dispositions"], [])
@@ -320,7 +353,9 @@ class SessionFailureTests(unittest.TestCase):
         def failing_runner(role, payload, output_schema):
             raise ReviewSessionError("raw-provider-instruction")
 
-        result = run_review_lifecycle(packet, session_runner=failing_runner)
+        result = run_review_lifecycle(
+            packet, initial=True, session_runner=failing_runner
+        )
         self.assertEqual(result["transition"]["status"], "human-handoff")
         self.assertEqual(result["human_handoff"]["finding_dispositions"], [])
         self.assertNotIn("raw-provider-instruction", json.dumps(result))
@@ -337,7 +372,9 @@ class ProviderOutputBoundaryTests(unittest.TestCase):
                 "tools.ci.adversarial_review_session.subprocess.run",
                 side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid"),
             ):
-                result = run_review_lifecycle(packet, codex_executable="/fake/codex")
+                result = run_review_lifecycle(
+                    packet, initial=True, codex_executable="/fake/codex"
+                )
             self.assertEqual(result["transition"]["status"], "human-handoff")
             self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
             self.assertNotIn("UnicodeDecodeError", json.dumps(result))
