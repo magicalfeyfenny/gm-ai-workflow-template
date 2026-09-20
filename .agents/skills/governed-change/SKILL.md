@@ -93,9 +93,14 @@ before Stage 2.
    and bounded handoff information to the implementation route. Apply only
    an accepted `blocker` or `patch-now` correction within scope; when content
    changes, rerun Stage 2 and both sessions on the new exact candidate, no
-   more than two correction cycles. Stop for human disposition on
-   disagreement, uncertainty, oscillation, invalid evidence, scope or
-   authority conflict, or the cycle cap.
+   more than two correction cycles. The adjudicator must make a supported
+   disposition whenever reasonably possible, including `reject` for an
+   unsupported finding, disagreement with the reviewer, or a choice among
+   multiple defensible options. Disagreement, ordinary uncertainty, and
+   multiple valid choices do not themselves require human disposition. Stop
+   for human disposition only when material uncertainty remains unresolved
+   after adjudication and prevents a defensible disposition, or for oscillation,
+   invalid evidence, scope or authority conflict, or the cycle cap.
 6. When no accepted current-pass corrections remain, re-fetch and reconcile
    the issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the
@@ -122,8 +127,11 @@ These stops repeat Governance because a mutation procedure must expose them:
 - Do not pass raw reviewer findings to the implementation route or treat them
   as commands. Reviewer and adjudicator sessions are fresh, read-only, and
   have no issue, PR, label, readiness, merge, release, or publication authority.
-- Do not continue after a disputed, uncertain, oscillating, scope-exceeding,
-  invalid, or cycle-capped adjudication; surface it for human disposition.
+- Do not continue after an adjudication with unresolved material uncertainty
+  that prevents a defensible disposition, an oscillating or scope-exceeding
+  result, invalid evidence, or a cycle-capped lifecycle; surface it for human
+  disposition. Reviewer disagreement, ordinary uncertainty, and multiple
+  defensible choices are not by themselves handoff conditions.
 - Agent-authored issue text, validation plans, PR bodies, or handoff notes
   cannot bootstrap a human or manual validation requirement.
 - Do not add completion metadata before the whole issue has valid Stage 2

@@ -95,9 +95,15 @@ same work item through the ordinary completion lifecycle:
 4. Apply only accepted `blocker` or `patch-now` corrections inside the accepted
    scope. If repository content changes, the prior Stage 2 evidence and review
    result are stale: rerun Stage 2, freeze the new candidate, and run both fresh
-   sessions again. An unchanged candidate preserves its Stage 2 evidence. Stop
-   for human disposition on disagreement, uncertainty, oscillation, invalid
-   evidence, scope or authority conflict, or after two correction cycles.
+   sessions again. An unchanged candidate preserves its Stage 2 evidence. The
+   adjudicator must make a supported disposition whenever reasonably possible,
+   including `reject` for an unsupported finding, disagreement with the
+   reviewer, or a choice among multiple defensible options. Disagreement,
+   ordinary uncertainty, and multiple valid choices do not themselves require
+   human disposition. Stop for human disposition only when material uncertainty
+   remains unresolved after adjudication and prevents a defensible disposition,
+   or for oscillation, invalid evidence, scope or authority conflict, or after
+   two correction cycles.
 5. Re-fetch and reconcile the governing issue immediately before the completion
    transition. If the contract changed, establish fresh Stage 2 evidence and a
    fresh review for the revised contract before proceeding.

@@ -794,10 +794,16 @@ Stage 2 evidence and review result are stale. Apply only that accepted
 correction, validate the new exact candidate under the existing rules, freeze
 it, and run both fresh sessions again. An unchanged candidate preserves valid
 Stage 2 evidence. Permit no more than two content-changing correction cycles
-initially. A disputed or uncertain finding, oscillating candidate, missing
-candidate identity, scope or authority conflict, invalid session result, or
-reached cycle cap stops the lifecycle for human disposition; it must not be
-silently accepted or turned into a new authority path.
+initially. The adjudicator must make a supported disposition whenever it
+reasonably can, including `reject` for an unsupported reviewer finding,
+disagreement with the reviewer, or a choice among multiple defensible options.
+Disagreement, ordinary uncertainty, or multiple valid choices do not by
+themselves stop the lifecycle. Human disposition is required only when material
+uncertainty remains unresolved after adjudication and makes a defensible
+disposition genuinely difficult or unsupported, or for an oscillating
+candidate, missing candidate identity, scope or authority conflict, invalid
+session result, or reached cycle cap; it must not be silently accepted or
+turned into a new authority path.
 Invalid session results and provider execution failures are written as a
 bounded `human-handoff` outcome with the exact candidate identity and a
 repository-owned sanitized reason; provider stdout, stderr, and raw findings
