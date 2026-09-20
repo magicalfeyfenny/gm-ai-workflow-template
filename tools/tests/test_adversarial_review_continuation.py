@@ -161,6 +161,97 @@ class ContinuationStateTests(unittest.TestCase):
         )
         self.assertEqual(result["transition"]["status"], "complete")
 
+    def test_prior_cycle_locations_are_not_carried_into_next_state(self):
+        first = self.accepted_first_pass()
+        cycle_one_candidate = candidate(
+            head_sha="g" * 40,
+            tree_sha="u" * 40,
+            diff=(
+                "diff --git a/tools/ci/adversarial_review.py "
+                "b/tools/ci/adversarial_review.py\ncycle-one-a\n"
+            ),
+        )
+        second_correction = correction()
+        second_correction["locations"] = [INCLUDED[1]]
+        second = run_review_lifecycle(
+            make_packet(cycle_one_candidate),
+            state=first["continuation_state"],
+            session_runner=self.runner(
+                [finding("F-second")],
+                [decision("F-second", "patch-now", second_correction)],
+            ),
+        )
+        self.assertEqual(second["transition"]["status"], "revalidate-and-rereview")
+        state = second["continuation_state"]
+        self.assertEqual(state["cycle"], 2)
+        self.assertEqual(len(state["candidate_history"]), 2)
+        self.assertEqual(state["authorized_locations"], [INCLUDED[1]])
+        self.assertNotIn(INCLUDED[0], state["authorized_locations"])
+
+        cycle_two_candidate = candidate(
+            head_sha="i" * 40,
+            tree_sha="v" * 40,
+            diff=(
+                "diff --git a/tools/ci/adversarial_review.py "
+                "b/tools/ci/adversarial_review.py\ncycle-two-a\n"
+                "diff --git a/tools/ci/adversarial_review_state.py "
+                "b/tools/ci/adversarial_review_state.py\ncycle-two-b\n"
+            ),
+        )
+        calls = []
+        result = run_review_lifecycle(
+            make_packet(cycle_two_candidate),
+            state=state,
+            session_runner=self.runner(calls=calls),
+        )
+        self.assertEqual(result["transition"]["status"], "human-handoff")
+        self.assertIn(INCLUDED[0], result["transition"]["reason"])
+        self.assertEqual(calls, [])
+
+    def test_current_pass_reauthorization_allows_location_again(self):
+        first = self.accepted_first_pass()
+        cycle_one_candidate = candidate(
+            head_sha="g" * 40,
+            tree_sha="u" * 40,
+            diff=(
+                "diff --git a/tools/ci/adversarial_review.py "
+                "b/tools/ci/adversarial_review.py\ncycle-one-a\n"
+            ),
+        )
+        reauthorized_correction = correction()
+        second = run_review_lifecycle(
+            make_packet(cycle_one_candidate),
+            state=first["continuation_state"],
+            session_runner=self.runner(
+                [finding("F-reauthorize")],
+                [
+                    decision(
+                        "F-reauthorize",
+                        "patch-now",
+                        reauthorized_correction,
+                    )
+                ],
+            ),
+        )
+        self.assertEqual(second["transition"]["status"], "revalidate-and-rereview")
+        state = second["continuation_state"]
+        self.assertEqual(state["authorized_locations"], [INCLUDED[0]])
+
+        cycle_two_candidate = candidate(
+            head_sha="i" * 40,
+            tree_sha="v" * 40,
+            diff=(
+                "diff --git a/tools/ci/adversarial_review.py "
+                "b/tools/ci/adversarial_review.py\ncycle-two-a\n"
+            ),
+        )
+        result = run_review_lifecycle(
+            make_packet(cycle_two_candidate),
+            state=state,
+            session_runner=self.runner(),
+        )
+        self.assertEqual(result["transition"]["status"], "complete")
+
     def test_oscillation_and_unparseable_delta_handoff(self):
         first = self.accepted_first_pass()
         original = make_packet()

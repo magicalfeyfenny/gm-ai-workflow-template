@@ -551,13 +551,13 @@ def _session_failure_outcome(
 
 
 def _state_failure_outcome(candidate: Mapping[str, object], reason: str) -> dict:
-    """Fail closed when a caller omits or fabricates lifecycle continuation state."""
+    """Fail closed when a caller omits or supplies invalid lifecycle state."""
     transition = {
         "status": "human-handoff",
         "cycle": 0,
         "corrections": [],
         "reason": reason,
-        "requirements": ["an explicit initial request or code-emitted continuation state"],
+        "requirements": ["an explicit initial request or complete validated continuation state"],
         "continuation_state": None,
     }
     return {
@@ -608,7 +608,10 @@ def run_review_lifecycle(
             "cycle": lifecycle["cycle"],
             "corrections": [],
             "reason": "continuation state belongs to a different issue contract revision",
-            "requirements": ["fresh Stage 2 evidence", "fresh code-emitted continuation state"],
+            "requirements": [
+                "fresh Stage 2 evidence",
+                "fresh complete validated continuation state",
+            ],
             "continuation_state": None,
         }
         adjudication = None

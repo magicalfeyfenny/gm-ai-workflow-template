@@ -139,13 +139,13 @@ def _state_body(
 
 
 def validate_continuation_state(value: Mapping[str, object]) -> dict[str, object]:
-    """Validate the code-emitted state required to continue a correction cycle."""
+    """Validate the complete repository-defined state for a correction cycle."""
     if not isinstance(value, Mapping):
         raise ReviewContractError("continuation state must be an object")
     raw = dict(value)
     if set(raw) != set(_CONTINUATION_STATE_FIELDS):
         raise ReviewContractError(
-            "continuation state must be complete and contain only code-owned fields"
+            "continuation state must be complete and contain only repository-defined fields"
         )
     if raw.get("schema") != CONTINUATION_STATE_SCHEMA:
         raise ReviewContractError("unsupported continuation state schema")
@@ -316,7 +316,7 @@ def build_continuation_state(
     transition: Mapping[str, object],
     issue_contract_revision: str,
 ) -> dict[str, object]:
-    """Emit the only continuation state accepted by the next production run."""
+    """Build a complete repository-defined state for the next production run."""
     corrections = _accepted_corrections(adjudication)
     if not corrections:
         raise ReviewContractError(
@@ -331,9 +331,7 @@ def build_continuation_state(
     history = [dict(item) for item in prior_history]
     if not history or _content_key(history[-1]) != _content_key(current_identity):
         history.append(current_identity)
-    locations = {
-        location for location in lifecycle.get("authorized_locations", [])
-    }
+    locations: set[str] = set()
     for correction in corrections:
         correction_locations = correction.get("locations")
         locations.update(
@@ -517,7 +515,10 @@ def review_lifecycle_decision(
         return _handoff_transition(
             lifecycle["cycle"],
             "continuation state belongs to a different issue contract revision",
-            ["fresh Stage 2 evidence", "fresh code-emitted continuation state"],
+            [
+                "fresh Stage 2 evidence",
+                "fresh complete validated continuation state",
+            ],
         )
     if not stage2_evidence_current(
         validated_review,

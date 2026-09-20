@@ -804,16 +804,18 @@ repository-owned sanitized reason; provider stdout, stderr, and raw findings
 are not forwarded to the implementation route.
 
 The production `adversarial_review_session.py run` command consumes
-`--initial` for the first candidate or a complete, code-emitted continuation
-state JSON document for a later candidate; omission, mutation, incompleteness,
-or legacy lifecycle fields fail closed. It always invokes the repository-owned
-state transition. It mechanically returns `complete`,
+`--initial` for the first candidate or a complete, validated repository-defined
+continuation state JSON document for a later candidate; omission, mutation,
+incompleteness, or legacy lifecycle fields fail closed. It always invokes the
+repository-owned state transition. It mechanically returns `complete`,
 `revalidate-and-rereview`, `revalidate`, or `human-handoff`; it does not leave
-The emitted continuation state carries the prior candidate snapshot, candidate
-history, cycle, issue-contract revision, and the union of accepted correction
-locations. Before a continuation session launches, the route compares the
-supplied candidate patch sections with the prior snapshot and hands off any
-path outside that union; it never re-attests the delta through live Git.
+cycle, freshness, candidate-change, or oscillation decisions to prompt prose.
+The validated continuation state carries the prior candidate snapshot,
+candidate history, cycle, issue-contract revision, and the union of accepted
+current-pass correction locations. Before a continuation session launches, the
+route compares the supplied candidate patch sections with the prior snapshot
+and hands off any path outside that union; it never re-attests the delta through
+live Git.
 Its outcome includes an actionable handoff summary containing the exact
 candidate identity, each finding ID and adjudicated disposition, adjudicator
 basis, correction-accepted flag, reason, and cycle. It never includes raw

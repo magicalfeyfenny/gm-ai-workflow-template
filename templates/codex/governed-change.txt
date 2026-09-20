@@ -83,7 +83,7 @@ same work item through the ordinary completion lifecycle:
    and run
    `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT`
    with `--initial` for the first candidate, or `--state STATE` when continuing
-   from the prior command's code-emitted correction state. Omission or mutation
+   from the prior command's complete validated continuation state. Omission or mutation
    of continuation state fails closed. The command uses
    two separate fresh `codex exec` invocations inside a fail-closed OS
    allowlist: one reviewer and one adjudicator. The adjudicator receives only
