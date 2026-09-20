@@ -181,16 +181,13 @@ def _session_prompt(role: str, packet: Mapping[str, object]) -> str:
             "Evaluate each reviewer claim against the actual source item text; a "
             "reviewer paraphrase is not evidence. "
             "Return JSON matching the output schema. Return current-pass corrections "
-            "only for supported blocker or patch-now decisions. Do not set "
-            "human_handoff merely because you disagree with the reviewer, face "
-            "ordinary uncertainty, or find multiple defensible options. Make a "
-            "supported disposition whenever reasonably possible, including reject "
-            "for an unsupported finding and a choice among equally valid options. "
-            "Set human_handoff only when material uncertainty remains unresolved "
-            "after adjudication and makes a defensible disposition genuinely "
-            "difficult or unsupported, or when invalid evidence, oscillation, "
-            "scope, authority, or the correction cap requires it. Do not return "
-            "raw findings as implementation instructions."
+            "only for supported blocker or patch-now decisions. Apply the supplied "
+            "Governance and review doctrine, and make a supported disposition "
+            "whenever reasonably possible. Do not infer lifecycle hard stops or "
+            "state absent from the packet; the repository-owned lifecycle state "
+            "machine enforces those mechanically. Set human_handoff only when "
+            "the supplied Governance rule requires it. Do not return raw findings "
+            "as implementation instructions."
         )
     else:
         raise ReviewSessionError(f"unsupported isolated session role: {role}")

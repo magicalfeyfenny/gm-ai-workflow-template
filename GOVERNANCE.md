@@ -764,16 +764,18 @@ history, or conversational framing. It assigns exactly one disposition to
 every finding, independently of severity:
 
 - `blocker` is a supported defect, accepted-contract or Governance violation,
-  invalid evidence, or comparable problem that must be corrected before
+  structurally invalid, missing, or unusable required evidence that prevents
+  adjudication, or a comparable problem that must be corrected before
   completion;
 - `patch-now` is a legitimate bounded correction within the same outcome that
   is appropriate in the current pass even when it is not independently
   blocking;
-- `follow-up` records a legitimate concern outside this outcome or separately
-  meaningful enough for separate work, without creating tracking or expanding
-  scope silently; and
-- `reject` records an unsupported, speculative, stylistic, redundant,
-  already-satisfied, invented-obligation, or otherwise non-actionable finding.
+- `follow-up` records a legitimate concern outside the current scope or
+  separately meaningful enough for separate work, without creating tracking or
+  expanding scope silently; and
+- `reject` records an unsupported, authority-exceeding, weak, contradictory,
+  non-supporting, speculative, stylistic, redundant, already-satisfied,
+  invented-obligation, or otherwise non-actionable finding.
 
 Only accepted `blocker` and `patch-now` dispositions may return a current-pass
 correction. A correction must identify locations inside the included scope and
@@ -794,16 +796,31 @@ Stage 2 evidence and review result are stale. Apply only that accepted
 correction, validate the new exact candidate under the existing rules, freeze
 it, and run both fresh sessions again. An unchanged candidate preserves valid
 Stage 2 evidence. Permit no more than two content-changing correction cycles
-initially. The adjudicator must make a supported disposition whenever it
-reasonably can, including `reject` for an unsupported reviewer finding,
-disagreement with the reviewer, or a choice among multiple defensible options.
-Disagreement, ordinary uncertainty, or multiple valid choices do not by
-themselves stop the lifecycle. Human disposition is required only when material
-uncertainty remains unresolved after adjudication and makes a defensible
-disposition genuinely difficult or unsupported, or for an oscillating
-candidate, missing candidate identity, scope or authority conflict, invalid
-session result, or reached cycle cap; it must not be silently accepted or
-turned into a new authority path.
+initially. The complete adjudication and handoff rule is:
+
+- The adjudicator must make a supported disposition whenever reasonably
+  possible. Unsupported or authority-exceeding reviewer findings normally
+  resolve as `reject`; legitimate concerns outside the current scope normally
+  resolve as `follow-up`.
+- Human handoff on scope or authority grounds is only for a genuine scope or
+  authority ambiguity, or a required action that cannot be resolved through a
+  supported disposition.
+- Weak, contradictory, or non-supporting evidence normally resolves as
+  `reject`. Human handoff for evidence is only for structurally invalid,
+  missing, or unusable required evidence that prevents adjudication itself.
+- Reviewer disagreement, ordinary uncertainty, and multiple valid choices do
+  not themselves require handoff. The adjudicator must choose a defensible
+  option, including `reject`, whenever it reasonably can.
+- The adjudicator must not infer oscillation, correction-cycle caps, freshness,
+  candidate-change, authorization, or other lifecycle state absent from the
+  packet. The repository-owned lifecycle state machine enforces those hard
+  stops mechanically.
+
+Human disposition from adjudication is required only when material uncertainty
+remains unresolved after applying this rule and makes a defensible disposition
+genuinely difficult or unsupported. Invalid session results, provider
+execution failures, missing candidate identity, and reached lifecycle caps
+remain bounded mechanical handoffs; none are adjudicator inferences.
 Invalid session results and provider execution failures are written as a
 bounded `human-handoff` outcome with the exact candidate identity and a
 repository-owned sanitized reason; provider stdout, stderr, and raw findings

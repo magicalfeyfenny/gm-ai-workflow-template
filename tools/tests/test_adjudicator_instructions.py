@@ -13,33 +13,47 @@ GOVERNED_SURFACES = (
 
 
 class AdjudicatorInstructionTests(unittest.TestCase):
-    def test_adjudicator_resolves_findings_before_handoff(self):
-        prompt = _session_prompt("adjudicator", {})
+    def test_adjudicator_applies_governance_without_inferring_lifecycle_state(self):
+        prompt = _session_prompt("adjudicator", {}).casefold()
         for phrase in (
-            "disagree with the reviewer",
-            "ordinary uncertainty",
-            "multiple defensible options",
-            "including reject",
-            "material uncertainty remains unresolved",
+            "apply the supplied governance and review doctrine",
+            "supported disposition whenever reasonably possible",
+            "do not infer lifecycle hard stops",
+            "repository-owned lifecycle state machine",
+            "set human_handoff only when",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, prompt)
-        self.assertNotIn(
-            "set human_handoff when disagreement, uncertainty",
-            prompt,
-        )
+        for lifecycle_term in ("oscillation", "correction cap", "stage 2 freshness"):
+            with self.subTest(lifecycle_term=lifecycle_term):
+                self.assertNotIn(lifecycle_term, prompt)
 
-    def test_governed_surfaces_preserve_the_same_decision_boundary(self):
-        for surface in GOVERNED_SURFACES:
+    def test_governance_owns_the_complete_decision_boundary(self):
+        normalized = " ".join(
+            (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8").casefold().split()
+        )
+        for phrase in (
+            "authority-exceeding reviewer findings normally",
+            "outside the current scope normally",
+            "weak, contradictory, or non-supporting evidence normally",
+            "structurally invalid, missing, or unusable required evidence",
+            "scope or authority ambiguity",
+            "lifecycle state machine enforces those hard stops mechanically",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, normalized)
+
+    def test_secondary_surfaces_reference_governance_rule(self):
+        for surface in GOVERNED_SURFACES[1:]:
             normalized = " ".join(
                 surface.read_text(encoding="utf-8").casefold().split()
             )
             with self.subTest(surface=surface):
-                self.assertIn("multiple valid choices do not", normalized)
                 self.assertIn(
-                    "material uncertainty remains unresolved after adjudication",
+                    "complete adjudication and handoff rule in governance",
                     normalized,
                 )
+                self.assertIn("mechanical state-machine decisions", normalized)
 
 
 if __name__ == "__main__":

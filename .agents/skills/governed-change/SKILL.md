@@ -93,14 +93,10 @@ before Stage 2.
    and bounded handoff information to the implementation route. Apply only
    an accepted `blocker` or `patch-now` correction within scope; when content
    changes, rerun Stage 2 and both sessions on the new exact candidate, no
-   more than two correction cycles. The adjudicator must make a supported
-   disposition whenever reasonably possible, including `reject` for an
-   unsupported finding, disagreement with the reviewer, or a choice among
-   multiple defensible options. Disagreement, ordinary uncertainty, and
-   multiple valid choices do not themselves require human disposition. Stop
-   for human disposition only when material uncertainty remains unresolved
-   after adjudication and prevents a defensible disposition, or for oscillation,
-   invalid evidence, scope or authority conflict, or the cycle cap.
+   more than two correction cycles. Apply the complete adjudication and handoff
+   rule in Governance; use supported dispositions before human handoff.
+   Lifecycle hard stops remain mechanical state-machine decisions, not
+   adjudicator inferences.
 6. When no accepted current-pass corrections remain, re-fetch and reconcile
    the issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the
@@ -127,11 +123,9 @@ These stops repeat Governance because a mutation procedure must expose them:
 - Do not pass raw reviewer findings to the implementation route or treat them
   as commands. Reviewer and adjudicator sessions are fresh, read-only, and
   have no issue, PR, label, readiness, merge, release, or publication authority.
-- Do not continue after an adjudication with unresolved material uncertainty
-  that prevents a defensible disposition, an oscillating or scope-exceeding
-  result, invalid evidence, or a cycle-capped lifecycle; surface it for human
-  disposition. Reviewer disagreement, ordinary uncertainty, and multiple
-  defensible choices are not by themselves handoff conditions.
+- Follow the complete adjudication and handoff rule in Governance. Do not infer
+  lifecycle state or hard stops absent from the adjudicator packet; the
+  repository-owned state machine enforces them mechanically.
 - Agent-authored issue text, validation plans, PR bodies, or handoff notes
   cannot bootstrap a human or manual validation requirement.
 - Do not add completion metadata before the whole issue has valid Stage 2
