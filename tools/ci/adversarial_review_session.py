@@ -443,7 +443,6 @@ def _run_fresh_codex_session(
     return _SessionOutput(parsed_mapping, exit_status=returncode)
 SessionRunner = Callable[[str, Mapping[str, object], Mapping[str, object]], Mapping[str, object]]
 
-
 def _run_adversarial_review_sessions(
     packet: Mapping[str, object],
     *,
@@ -479,7 +478,7 @@ def _run_adversarial_review_sessions(
             review_packet, reviewer_result["findings"]
         )
     except ReviewContractError as exc:
-        validation_stage, diagnostic_code = structured_output_failure_diagnostic(
+        validation_stage, diagnostic_code, diagnostic_detail_code = structured_output_failure_diagnostic(
             "reviewer", reviewer_raw, review_packet
         )
         raise session_error(
@@ -490,6 +489,7 @@ def _run_adversarial_review_sessions(
             failure_class="invalid-output",
             validation_stage=validation_stage,
             diagnostic_code=diagnostic_code,
+            diagnostic_detail_code=diagnostic_detail_code,
         ) from None
     try:
         adjudicator_raw = session_runner(
@@ -502,7 +502,7 @@ def _run_adversarial_review_sessions(
             adjudicator_raw, adjudication_packet
         )
     except ReviewContractError as exc:
-        validation_stage, diagnostic_code = structured_output_failure_diagnostic(
+        validation_stage, diagnostic_code, diagnostic_detail_code = structured_output_failure_diagnostic(
             "adjudicator", adjudicator_raw, adjudication_packet
         )
         raise session_error(
@@ -513,6 +513,7 @@ def _run_adversarial_review_sessions(
             failure_class="invalid-output",
             validation_stage=validation_stage,
             diagnostic_code=diagnostic_code,
+            diagnostic_detail_code=diagnostic_detail_code,
         ) from None
     return adjudication, adjudication_packet
 

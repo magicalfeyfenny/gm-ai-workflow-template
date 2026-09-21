@@ -46,8 +46,10 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         shaped_diagnostic = shaped["human_handoff"]["session_failure"]
         self.assertEqual(malformed_diagnostic["validation_stage"], "parse")
         self.assertEqual(malformed_diagnostic["diagnostic_code"], "output_json_parse")
+        self.assertIsNone(malformed_diagnostic["diagnostic_detail_code"])
         self.assertEqual(shaped_diagnostic["validation_stage"], "shape")
         self.assertEqual(shaped_diagnostic["diagnostic_code"], "output_top_level_shape")
+        self.assertIsNone(shaped_diagnostic["diagnostic_detail_code"])
         self.assertNotEqual(
             malformed_diagnostic["diagnostic_code"], shaped_diagnostic["diagnostic_code"]
         )
@@ -65,6 +67,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             diagnostic["diagnostic_code"], "output_missing_required_field"
         )
+        self.assertIsNone(diagnostic["diagnostic_detail_code"])
 
     def test_successful_provider_exit_status_survives_adjudicator_validation_failure(self):
         packet = semantic_packet()
@@ -104,6 +107,9 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         self.assertEqual(diagnostic["validation_stage"], "semantic")
         self.assertEqual(
             diagnostic["diagnostic_code"], "adjudication_disposition_contract"
+        )
+        self.assertEqual(
+            diagnostic["diagnostic_detail_code"], "adjudication_disposition_count"
         )
 
     def test_schema_shape_failure_is_distinct_from_semantic_contract_failure(self):
@@ -183,10 +189,61 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             correction_diagnostic["diagnostic_code"],
             "adjudication_correction_contract",
         )
+        self.assertEqual(
+            correction_diagnostic["diagnostic_detail_code"],
+            "adjudication_correction_on_non_mutating_disposition",
+        )
         encoded = json.dumps(correction_failure)
         self.assertNotIn("source-backed correction", encoded)
         self.assertNotIn("BOUNDARY-PACKET", encoded)
         self.assertNotIn("access_token", encoded)
+
+    def test_correction_contract_rules_have_distinct_sanitized_detail_codes(self):
+        packet = semantic_packet()
+        finding_value = semantic_findings()[0]
+        finding_id = finding_value["finding_id"]
+        outside_scope = correction()
+        outside_scope["locations"] = ["model-controlled-outside-scope"]
+        outside_scope["summary"] = "RAW_ADJUDICATOR_CORRECTION"
+        acceptance_mismatch = decision(finding_id, "blocker", correction())
+        acceptance_mismatch["correction_accepted"] = False
+        cases = {
+            "adjudication_correction_on_non_mutating_disposition": decision(
+                finding_id, "reject", correction()
+            ),
+            "adjudication_correction_required_missing": decision(
+                finding_id, "blocker"
+            ),
+            "adjudication_correction_acceptance_mismatch": acceptance_mismatch,
+            "adjudication_correction_scope": decision(
+                finding_id, "blocker", outside_scope
+            ),
+        }
+
+        def run_case(adjudication_decision):
+            def runner(role, payload, output_schema):
+                if role == "reviewer":
+                    return review_result(payload, [finding_value])
+                return adjudication_result(payload, [adjudication_decision])
+
+            return run_review_lifecycle(
+                packet, initial=True, session_runner=runner
+            )
+
+        for expected_code, adjudication_decision in cases.items():
+            with self.subTest(expected_code=expected_code):
+                result = run_case(adjudication_decision)
+                diagnostic = result["human_handoff"]["session_failure"]
+                self.assertEqual(diagnostic["role"], "adjudicator")
+                self.assertEqual(diagnostic["validation_stage"], "semantic")
+                self.assertEqual(
+                    diagnostic["diagnostic_code"],
+                    "adjudication_correction_contract",
+                )
+                self.assertEqual(diagnostic["diagnostic_detail_code"], expected_code)
+                encoded = json.dumps(result)
+                self.assertNotIn("RAW_ADJUDICATOR_CORRECTION", encoded)
+                self.assertNotIn("model-controlled-outside-scope", encoded)
 
     def test_valid_reviewer_and_adjudicator_outputs_remain_accepted(self):
         packet = semantic_packet()

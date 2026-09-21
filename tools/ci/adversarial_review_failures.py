@@ -14,6 +14,7 @@ try:
         REVIEW_RESULT_SCHEMA,
         SESSION_FAILURE_CLASSES,
         SESSION_FAILURE_DIAGNOSTIC_CODES,
+        SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES,
         SESSION_FAILURE_SCHEMA,
         SESSION_FAILURE_VALIDATION_STAGES,
     )
@@ -25,6 +26,7 @@ except ImportError:  # pragma: no cover - direct script compatibility
         REVIEW_RESULT_SCHEMA,
         SESSION_FAILURE_CLASSES,
         SESSION_FAILURE_DIAGNOSTIC_CODES,
+        SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES,
         SESSION_FAILURE_SCHEMA,
         SESSION_FAILURE_VALIDATION_STAGES,
     )
@@ -39,6 +41,7 @@ def session_error(
     failure_class: str | None = None,
     validation_stage: str | None = None,
     diagnostic_code: str | None = None,
+    diagnostic_detail_code: str | None = None,
 ) -> ReviewSessionError:
     """Attach bounded facts to the existing session exception type."""
     error = ReviewSessionError(message)
@@ -48,6 +51,7 @@ def session_error(
     error.session_failure_class = failure_class
     error.session_validation_stage = validation_stage
     error.session_diagnostic_code = diagnostic_code
+    error.session_diagnostic_detail_code = diagnostic_detail_code
     return error
 
 
@@ -62,6 +66,7 @@ def session_error_with_role(error: ReviewSessionError, role: str) -> ReviewSessi
         failure_class=getattr(error, "session_failure_class", None),
         validation_stage=getattr(error, "session_validation_stage", None),
         diagnostic_code=getattr(error, "session_diagnostic_code", None),
+        diagnostic_detail_code=getattr(error, "session_diagnostic_detail_code", None),
     )
 
 
@@ -87,14 +92,18 @@ def session_failure_diagnostic(
         output_exists = False
     validation_stage = getattr(error, "session_validation_stage", None)
     diagnostic_code = getattr(error, "session_diagnostic_code", None)
+    diagnostic_detail_code = getattr(error, "session_diagnostic_detail_code", None)
     if failure_class == "invalid-output":
         if validation_stage not in SESSION_FAILURE_VALIDATION_STAGES:
             validation_stage = "semantic"
         if diagnostic_code not in SESSION_FAILURE_DIAGNOSTIC_CODES:
             diagnostic_code = "output_contract_validation"
+        if diagnostic_detail_code not in SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES:
+            diagnostic_detail_code = None
     else:
         validation_stage = None
         diagnostic_code = None
+        diagnostic_detail_code = None
     return {
         "schema": SESSION_FAILURE_SCHEMA,
         "role": resolved_role,
@@ -103,6 +112,7 @@ def session_failure_diagnostic(
         "failure_class": failure_class,
         "validation_stage": validation_stage,
         "diagnostic_code": diagnostic_code,
+        "diagnostic_detail_code": diagnostic_detail_code,
     }
 
 
@@ -224,7 +234,7 @@ def structured_output_failure_diagnostic(
     role: str,
     result: object,
     packet: Mapping[str, object],
-) -> tuple[str, str]:
+) -> tuple[str, str, str | None]:
     """Return a stage/code pair without retaining or returning rejected values."""
     fields = (
         ("schema", "candidate_identity", "findings")
@@ -233,14 +243,14 @@ def structured_output_failure_diagnostic(
     )
     code = _object_shape(result, fields)
     if code:
-        return "shape", code
+        return "shape", code, None
     assert isinstance(result, Mapping)
     expected_schema = REVIEW_RESULT_SCHEMA if role == "reviewer" else ADJUDICATION_RESULT_SCHEMA
     if result.get("schema") != expected_schema:
-        return "shape", "output_unsupported_value"
+        return "shape", "output_unsupported_value", None
     identity = result.get("candidate_identity")
     if not _identity_shape(identity):
-        return "shape", "output_schema"
+        return "shape", "output_schema", None
     expected_identity = (
         {field: packet["candidate"][field] for field in _IDENTITY_FIELDS}
         if role == "reviewer"
@@ -251,19 +261,19 @@ def structured_output_failure_diagnostic(
             "review_candidate_identity_mismatch"
             if role == "reviewer"
             else "adjudication_candidate_identity_mismatch"
-        )
+        ), None
 
     if role == "reviewer":
         findings = result["findings"]
         if not isinstance(findings, list):
-            return "shape", "output_schema"
+            return "shape", "output_schema", None
         for finding in findings:
             code = _review_finding_shape(finding)
             if code:
-                return "shape", code
+                return "shape", code, None
         finding_ids = [finding["finding_id"] for finding in findings]
         if len(finding_ids) != len(set(finding_ids)):
-            return "semantic", "review_finding_contract"
+            return "semantic", "review_finding_contract", "review_finding_identity_duplicate"
         catalog = packet.get("evidence_catalog", [])
         authorized = {
             item.get("evidence_id")
@@ -274,59 +284,59 @@ def structured_output_failure_diagnostic(
             set(finding["supporting_evidence"]) - authorized
             for finding in findings
         ):
-            return "semantic", "review_evidence_reference"
-        return "semantic", "output_contract_validation"
+            return "semantic", "review_evidence_reference", None
+        return "semantic", "output_contract_validation", None
 
     handoff = result["human_handoff"]
     code = _object_shape(handoff, ("required", "reason"))
     if code:
-        return "shape", "output_schema" if code == "output_top_level_shape" else code
+        return "shape", "output_schema" if code == "output_top_level_shape" else code, None
     assert isinstance(handoff, Mapping)
     if not isinstance(handoff["required"], bool):
-        return "shape", "output_schema"
+        return "shape", "output_schema", None
     if handoff["required"] and (
         not isinstance(handoff["reason"], str) or not handoff["reason"].strip()
     ):
-        return "shape", "output_schema"
+        return "shape", "output_schema", None
     dispositions = result["dispositions"]
     if not isinstance(dispositions, list):
-        return "shape", "output_schema"
+        return "shape", "output_schema", None
     findings = packet["findings"]
     expected_ids = [finding["finding_id"] for finding in findings]
     if len(dispositions) != len(expected_ids):
-        return "semantic", "adjudication_disposition_contract"
+        return "semantic", "adjudication_disposition_contract", "adjudication_disposition_count"
     scope = packet["scope"]
     for index, disposition in enumerate(dispositions):
         code = _object_shape(disposition, _DISPOSITION_FIELDS)
         if code:
-            return "shape", "output_schema" if code == "output_top_level_shape" else code
+            return "shape", "output_schema" if code == "output_top_level_shape" else code, None
         assert isinstance(disposition, Mapping)
         if not all(
             isinstance(disposition[field], str) and disposition[field].strip()
             for field in ("finding_id", "disposition", "basis")
         ) or not isinstance(disposition["correction_accepted"], bool):
-            return "shape", "output_schema"
+            return "shape", "output_schema", None
         if disposition["finding_id"] != expected_ids[index]:
-            return "semantic", "adjudication_disposition_contract"
+            return "semantic", "adjudication_disposition_contract", "adjudication_disposition_order"
         decision = disposition["disposition"]
         if decision not in DISPOSITIONS:
-            return "semantic", "adjudication_disposition_contract"
+            return "semantic", "adjudication_disposition_contract", "adjudication_disposition_value"
         correction = disposition["correction"]
         if correction is not None:
             code = _correction_shape(correction)
             if code:
-                return "shape", code
+                return "shape", code, None
             assert isinstance(correction, Mapping)
             if set(correction["locations"]) - set(scope["included"]):
-                return "semantic", "adjudication_correction_contract"
+                return "semantic", "adjudication_correction_contract", "adjudication_correction_scope"
         if decision in {"blocker", "patch-now"}:
             if correction is None and not (decision == "blocker" and handoff["required"]):
-                return "semantic", "adjudication_correction_contract"
+                return "semantic", "adjudication_correction_contract", "adjudication_correction_required_missing"
         elif correction is not None:
-            return "semantic", "adjudication_correction_contract"
+            return "semantic", "adjudication_correction_contract", "adjudication_correction_on_non_mutating_disposition"
         if disposition["correction_accepted"] != (correction is not None):
-            return "semantic", "adjudication_correction_contract"
-    return "semantic", "output_contract_validation"
+            return "semantic", "adjudication_correction_contract", "adjudication_correction_acceptance_mismatch"
+    return "semantic", "output_contract_validation", None
 
 
 def process_failure_class(

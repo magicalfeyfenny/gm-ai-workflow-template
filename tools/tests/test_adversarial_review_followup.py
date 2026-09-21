@@ -665,9 +665,11 @@ class SessionFailureTests(unittest.TestCase):
                 if failure_class == "invalid-output":
                     self.assertEqual(diagnostic["validation_stage"], "parse")
                     self.assertEqual(diagnostic["diagnostic_code"], "output_json_parse")
+                    self.assertIsNone(diagnostic["diagnostic_detail_code"])
                 else:
                     self.assertIsNone(diagnostic["validation_stage"])
                     self.assertIsNone(diagnostic["diagnostic_code"])
+                    self.assertIsNone(diagnostic["diagnostic_detail_code"])
 
     def test_provider_startup_failure_is_classified_without_raw_error_text(self):
         packet = semantic_packet()
