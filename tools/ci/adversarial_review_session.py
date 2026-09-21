@@ -6,7 +6,6 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import tomllib
@@ -37,6 +36,17 @@ except ImportError:  # pragma: no cover - direct script compatibility
         session_error,
         session_error_with_role,
         session_failure_diagnostic,
+    )
+
+try:
+    from .adversarial_review_process import (
+        ProviderHangError,
+        run_provider_process as _run_provider_process,
+    )
+except ImportError:  # pragma: no cover - direct script compatibility
+    from adversarial_review_process import (  # type: ignore[no-redef]
+        ProviderHangError,
+        run_provider_process as _run_provider_process,
     )
 
 try:
@@ -317,6 +327,7 @@ def _run_fresh_codex_session(
             "--ignore-user-config",
             "--ignore-rules",
             "--skip-git-repo-check",
+            "--json",
             "--sandbox",
             "read-only",
             "--output-schema",
@@ -328,29 +339,25 @@ def _run_fresh_codex_session(
             "-",
         ]
         try:
-            completed = subprocess.run(
+            returncode = _run_provider_process(
                 command,
                 cwd=working_directory,
-                input=_session_prompt(role, copied_packet),
-                env=environment,
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=300,
+                environment=environment,
+                prompt=_session_prompt(role, copied_packet),
             )
+        except ProviderHangError as exc:
+            raise session_error(
+                f"{role} session liveness guard failed",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="timeout",
+            ) from exc
         except OSError as exc:
             raise session_error(
                 f"{role} session could not start: {type(exc).__name__}",
                 role=role,
                 output_exists=result_path.exists(),
                 failure_class="startup",
-            ) from exc
-        except subprocess.TimeoutExpired as exc:
-            raise session_error(
-                f"{role} session timed out after 300 seconds",
-                role=role,
-                output_exists=result_path.exists(),
-                failure_class="timeout",
             ) from exc
         except UnicodeError as exc:
             raise session_error(
@@ -360,16 +367,16 @@ def _run_fresh_codex_session(
                 failure_class="invalid-output",
             ) from exc
         output_exists = result_path.exists()
-        if completed.returncode != 0:
+        if returncode != 0:
             failure_class = process_failure_class(
                 result_path,
                 output_exists=output_exists,
                 authentication_available=(auth_root / "auth.json").is_file(),
             )
             raise session_error(
-                f"{role} session failed with exit status {completed.returncode}",
+                f"{role} session failed with exit status {returncode}",
                 role=role,
-                exit_status=completed.returncode,
+                exit_status=returncode,
                 output_exists=output_exists,
                 failure_class=failure_class,
             )

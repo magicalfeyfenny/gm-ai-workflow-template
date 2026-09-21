@@ -1,5 +1,4 @@
 import os
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,18 +44,18 @@ class CodexModelConfigTests(unittest.TestCase):
     ) -> tuple[list[str], dict[str, str], str]:
         calls: list[tuple[list[str], dict[str, object]]] = []
 
-        def fake_run(command, **kwargs):
+        def fake_process(command, **kwargs):
             calls.append((command, kwargs))
             output_path = Path(command[command.index("--output-last-message") + 1])
             output_path.write_text("{}", encoding="utf-8")
-            return subprocess.CompletedProcess(command, 0, "", "")
+            return 0
 
         with patch(
             "tools.ci.adversarial_review_session._sandbox_path",
             return_value="/usr/bin/sandbox-exec",
         ), patch(
-            "tools.ci.adversarial_review_session.subprocess.run",
-            side_effect=fake_run,
+            "tools.ci.adversarial_review_session._run_provider_process",
+            side_effect=fake_process,
         ):
             _run_fresh_codex_session(
                 role,
@@ -66,7 +65,7 @@ class CodexModelConfigTests(unittest.TestCase):
                 repository_root=repository_root,
             )
         command, kwargs = calls[0]
-        return command, kwargs["env"], kwargs["input"]
+        return command, kwargs["environment"], kwargs["prompt"]
 
     def test_repository_config_defines_all_roles_as_luna_max(self):
         configured = _load_model_config(ROOT)
@@ -88,6 +87,7 @@ class CodexModelConfigTests(unittest.TestCase):
                     command[command.index("--config") + 1],
                     'model_reasoning_effort="max"',
                 )
+                self.assertIn("--json", command)
                 self.assertIn("--ignore-user-config", command)
 
     def test_ambient_model_settings_cannot_override_repository_selection(self):
@@ -163,11 +163,11 @@ class CodexModelConfigTests(unittest.TestCase):
     def test_auth_material_is_external_and_not_exposed_in_session_environment(self):
         calls: list[dict[str, object]] = []
 
-        def fake_run(command, **kwargs):
+        def fake_process(command, **kwargs):
             calls.append(kwargs)
             output_path = Path(command[command.index("--output-last-message") + 1])
             output_path.write_text("{}", encoding="utf-8")
-            return subprocess.CompletedProcess(command, 0, "", "")
+            return 0
 
         with tempfile.TemporaryDirectory() as directory:
             source_home = Path(directory) / "source-codex-home"
@@ -185,8 +185,8 @@ class CodexModelConfigTests(unittest.TestCase):
                 "tools.ci.adversarial_review_session._sandbox_path",
                 return_value="/usr/bin/sandbox-exec",
             ), patch(
-                "tools.ci.adversarial_review_session.subprocess.run",
-                side_effect=fake_run,
+                "tools.ci.adversarial_review_session._run_provider_process",
+                side_effect=fake_process,
             ):
                 _run_fresh_codex_session(
                     "reviewer",
@@ -196,7 +196,7 @@ class CodexModelConfigTests(unittest.TestCase):
                     repository_root=ROOT,
                 )
         self.assertEqual(len(calls), 1)
-        environment = calls[0]["env"]
+        environment = calls[0]["environment"]
         working_directory = Path(calls[0]["cwd"])
         codex_home = Path(environment["CODEX_HOME"])
         self.assertNotIn("OPENAI_API_KEY", environment)

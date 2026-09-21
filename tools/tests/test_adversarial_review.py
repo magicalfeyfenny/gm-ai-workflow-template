@@ -652,9 +652,9 @@ class IsolatedSessionTests(unittest.TestCase):
         review_packet = packet()
         calls = []
 
-        def fake_run(command, **kwargs):
+        def fake_process(command, **kwargs):
             calls.append((command, kwargs))
-            prompt = kwargs["input"]
+            prompt = kwargs["prompt"]
             encoded = prompt.split("BOUNDARY-PACKET (JSON):\n", 1)[1]
             payload = json.loads(encoded)
             output_path = Path(command[command.index("--output-last-message") + 1])
@@ -663,11 +663,11 @@ class IsolatedSessionTests(unittest.TestCase):
             else:
                 output = adjudication_result(payload, [])
             output_path.write_text(json.dumps(output), encoding="utf-8")
-            return subprocess.CompletedProcess(command, 0, "", "")
+            return 0
 
         with patch(
-            "tools.ci.adversarial_review_session.subprocess.run",
-            side_effect=fake_run,
+            "tools.ci.adversarial_review_session._run_provider_process",
+            side_effect=fake_process,
         ), patch(
             "tools.ci.adversarial_review_session._sandbox_path",
             return_value="/usr/bin/sandbox-exec",
@@ -689,6 +689,7 @@ class IsolatedSessionTests(unittest.TestCase):
             self.assertIn("--ignore-user-config", command)
             self.assertIn("--ignore-rules", command)
             self.assertIn("--skip-git-repo-check", command)
+            self.assertIn("--json", command)
             self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
             self.assertNotIn("--ask-for-approval", command)
             self.assertNotIn("resume", command)
@@ -697,7 +698,7 @@ class IsolatedSessionTests(unittest.TestCase):
             self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", command)
             self.assertNotIn(str(Path.cwd()), str(kwargs["cwd"]))
             self.assertEqual(
-                set(kwargs["env"]) - {"PATH", "HOME", "TMPDIR", "CODEX_HOME", "LANG", "LC_CTYPE"},
+                set(kwargs["environment"]) - {"PATH", "HOME", "TMPDIR", "CODEX_HOME", "LANG", "LC_CTYPE"},
                 set(),
             )
         self.assertNotIn("findings", result)
@@ -759,6 +760,8 @@ for argument in "$@"; do
     previous="$argument"
 done
 [ -n "$output" ]
+printf '%s\n' '{"type":"thread.started"}'
+printf '%s\n' '{"type":"turn.started"}'
 cwd="$PWD"
 record="role=$role;pid=$$;cwd=$cwd;sentinel=blocked;env=clean"
 if [ "$role" = reviewer ]; then

@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -24,6 +25,10 @@ from tools.ci.adversarial_review_session import (
     _write_sandbox_profile,
     run_adversarial_review,
     run_review_lifecycle,
+)
+from tools.ci.adversarial_review_process import (
+    ProviderHangError,
+    run_provider_process,
 )
 
 
@@ -364,10 +369,10 @@ class SandboxBoundaryTests(unittest.TestCase):
     def test_runtime_home_is_writable_but_authentication_stays_external(self):
         calls: list[dict[str, object]] = []
 
-        def fake_run(command, **kwargs):
+        def fake_process(command, **kwargs):
             profile = Path(command[2]).read_text(encoding="utf-8")
             output_path = Path(command[command.index("--output-last-message") + 1])
-            runtime_home = Path(kwargs["env"]["CODEX_HOME"])
+            runtime_home = Path(kwargs["environment"]["CODEX_HOME"])
             authentication_link = runtime_home / "auth.json"
             calls.append(
                 {
@@ -379,7 +384,7 @@ class SandboxBoundaryTests(unittest.TestCase):
                 }
             )
             output_path.write_text("{}", encoding="utf-8")
-            return subprocess.CompletedProcess(command, 0, "", "")
+            return 0
 
         with tempfile.TemporaryDirectory() as directory:
             source_home = Path(directory) / "source-codex-home"
@@ -390,8 +395,8 @@ class SandboxBoundaryTests(unittest.TestCase):
                 "tools.ci.adversarial_review_session._sandbox_path",
                 return_value="/usr/bin/sandbox-exec",
             ), patch(
-                "tools.ci.adversarial_review_session.subprocess.run",
-                side_effect=fake_run,
+                "tools.ci.adversarial_review_session._run_provider_process",
+                side_effect=fake_process,
             ):
                 _run_fresh_codex_session(
                     "reviewer",
@@ -459,6 +464,8 @@ for argument in "$@"; do
     previous="$argument"
 done
 [ -n "$output" ]
+printf '%s\n' '{"type":"thread.started"}'
+printf '%s\n' '{"type":"turn.started"}'
 printf '%s' '{}' > "$output"
 """,
                 encoding="utf-8",
@@ -479,6 +486,84 @@ printf '%s' '{}' > "$output"
                 )
             self.assertEqual(result, {})
             self.assertEqual(source_auth.read_text(encoding="utf-8"), original)
+
+
+class ProviderLivenessTests(unittest.TestCase):
+    def _provider_command(self, root: Path, body: str) -> tuple[list[str], Path]:
+        executable = root / "fake-provider"
+        executable.write_text("#!/bin/sh\nset -eu\n" + body, encoding="utf-8")
+        executable.chmod(0o755)
+        output = root / "last-message.json"
+        return [str(executable), "--json", "--output-last-message", str(output)], output
+
+    def test_active_work_is_not_terminated_by_elapsed_wall_clock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command, output = self._provider_command(
+                root,
+                """
+printf '%s\\n' '{\"type\":\"thread.started\"}'
+printf '%s\\n' '{\"type\":\"turn.started\"}'
+sleep 0.2
+printf '%s' '{}' > \"$3\"
+""",
+            )
+            started = time.monotonic()
+            returncode = run_provider_process(
+                command,
+                cwd=root,
+                environment={"PATH": "/usr/bin:/bin"},
+                prompt="bounded packet",
+                startup_timeout_seconds=0.5,
+            )
+            elapsed = time.monotonic() - started
+            output_exists = output.exists()
+        self.assertEqual(returncode, 0)
+        self.assertTrue(output_exists)
+        self.assertGreaterEqual(elapsed, 0.15)
+
+    def test_pre_turn_provider_hang_is_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command, output = self._provider_command(root, "sleep 2\n")
+            started = time.monotonic()
+            with self.assertRaises(ProviderHangError) as raised:
+                run_provider_process(
+                    command,
+                    cwd=root,
+                    environment={"PATH": "/usr/bin:/bin"},
+                    prompt="bounded packet",
+                    startup_timeout_seconds=0.05,
+                )
+            elapsed = time.monotonic() - started
+        self.assertEqual(raised.exception.phase, "pre-turn startup")
+        self.assertLess(elapsed, 1.5)
+        self.assertFalse(output.exists())
+
+    def test_closed_provider_event_stream_is_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command, _ = self._provider_command(
+                root,
+                """
+printf '%s\\n' '{\"type\":\"thread.started\"}'
+printf '%s\\n' '{\"type\":\"turn.started\"}'
+exec 1>&-
+while :; do :; done
+""",
+            )
+            started = time.monotonic()
+            with self.assertRaises(ProviderHangError) as raised:
+                run_provider_process(
+                    command,
+                    cwd=root,
+                    environment={"PATH": "/usr/bin:/bin"},
+                    prompt="bounded packet",
+                    startup_timeout_seconds=0.5,
+                )
+            elapsed = time.monotonic() - started
+        self.assertEqual(raised.exception.phase, "closed event stream")
+        self.assertLess(elapsed, 1.5)
 
 
 class SessionFailureTests(unittest.TestCase):
@@ -531,14 +616,14 @@ class SessionFailureTests(unittest.TestCase):
         packet = semantic_packet()
 
         def run_case(*, returncode=None, output=None, timeout=False, auth=True):
-            def fake_run(command, **kwargs):
+            def fake_process(command, **kwargs):
                 if output is not None:
                     Path(command[command.index("--output-last-message") + 1]).write_text(
                         output, encoding="utf-8"
                     )
                 if timeout:
-                    raise subprocess.TimeoutExpired(command, 300)
-                return subprocess.CompletedProcess(command, returncode, "", "raw-secret")
+                    raise ProviderHangError("pre-turn startup")
+                return returncode
 
             with tempfile.TemporaryDirectory() as directory:
                 source_home = Path(directory) / "source-codex-home"
@@ -551,8 +636,8 @@ class SessionFailureTests(unittest.TestCase):
                     "tools.ci.adversarial_review_session._sandbox_path",
                     return_value="/usr/bin/sandbox-exec",
                 ), patch(
-                    "tools.ci.adversarial_review_session.subprocess.run",
-                    side_effect=fake_run,
+                    "tools.ci.adversarial_review_session._run_provider_process",
+                    side_effect=fake_process,
                 ):
                     result = run_review_lifecycle(
                         packet, initial=True, codex_executable="/fake/codex"
@@ -574,6 +659,7 @@ class SessionFailureTests(unittest.TestCase):
                 self.assertNotIn("raw-secret", json.dumps(result))
                 self.assertNotIn("sentinel", json.dumps(result))
                 self.assertNotIn("BOUNDARY-PACKET", json.dumps(result))
+                self.assertNotIn("pre-turn startup", json.dumps(result))
 
     def test_provider_startup_failure_is_classified_without_raw_error_text(self):
         packet = semantic_packet()
@@ -612,10 +698,7 @@ class ProviderOutputBoundaryTests(unittest.TestCase):
         packet = semantic_packet()
         for stream in ("stdout", "stderr"):
             with self.subTest(stream=stream), patch(
-                "tools.ci.adversarial_review_session._sandbox_path",
-                return_value="/usr/bin/sandbox-exec",
-            ), patch(
-                "tools.ci.adversarial_review_session.subprocess.run",
+                "tools.ci.adversarial_review_session._run_provider_process",
                 side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid"),
             ):
                 result = run_review_lifecycle(
@@ -628,16 +711,10 @@ class ProviderOutputBoundaryTests(unittest.TestCase):
     def test_raw_provider_streams_do_not_enter_session_errors(self):
         for stream in ("stdout", "stderr"):
             raw = "raw-provider-instruction-" + stream
-            completed = subprocess.CompletedProcess(
-                ["sandbox-exec"], 23, raw if stream == "stdout" else "", raw if stream == "stderr" else ""
-            )
             with self.subTest(stream=stream):
                 with patch(
-                    "tools.ci.adversarial_review_session._sandbox_path",
-                    return_value="/usr/bin/sandbox-exec",
-                ), patch(
-                    "tools.ci.adversarial_review_session.subprocess.run",
-                    return_value=completed,
+                    "tools.ci.adversarial_review_session._run_provider_process",
+                    return_value=23,
                 ):
                     with self.assertRaises(ReviewSessionError) as raised:
                         _run_fresh_codex_session(
