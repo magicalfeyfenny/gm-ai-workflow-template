@@ -698,6 +698,9 @@ class ProviderOutputBoundaryTests(unittest.TestCase):
         packet = semantic_packet()
         for stream in ("stdout", "stderr"):
             with self.subTest(stream=stream), patch(
+                "tools.ci.adversarial_review_session._sandbox_path",
+                return_value="/usr/bin/sandbox-exec",
+            ), patch(
                 "tools.ci.adversarial_review_session._run_provider_process",
                 side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid"),
             ):
@@ -713,6 +716,9 @@ class ProviderOutputBoundaryTests(unittest.TestCase):
             raw = "raw-provider-instruction-" + stream
             with self.subTest(stream=stream):
                 with patch(
+                    "tools.ci.adversarial_review_session._sandbox_path",
+                    return_value="/usr/bin/sandbox-exec",
+                ), patch(
                     "tools.ci.adversarial_review_session._run_provider_process",
                     return_value=23,
                 ):
