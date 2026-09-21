@@ -11,13 +11,31 @@ REVIEW_PACKET_SCHEMA = "adversarial-review-packet:v2"
 REVIEW_RESULT_SCHEMA = "adversarial-review-result:v2"
 ADJUDICATION_PACKET_SCHEMA = "adversarial-adjudication-packet:v2"
 ADJUDICATION_RESULT_SCHEMA = "adversarial-adjudication-result:v2"
-SESSION_FAILURE_SCHEMA = "adversarial-review-session-failure:v1"
+SESSION_FAILURE_SCHEMA = "adversarial-review-session-failure:v2"
 SESSION_FAILURE_CLASSES = (
     "startup",
     "sandbox",
     "authentication",
     "timeout",
     "invalid-output",
+)
+SESSION_FAILURE_VALIDATION_STAGES = ("parse", "shape", "semantic")
+SESSION_FAILURE_DIAGNOSTIC_CODES = (
+    "output_json_parse",
+    "output_read_failure",
+    "output_missing_file",
+    "output_top_level_shape",
+    "output_schema",
+    "output_missing_required_field",
+    "output_unsupported_field",
+    "output_unsupported_value",
+    "output_contract_validation",
+    "review_candidate_identity_mismatch",
+    "review_finding_contract",
+    "review_evidence_reference",
+    "adjudication_candidate_identity_mismatch",
+    "adjudication_disposition_contract",
+    "adjudication_correction_contract",
 )
 MAX_CORRECTION_CYCLES = 2
 DISPOSITIONS = ("blocker", "patch-now", "follow-up", "reject")
@@ -32,6 +50,8 @@ SESSION_FAILURE_OUTPUT_SCHEMA = {
         "exit_status",
         "output_exists",
         "failure_class",
+        "validation_stage",
+        "diagnostic_code",
     ],
     "properties": {
         "schema": {"type": "string", "const": SESSION_FAILURE_SCHEMA},
@@ -41,6 +61,14 @@ SESSION_FAILURE_OUTPUT_SCHEMA = {
         "failure_class": {
             "type": "string",
             "enum": list(SESSION_FAILURE_CLASSES),
+        },
+        "validation_stage": {
+            "type": ["string", "null"],
+            "enum": [*SESSION_FAILURE_VALIDATION_STAGES, None],
+        },
+        "diagnostic_code": {
+            "type": ["string", "null"],
+            "enum": [*SESSION_FAILURE_DIAGNOSTIC_CODES, None],
         },
     },
 }

@@ -26,6 +26,7 @@ from tools.ci.adversarial_review_session import (
     run_adversarial_review,
     run_review_lifecycle,
 )
+from tools.ci.adversarial_review_contracts import SESSION_FAILURE_SCHEMA
 from tools.ci.adversarial_review_process import (
     ProviderHangError,
     run_provider_process,
@@ -653,13 +654,19 @@ class SessionFailureTests(unittest.TestCase):
         for failure_class, result in cases:
             with self.subTest(failure_class=failure_class):
                 diagnostic = result["human_handoff"]["session_failure"]
-                self.assertEqual(diagnostic["schema"], "adversarial-review-session-failure:v1")
+                self.assertEqual(diagnostic["schema"], SESSION_FAILURE_SCHEMA)
                 self.assertEqual(diagnostic["role"], "reviewer")
                 self.assertEqual(diagnostic["failure_class"], failure_class)
                 self.assertNotIn("raw-secret", json.dumps(result))
                 self.assertNotIn("sentinel", json.dumps(result))
                 self.assertNotIn("BOUNDARY-PACKET", json.dumps(result))
                 self.assertNotIn("pre-turn startup", json.dumps(result))
+                if failure_class == "invalid-output":
+                    self.assertEqual(diagnostic["validation_stage"], "parse")
+                    self.assertEqual(diagnostic["diagnostic_code"], "output_json_parse")
+                else:
+                    self.assertIsNone(diagnostic["validation_stage"])
+                    self.assertIsNone(diagnostic["diagnostic_code"])
 
     def test_provider_startup_failure_is_classified_without_raw_error_text(self):
         packet = semantic_packet()

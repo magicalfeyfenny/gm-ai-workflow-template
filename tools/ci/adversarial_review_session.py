@@ -25,17 +25,21 @@ except ImportError:  # pragma: no cover - direct script compatibility
 
 try:
     from .adversarial_review_failures import (
+        output_file_failure_diagnostic,
         process_failure_class,
         session_error,
         session_error_with_role,
         session_failure_diagnostic,
+        structured_output_failure_diagnostic,
     )
 except ImportError:  # pragma: no cover - direct script compatibility
     from adversarial_review_failures import (  # type: ignore[no-redef]
+        output_file_failure_diagnostic,
         process_failure_class,
         session_error,
         session_error_with_role,
         session_failure_diagnostic,
+        structured_output_failure_diagnostic,
     )
 
 try:
@@ -365,6 +369,8 @@ def _run_fresh_codex_session(
                 role=role,
                 output_exists=result_path.exists(),
                 failure_class="invalid-output",
+                validation_stage="parse",
+                diagnostic_code="output_read_failure",
             ) from exc
         output_exists = result_path.exists()
         if returncode != 0:
@@ -373,12 +379,20 @@ def _run_fresh_codex_session(
                 output_exists=output_exists,
                 authentication_available=(auth_root / "auth.json").is_file(),
             )
+            validation_stage = None
+            diagnostic_code = None
+            if failure_class == "invalid-output":
+                validation_stage, diagnostic_code = output_file_failure_diagnostic(
+                    result_path, output_exists=output_exists
+                )
             raise session_error(
                 f"{role} session failed with exit status {returncode}",
                 role=role,
                 exit_status=returncode,
                 output_exists=output_exists,
                 failure_class=failure_class,
+                validation_stage=validation_stage,
+                diagnostic_code=diagnostic_code,
             )
         if not output_exists:
             raise session_error(
@@ -386,6 +400,8 @@ def _run_fresh_codex_session(
                 role=role,
                 output_exists=False,
                 failure_class="invalid-output",
+                validation_stage="shape",
+                diagnostic_code="output_missing_file",
             )
         try:
             output = result_path.read_text(encoding="utf-8")
@@ -396,6 +412,8 @@ def _run_fresh_codex_session(
                 role=role,
                 output_exists=True,
                 failure_class="invalid-output",
+                validation_stage="parse",
+                diagnostic_code="output_json_parse",
             ) from exc
     try:
         parsed_mapping = _mapping(parsed, f"{role} session result")
@@ -405,6 +423,8 @@ def _run_fresh_codex_session(
             role=role,
             output_exists=True,
             failure_class="invalid-output",
+            validation_stage="shape",
+            diagnostic_code="output_top_level_shape",
         ) from exc
     return parsed_mapping
 SessionRunner = Callable[[str, Mapping[str, object], Mapping[str, object]], Mapping[str, object]]
@@ -445,12 +465,17 @@ def _run_adversarial_review_sessions(
             review_packet, reviewer_result["findings"]
         )
     except ReviewContractError as exc:
+        validation_stage, diagnostic_code = structured_output_failure_diagnostic(
+            "reviewer", reviewer_raw, review_packet
+        )
         raise session_error(
             "reviewer session returned an invalid structured result",
             role="reviewer",
             output_exists=True,
             failure_class="invalid-output",
-        ) from exc
+            validation_stage=validation_stage,
+            diagnostic_code=diagnostic_code,
+        ) from None
     try:
         adjudicator_raw = session_runner(
             "adjudicator", adjudication_packet, ADJUDICATION_RESULT_OUTPUT_SCHEMA
@@ -462,12 +487,17 @@ def _run_adversarial_review_sessions(
             adjudicator_raw, adjudication_packet
         )
     except ReviewContractError as exc:
+        validation_stage, diagnostic_code = structured_output_failure_diagnostic(
+            "adjudicator", adjudicator_raw, adjudication_packet
+        )
         raise session_error(
             "adjudicator session returned an invalid structured result",
             role="adjudicator",
             output_exists=True,
             failure_class="invalid-output",
-        ) from exc
+            validation_stage=validation_stage,
+            diagnostic_code=diagnostic_code,
+        ) from None
     return adjudication, adjudication_packet
 
 
