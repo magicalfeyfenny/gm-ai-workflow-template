@@ -22,6 +22,7 @@ SESSION_FAILURE_CLASSES = (
 SESSION_FAILURE_VALIDATION_STAGES = ("parse", "shape", "semantic")
 SESSION_FAILURE_DIAGNOSTIC_CODES = (
     "output_json_parse",
+    "output_event_stream_encoding",
     "output_read_failure",
     "output_missing_file",
     "output_top_level_shape",

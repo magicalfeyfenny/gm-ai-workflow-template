@@ -52,7 +52,6 @@ except ImportError:  # pragma: no cover - direct script compatibility
         ProviderHangError,
         run_provider_process as _run_provider_process,
     )
-
 try:
     from .adversarial_review import (
         ADJUDICATION_RESULT_OUTPUT_SCHEMA,
@@ -375,13 +374,14 @@ def _run_fresh_codex_session(
                 failure_class="startup",
             ) from exc
         except UnicodeError as exc:
+            diagnostic_code = getattr(exc, "diagnostic_code", "output_read_failure")
             raise session_error(
                 f"{role} session output could not be decoded",
                 role=role,
                 output_exists=result_path.exists(),
                 failure_class="invalid-output",
                 validation_stage="parse",
-                diagnostic_code="output_read_failure",
+                diagnostic_code=diagnostic_code,
             ) from exc
         output_exists = result_path.exists()
         if returncode != 0:

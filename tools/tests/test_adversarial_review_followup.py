@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -28,6 +29,7 @@ from tools.ci.adversarial_review_session import (
 )
 from tools.ci.adversarial_review_contracts import SESSION_FAILURE_SCHEMA
 from tools.ci.adversarial_review_process import (
+    ProviderEventDecodeError,
     ProviderHangError,
     run_provider_process,
 )
@@ -506,7 +508,7 @@ class ProviderLivenessTests(unittest.TestCase):
                 """
 printf '%s\\n' '{\"type\":\"thread.started\"}'
 printf '%s\\n' '{\"type\":\"turn.started\"}'
-sleep 0.2
+sleep 0.4
 printf '%s' '{}' > \"$3\"
 """,
             )
@@ -516,14 +518,51 @@ printf '%s' '{}' > \"$3\"
                 cwd=root,
                 environment={"PATH": "/usr/bin:/bin"},
                 prompt="bounded packet",
-                startup_timeout_seconds=0.5,
+                startup_timeout_seconds=0.2,
             )
             elapsed = time.monotonic() - started
             output_exists = output.exists()
         self.assertEqual(returncode, 0)
         self.assertTrue(output_exists)
-        self.assertGreaterEqual(elapsed, 0.15)
+        self.assertGreaterEqual(elapsed, 0.35)
 
+    def test_unconsumed_large_prompt_is_bounded_during_delivery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command, output = self._provider_command(root, "sleep 2\n")
+            started = time.monotonic()
+            with self.assertRaises(ProviderHangError) as raised:
+                run_provider_process(
+                    command,
+                    cwd=root,
+                    environment={"PATH": "/usr/bin:/bin"},
+                    prompt="x" * (2 * 1024 * 1024),
+                    startup_timeout_seconds=0.05,
+                )
+            elapsed = time.monotonic() - started
+        self.assertEqual(raised.exception.phase, "pre-turn prompt delivery")
+        self.assertLess(elapsed, 1.5)
+        self.assertFalse(output.exists())
+
+    def test_continuously_readable_partial_event_data_cannot_bypass_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command, _ = self._provider_command(
+                root,
+                "while :; do printf x; sleep 0.005; done\n",
+            )
+            started = time.monotonic()
+            with self.assertRaises(ProviderHangError) as raised:
+                run_provider_process(
+                    command,
+                    cwd=root,
+                    environment={"PATH": "/usr/bin:/bin"},
+                    prompt="bounded packet",
+                    startup_timeout_seconds=0.05,
+                )
+            elapsed = time.monotonic() - started
+        self.assertEqual(raised.exception.phase, "pre-turn startup")
+        self.assertLess(elapsed, 1.5)
     def test_pre_turn_provider_hang_is_bounded(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -542,7 +581,7 @@ printf '%s' '{}' > \"$3\"
         self.assertLess(elapsed, 1.5)
         self.assertFalse(output.exists())
 
-    def test_closed_provider_event_stream_is_bounded(self):
+    def test_positive_dead_connection_evidence_is_bounded(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             command, _ = self._provider_command(
@@ -704,22 +743,39 @@ class SessionFailureTests(unittest.TestCase):
 
 
 class ProviderOutputBoundaryTests(unittest.TestCase):
+    def test_invalid_provider_event_encoding_is_bounded_at_process_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = [sys.executable, "-c", "import os; os.write(1, b'\\xff')"]
+            with self.assertRaises(ProviderEventDecodeError):
+                run_provider_process(
+                    command,
+                    cwd=root,
+                    environment={"PATH": "/usr/bin:/bin"},
+                    prompt="bounded packet",
+                    startup_timeout_seconds=0.5,
+                )
+
     def test_invalid_provider_stream_encoding_becomes_bounded_handoff(self):
         packet = semantic_packet()
-        for stream in ("stdout", "stderr"):
-            with self.subTest(stream=stream), patch(
-                "tools.ci.adversarial_review_session._sandbox_path",
-                return_value="/usr/bin/sandbox-exec",
-            ), patch(
-                "tools.ci.adversarial_review_session._run_provider_process",
-                side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid"),
-            ):
-                result = run_review_lifecycle(
-                    packet, initial=True, codex_executable="/fake/codex"
-                )
-            self.assertEqual(result["transition"]["status"], "human-handoff")
-            self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
-            self.assertNotIn("UnicodeDecodeError", json.dumps(result))
+        with patch(
+            "tools.ci.adversarial_review_session._sandbox_path",
+            return_value="/usr/bin/sandbox-exec",
+        ), patch(
+            "tools.ci.adversarial_review_session._run_provider_process",
+            side_effect=ProviderEventDecodeError(),
+        ):
+            result = run_review_lifecycle(
+                packet, initial=True, codex_executable="/fake/codex"
+            )
+        self.assertEqual(result["transition"]["status"], "human-handoff")
+        self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
+        diagnostic = result["human_handoff"]["session_failure"]
+        self.assertEqual(diagnostic["failure_class"], "invalid-output")
+        self.assertEqual(diagnostic["validation_stage"], "parse")
+        self.assertEqual(diagnostic["diagnostic_code"], "output_event_stream_encoding")
+        self.assertIsNone(diagnostic["diagnostic_detail_code"])
+        self.assertNotIn("ProviderEventDecodeError", json.dumps(result))
 
     def test_raw_provider_streams_do_not_enter_session_errors(self):
         for stream in ("stdout", "stderr"):

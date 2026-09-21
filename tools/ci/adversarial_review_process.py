@@ -21,6 +21,8 @@ from pathlib import Path
 
 
 SESSION_STARTUP_TIMEOUT_SECONDS = 120.0
+MAX_PRETURN_EVENT_BUFFER_BYTES = 1_048_576
+PROVIDER_STATUS_POLL_SECONDS = 1.0
 
 
 class ProviderHangError(RuntimeError):
@@ -29,6 +31,15 @@ class ProviderHangError(RuntimeError):
     def __init__(self, phase: str) -> None:
         self.phase = phase
         super().__init__(f"provider liveness guard failed during {phase}")
+
+
+class ProviderEventDecodeError(UnicodeError):
+    """The provider event stream was not valid UTF-8."""
+
+    diagnostic_code = "output_event_stream_encoding"
+
+    def __init__(self) -> None:
+        super().__init__("provider event stream decoding failed")
 
 
 def _terminate(process: subprocess.Popen[bytes]) -> None:
@@ -82,40 +93,103 @@ def run_provider_process(
     selector = selectors.DefaultSelector()
     decoder = codecs.getincrementaldecoder("utf-8")("strict")
     buffer = ""
+    prompt_bytes = prompt.encode("utf-8")
+    prompt_offset = 0
+    input_closed = False
+    turn_started = False
     active_work = False
     deadline = time.monotonic() + startup_timeout_seconds
     try:
         if process.stdin is None or process.stdout is None:
             raise OSError("provider pipes unavailable")
-        process.stdin.write(prompt.encode("utf-8"))
-        process.stdin.close()
+        stdin = process.stdin
+        stdout = process.stdout
+        os.set_blocking(stdin.fileno(), False)
+        selector.register(stdin, selectors.EVENT_WRITE)
         selector.register(process.stdout, selectors.EVENT_READ)
+
+        def close_input() -> None:
+            nonlocal input_closed
+            if input_closed:
+                return
+            try:
+                selector.unregister(stdin)
+            except KeyError:
+                pass
+            try:
+                stdin.close()
+            except OSError as exc:
+                raise ProviderHangError("stdin closure") from exc
+            input_closed = True
+
+        if not prompt_bytes:
+            close_input()
         while True:
             returncode = process.poll()
             if returncode is not None:
                 break
+            if not active_work and time.monotonic() >= deadline:
+                phase = "pre-turn prompt delivery" if not input_closed else "pre-turn startup"
+                raise ProviderHangError(phase)
             wait_for = None
             if not active_work:
                 wait_for = max(0.0, deadline - time.monotonic())
+            else:
+                # This is only a process-status observation interval.  It is
+                # not an idle-work timeout: silent active reasoning remains
+                # allowed indefinitely unless positive transport evidence
+                # arrives.
+                wait_for = PROVIDER_STATUS_POLL_SECONDS
             ready = selector.select(wait_for)
             if not ready:
                 if not active_work:
-                    raise ProviderHangError("pre-turn startup")
+                    phase = "pre-turn prompt delivery" if not input_closed else "pre-turn startup"
+                    raise ProviderHangError(phase)
+                if process.poll() is not None:
+                    break
                 continue
-            chunk = os.read(process.stdout.fileno(), 4096)
-            if not chunk:
-                try:
-                    process.wait(timeout=0.25)
-                except subprocess.TimeoutExpired as exc:
-                    raise ProviderHangError("closed event stream") from exc
+            for key, mask in ready:
+                if key.fileobj is stdin and mask & selectors.EVENT_WRITE:
+                    try:
+                        written = os.write(stdin.fileno(), prompt_bytes[prompt_offset:])
+                    except BlockingIOError:
+                        written = 0
+                    except OSError as exc:
+                        raise ProviderHangError("prompt delivery") from exc
+                    prompt_offset += written
+                    if prompt_offset >= len(prompt_bytes):
+                        close_input()
+                        active_work = turn_started
+                if key.fileobj is stdout and mask & selectors.EVENT_READ:
+                    try:
+                        chunk = os.read(stdout.fileno(), 4096)
+                    except OSError as exc:
+                        raise ProviderHangError("provider transport") from exc
+                    if not chunk:
+                        try:
+                            process.wait(timeout=0.25)
+                        except subprocess.TimeoutExpired as exc:
+                            raise ProviderHangError("closed event stream") from exc
+                        break
+                    try:
+                        decoded = decoder.decode(chunk, final=False)
+                    except UnicodeDecodeError as exc:
+                        raise ProviderEventDecodeError() from exc
+                    buffer += decoded
+                    if not active_work and len(buffer.encode("utf-8")) > MAX_PRETURN_EVENT_BUFFER_BYTES:
+                        raise ProviderHangError("pre-turn event buffering")
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        turn_started = _consume_event(line) or turn_started
+                        active_work = input_closed and turn_started
+            if process.poll() is not None:
                 break
-            buffer += decoder.decode(chunk, final=False)
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                active_work = _consume_event(line) or active_work
-        buffer += decoder.decode(b"", final=True)
+        try:
+            buffer += decoder.decode(b"", final=True)
+        except UnicodeDecodeError as exc:
+            raise ProviderEventDecodeError() from exc
         if buffer:
-            active_work = _consume_event(buffer) or active_work
+            turn_started = _consume_event(buffer) or turn_started
         returncode = process.wait()
     except BaseException:
         _terminate(process)
