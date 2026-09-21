@@ -40,7 +40,7 @@ def _sbpl_path(path: Path) -> str:
 
 
 def _session_environment(
-    working_directory: Path, auth_directory: Path
+    working_directory: Path, auth_directory: Path, runtime_directory: Path
 ) -> tuple[dict[str, str], Path]:
     configured_home = os.environ.get("CODEX_HOME")
     source_home = (
@@ -48,7 +48,7 @@ def _session_environment(
         if configured_home
         else Path.home().joinpath(".codex").resolve()
     )
-    codex_home = working_directory.joinpath("codex-home").resolve()
+    codex_home = runtime_directory.joinpath("codex-home").resolve()
     codex_home.mkdir(mode=0o700, parents=True, exist_ok=True)
     auth_root = auth_directory.resolve()
     auth_root.mkdir(mode=0o700, parents=True, exist_ok=True)

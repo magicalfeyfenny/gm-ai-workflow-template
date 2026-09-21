@@ -201,7 +201,8 @@ class CodexModelConfigTests(unittest.TestCase):
         codex_home = Path(environment["CODEX_HOME"])
         self.assertNotIn("OPENAI_API_KEY", environment)
         self.assertFalse(working_directory == codex_home)
-        self.assertIn(working_directory, codex_home.parents)
+        self.assertNotIn(working_directory, codex_home.parents)
+        self.assertNotIn(codex_home, working_directory.parents)
         self.assertEqual(codex_home.name, "codex-home")
 
 

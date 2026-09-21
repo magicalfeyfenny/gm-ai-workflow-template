@@ -110,6 +110,12 @@ SUPPORTED_CODEX_MODELS = frozenset(
 SUPPORTED_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
+class _SessionOutput(dict):
+    def __init__(self, value: Mapping[str, object], exit_status: int) -> None:
+        super().__init__(value)
+        self.provider_exit_status = exit_status
+
+
 def _repository_root() -> Path:
     current = Path.cwd().resolve()
     for root in (current, *current.parents):
@@ -289,15 +295,20 @@ def _run_fresh_codex_session(
             failure_class="sandbox",
         ) from exc
     with tempfile.TemporaryDirectory(prefix=f"governed-{role}-") as directory, tempfile.TemporaryDirectory(
+        prefix=f"governed-runtime-{role}-"
+    ) as runtime_directory, tempfile.TemporaryDirectory(
         prefix=f"governed-auth-{role}-"
     ) as auth_directory:
         working_directory = Path(directory).resolve()
+        runtime_root = Path(runtime_directory).resolve()
         auth_root = Path(auth_directory).resolve()
         schema_path = working_directory / "output-schema.json"
-        result_path = working_directory / "codex-home" / "last-message.json"
+        result_path = runtime_root / "codex-home" / "last-message.json"
         profile_path = working_directory / "sandbox.sb"
         try:
-            environment, codex_home = _session_environment(working_directory, auth_root)
+            environment, codex_home = _session_environment(
+                working_directory, auth_root, runtime_root
+            )
             schema_path.write_text(
                 json.dumps(schema, ensure_ascii=False, sort_keys=True),
                 encoding="utf-8",
@@ -398,6 +409,7 @@ def _run_fresh_codex_session(
             raise session_error(
                 f"{role} session returned no output file",
                 role=role,
+                exit_status=returncode,
                 output_exists=False,
                 failure_class="invalid-output",
                 validation_stage="shape",
@@ -410,6 +422,7 @@ def _run_fresh_codex_session(
             raise session_error(
                 f"{role} session returned invalid JSON",
                 role=role,
+                exit_status=returncode,
                 output_exists=True,
                 failure_class="invalid-output",
                 validation_stage="parse",
@@ -421,12 +434,13 @@ def _run_fresh_codex_session(
         raise session_error(
             f"{role} session returned a non-object result",
             role=role,
+            exit_status=returncode,
             output_exists=True,
             failure_class="invalid-output",
             validation_stage="shape",
             diagnostic_code="output_top_level_shape",
         ) from exc
-    return parsed_mapping
+    return _SessionOutput(parsed_mapping, exit_status=returncode)
 SessionRunner = Callable[[str, Mapping[str, object], Mapping[str, object]], Mapping[str, object]]
 
 
@@ -471,6 +485,7 @@ def _run_adversarial_review_sessions(
         raise session_error(
             "reviewer session returned an invalid structured result",
             role="reviewer",
+            exit_status=getattr(reviewer_raw, "provider_exit_status", None),
             output_exists=True,
             failure_class="invalid-output",
             validation_stage=validation_stage,
@@ -493,6 +508,7 @@ def _run_adversarial_review_sessions(
         raise session_error(
             "adjudicator session returned an invalid structured result",
             role="adjudicator",
+            exit_status=getattr(adjudicator_raw, "provider_exit_status", None),
             output_exists=True,
             failure_class="invalid-output",
             validation_stage=validation_stage,

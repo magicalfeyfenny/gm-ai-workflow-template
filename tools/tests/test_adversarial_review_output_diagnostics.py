@@ -52,6 +52,60 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             malformed_diagnostic["diagnostic_code"], shaped_diagnostic["diagnostic_code"]
         )
 
+    def test_successful_provider_exit_status_survives_reviewer_validation_failure(self):
+        packet = semantic_packet()
+        output = review_result(packet, [])
+        output.pop("findings")
+        result = self.provider_output_handoff(json.dumps(output))
+        diagnostic = result["human_handoff"]["session_failure"]
+        self.assertEqual(diagnostic["role"], "reviewer")
+        self.assertEqual(diagnostic["exit_status"], 0)
+        self.assertTrue(diagnostic["output_exists"])
+        self.assertEqual(diagnostic["validation_stage"], "shape")
+        self.assertEqual(
+            diagnostic["diagnostic_code"], "output_missing_required_field"
+        )
+
+    def test_successful_provider_exit_status_survives_adjudicator_validation_failure(self):
+        packet = semantic_packet()
+        finding = semantic_findings()[0]
+        reviewer_output = review_result(packet, [finding])
+        adjudicator_output = {
+            "schema": "adversarial-adjudication-result:v2",
+            "candidate_identity": reviewer_output["candidate_identity"],
+            "dispositions": [],
+            "human_handoff": {"required": False, "reason": None},
+        }
+        calls = 0
+
+        def fake_process(command, **kwargs):
+            nonlocal calls
+            output = reviewer_output if calls == 0 else adjudicator_output
+            Path(command[command.index("--output-last-message") + 1]).write_text(
+                json.dumps(output), encoding="utf-8"
+            )
+            calls += 1
+            return 0
+
+        with patch(
+            "tools.ci.adversarial_review_session._sandbox_path",
+            return_value="/usr/bin/sandbox-exec",
+        ), patch(
+            "tools.ci.adversarial_review_session._run_provider_process",
+            side_effect=fake_process,
+        ):
+            result = run_review_lifecycle(
+                packet, initial=True, codex_executable="/fake/codex"
+            )
+        diagnostic = result["human_handoff"]["session_failure"]
+        self.assertEqual(diagnostic["role"], "adjudicator")
+        self.assertEqual(diagnostic["exit_status"], 0)
+        self.assertTrue(diagnostic["output_exists"])
+        self.assertEqual(diagnostic["validation_stage"], "semantic")
+        self.assertEqual(
+            diagnostic["diagnostic_code"], "adjudication_disposition_contract"
+        )
+
     def test_schema_shape_failure_is_distinct_from_semantic_contract_failure(self):
         packet = semantic_packet()
         shaped_output = review_result(packet, [])
