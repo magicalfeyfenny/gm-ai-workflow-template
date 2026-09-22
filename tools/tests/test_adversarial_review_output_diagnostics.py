@@ -1,10 +1,13 @@
 import json
+import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from tools.ci.adversarial_review_contracts import SESSION_FAILURE_SCHEMA
-from tools.ci.adversarial_review_session import run_review_lifecycle
+from tools.ci.adversarial_review_process import ProviderHangError
+from tools.ci.adversarial_review_session import ReviewSessionError, run_review_lifecycle
 from tools.tests.test_adversarial_review_followup import (
     adjudication_result,
     correction,
@@ -35,6 +38,99 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             return run_review_lifecycle(
                 packet, initial=True, codex_executable="/fake/codex"
             )
+
+    def test_provider_failure_classes_are_bounded_and_do_not_infer_auth(self):
+        packet = semantic_packet()
+
+        def run_case(
+            *,
+            returncode=None,
+            output=None,
+            timeout=False,
+            auth=True,
+            sandbox_unavailable=False,
+        ):
+            sandbox_path_patch = (
+                {"side_effect": ReviewSessionError("RAW_SANDBOX_FAILURE")}
+                if sandbox_unavailable
+                else {"return_value": "/usr/bin/sandbox-exec"}
+            )
+
+            def fake_process(command, **kwargs):
+                if output is not None:
+                    Path(command[command.index("--output-last-message") + 1]).write_text(
+                        output, encoding="utf-8"
+                    )
+                if timeout:
+                    raise ProviderHangError("pre-turn startup")
+                return returncode
+
+            with tempfile.TemporaryDirectory() as directory:
+                source_home = Path(directory) / "source-codex-home"
+                source_home.mkdir()
+                if auth:
+                    (source_home / "auth.json").write_text(
+                        '{"access_token":"sentinel"}', encoding="utf-8"
+                    )
+                with patch.dict(os.environ, {"CODEX_HOME": str(source_home)}), patch(
+                    "tools.ci.adversarial_review_session._sandbox_path",
+                    **sandbox_path_patch,
+                ), patch(
+                    "tools.ci.adversarial_review_session._run_provider_process",
+                    side_effect=fake_process,
+                ):
+                    return run_review_lifecycle(
+                        packet, initial=True, codex_executable="/fake/codex"
+                    )
+
+        raw_provider_error = json.dumps(
+            {"error": "authentication rejected; RAW_PROVIDER_SECRET"}
+        )
+        cases = [
+            (
+                "provider-unclassified-auth-present",
+                "provider-unclassified",
+                run_case(returncode=23, output=raw_provider_error, auth=True),
+            ),
+            (
+                "provider-unclassified-auth-absent",
+                "provider-unclassified",
+                run_case(returncode=23, output=raw_provider_error, auth=False),
+            ),
+            (
+                "positive-sandbox-setup-failure",
+                "sandbox",
+                run_case(auth=True, sandbox_unavailable=True),
+            ),
+            ("timeout", "timeout", run_case(timeout=True)),
+            (
+                "invalid-output",
+                "invalid-output",
+                run_case(returncode=0, output="not-json"),
+            ),
+        ]
+        for case_name, failure_class, result in cases:
+            with self.subTest(case=case_name):
+                diagnostic = result["human_handoff"]["session_failure"]
+                self.assertEqual(diagnostic["schema"], SESSION_FAILURE_SCHEMA)
+                self.assertEqual(diagnostic["role"], "reviewer")
+                self.assertEqual(diagnostic["failure_class"], failure_class)
+                self.assertNotIn("RAW_PROVIDER_SECRET", json.dumps(result))
+                self.assertNotIn("RAW_SANDBOX_FAILURE", json.dumps(result))
+                self.assertNotIn("sentinel", json.dumps(result))
+                self.assertNotIn("BOUNDARY-PACKET", json.dumps(result))
+                self.assertNotIn("pre-turn startup", json.dumps(result))
+                if failure_class == "provider-unclassified":
+                    self.assertEqual(diagnostic["exit_status"], 23)
+                    self.assertTrue(diagnostic["output_exists"])
+                if failure_class == "invalid-output":
+                    self.assertEqual(diagnostic["validation_stage"], "parse")
+                    self.assertEqual(diagnostic["diagnostic_code"], "output_json_parse")
+                    self.assertIsNone(diagnostic["diagnostic_detail_code"])
+                else:
+                    self.assertIsNone(diagnostic["validation_stage"])
+                    self.assertIsNone(diagnostic["diagnostic_code"])
+                    self.assertIsNone(diagnostic["diagnostic_detail_code"])
 
     def test_malformed_json_is_distinct_from_top_level_shape_failure(self):
         malformed = self.provider_output_handoff(
