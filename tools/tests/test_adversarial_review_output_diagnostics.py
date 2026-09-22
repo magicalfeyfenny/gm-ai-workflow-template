@@ -54,6 +54,43 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             malformed_diagnostic["diagnostic_code"], shaped_diagnostic["diagnostic_code"]
         )
 
+    def test_successful_provider_output_read_failure_is_distinct_from_json_parse(self):
+        packet = semantic_packet()
+        valid_output = json.dumps(review_result(packet, []))
+
+        def fake_process(command, **kwargs):
+            Path(command[command.index("--output-last-message") + 1]).write_text(
+                valid_output, encoding="utf-8"
+            )
+            return 0
+
+        original_read_text = Path.read_text
+
+        def fail_result_read(path, *args, **kwargs):
+            if path.name == "last-message.json":
+                raise OSError("RAW_PROVIDER_PATH_AND_SECRET")
+            return original_read_text(path, *args, **kwargs)
+
+        with patch(
+            "tools.ci.adversarial_review_session._sandbox_path",
+            return_value="/usr/bin/sandbox-exec",
+        ), patch(
+            "tools.ci.adversarial_review_session._run_provider_process",
+            side_effect=fake_process,
+        ), patch.object(Path, "read_text", fail_result_read):
+            result = run_review_lifecycle(
+                packet, initial=True, codex_executable="/fake/codex"
+            )
+
+        diagnostic = result["human_handoff"]["session_failure"]
+        self.assertEqual(diagnostic["role"], "reviewer")
+        self.assertEqual(diagnostic["failure_class"], "invalid-output")
+        self.assertEqual(diagnostic["exit_status"], 0)
+        self.assertTrue(diagnostic["output_exists"])
+        self.assertEqual(diagnostic["validation_stage"], "parse")
+        self.assertEqual(diagnostic["diagnostic_code"], "output_read_failure")
+        self.assertNotIn("RAW_PROVIDER_PATH_AND_SECRET", json.dumps(result))
+
     def test_successful_provider_exit_status_survives_reviewer_validation_failure(self):
         packet = semantic_packet()
         output = review_result(packet, [])

@@ -416,17 +416,16 @@ def _run_fresh_codex_session(
                 diagnostic_code="output_missing_file",
             )
         try:
-            output = result_path.read_text(encoding="utf-8")
-            parsed = json.loads(output)
+            parsed = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise session_error(
-                f"{role} session returned invalid JSON",
+                f"{role} session output could not be read or parsed",
                 role=role,
                 exit_status=returncode,
                 output_exists=True,
                 failure_class="invalid-output",
                 validation_stage="parse",
-                diagnostic_code="output_json_parse",
+                diagnostic_code="output_json_parse" if isinstance(exc, json.JSONDecodeError) else "output_read_failure",
             ) from exc
     try:
         parsed_mapping = _mapping(parsed, f"{role} session result")
