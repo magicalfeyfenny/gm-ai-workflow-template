@@ -104,7 +104,7 @@ except ImportError:  # pragma: no cover - direct script compatibility
 CODEX_MODEL_CONFIG_FILENAME = "CODEX_MODEL_CONFIG.toml"
 MODEL_CONFIG_ROLES = ("implementer", "reviewer", "adjudicator")
 SUPPORTED_CODEX_MODELS = frozenset(
-    {"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"}
+    {"gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"}
 )
 SUPPORTED_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 

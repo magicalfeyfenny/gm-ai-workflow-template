@@ -19,9 +19,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _config(
     *,
-    implementer: tuple[str, str] = ("gpt-5.6-luna", "max"),
-    reviewer: tuple[str, str] = ("gpt-5.6-luna", "max"),
-    adjudicator: tuple[str, str] = ("gpt-5.6-luna", "max"),
+    implementer: tuple[str, str] = ("gpt-6-luna", "max"),
+    reviewer: tuple[str, str] = ("gpt-6-luna", "max"),
+    adjudicator: tuple[str, str] = ("gpt-6-luna", "max"),
 ) -> str:
     roles = {
         "implementer": implementer,
@@ -67,21 +67,21 @@ class CodexModelConfigTests(unittest.TestCase):
         command, kwargs = calls[0]
         return command, kwargs["environment"], kwargs["prompt"]
 
-    def test_repository_config_defines_all_roles_as_luna_max(self):
+    def test_repository_config_defines_all_roles_as_gpt6_luna_max(self):
         configured = _load_model_config(ROOT)
         self.assertEqual(
             set(configured), {"implementer", "reviewer", "adjudicator"}
         )
         for selection in configured.values():
-            self.assertEqual(selection, {"model": "gpt-5.6-luna", "reasoning_effort": "max"})
+            self.assertEqual(selection, {"model": "gpt-6-luna", "reasoning_effort": "max"})
         self.assertIn("max", SUPPORTED_REASONING_EFFORTS)
 
-    def test_reviewer_and_adjudicator_launches_select_configured_luna_max(self):
+    def test_reviewer_and_adjudicator_launches_select_configured_gpt6_luna_max(self):
         for role in ("reviewer", "adjudicator"):
             with self.subTest(role=role):
                 command, _, _ = self._capture_launch(role)
                 self.assertEqual(
-                    command[command.index("--model") + 1], "gpt-5.6-luna"
+                    command[command.index("--model") + 1], "gpt-6-luna"
                 )
                 self.assertEqual(
                     command[command.index("--config") + 1],
@@ -100,7 +100,7 @@ class CodexModelConfigTests(unittest.TestCase):
         }
         with patch.dict(os.environ, ambient):
             command, environment, _ = self._capture_launch("reviewer")
-        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-luna")
+        self.assertEqual(command[command.index("--model") + 1], "gpt-6-luna")
         self.assertEqual(
             command[command.index("--config") + 1],
             'model_reasoning_effort="max"',
@@ -124,13 +124,13 @@ class CodexModelConfigTests(unittest.TestCase):
     def test_missing_malformed_incomplete_and_unsupported_config_fail_closed(self):
         cases = {
             "missing": None,
-            "malformed": "[roles.reviewer\nmodel = \"gpt-5.6-luna\"\n",
+            "malformed": "[roles.reviewer\nmodel = \"gpt-6-luna\"\n",
             "incomplete": _config().replace(
-                "[roles.adjudicator]\nmodel = \"gpt-5.6-luna\"\nreasoning_effort = \"max\"\n",
+                "[roles.adjudicator]\nmodel = \"gpt-6-luna\"\nreasoning_effort = \"max\"\n",
                 "",
             ),
             "unsupported-model": _config(reviewer=("gpt-9.9-unknown", "max")),
-            "unsupported-effort": _config(reviewer=("gpt-5.6-luna", "unsupported")),
+            "unsupported-effort": _config(reviewer=("gpt-6-luna", "unsupported")),
         }
         for name, content in cases.items():
             with self.subTest(case=name), tempfile.TemporaryDirectory() as directory:
@@ -146,7 +146,7 @@ class CodexModelConfigTests(unittest.TestCase):
 
     def test_model_configuration_is_not_in_semantic_session_prompt(self):
         _, _, prompt = self._capture_launch("reviewer")
-        self.assertNotIn("gpt-5.6-luna", prompt)
+        self.assertNotIn("gpt-6-luna", prompt)
         self.assertNotIn("model_reasoning_effort", prompt)
         self.assertNotIn(CODEX_MODEL_CONFIG_FILENAME, prompt)
         self.assertNotIn("provider", prompt.casefold())

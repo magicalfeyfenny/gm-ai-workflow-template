@@ -1,16 +1,16 @@
 # Repository execution configuration only; this file is not governance authority.
 # The current parent implementer session cannot change its own model, so the
 # implementer entry is declarative and is not used to create new orchestration.
-# Exact installed Codex model: gpt-5.6-luna. Exact maximum effort value: max.
+# Exact installed Codex model: gpt-6-luna. Exact maximum effort value: max.
 
 [roles.implementer]
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 reasoning_effort = "max"
 
 [roles.reviewer]
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 reasoning_effort = "max"
 
 [roles.adjudicator]
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 reasoning_effort = "max"
