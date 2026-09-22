@@ -343,14 +343,15 @@ def process_failure_class(
     result_path: Path,
     *,
     output_exists: bool,
-    authentication_available: bool,
 ) -> str:
-    """Classify a nonzero provider exit without forwarding provider text."""
+    """Classify output corruption or leave an unknown provider exit unclassified.
+
+    The Codex JSONL surface does not expose a reliable typed provider error.
+    Auth-file state is not evidence of an authentication or sandbox failure.
+    """
     if output_exists:
         try:
             json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError):
             return "invalid-output"
-    if not authentication_available:
-        return "authentication"
-    return "sandbox"
+    return "provider-unclassified"

@@ -508,7 +508,7 @@ class ProviderLivenessTests(unittest.TestCase):
                 """
 printf '%s\\n' '{\"type\":\"thread.started\"}'
 printf '%s\\n' '{\"type\":\"turn.started\"}'
-sleep 0.4
+sleep 1.2
 printf '%s' '{}' > \"$3\"
 """,
             )
@@ -518,13 +518,13 @@ printf '%s' '{}' > \"$3\"
                 cwd=root,
                 environment={"PATH": "/usr/bin:/bin"},
                 prompt="bounded packet",
-                startup_timeout_seconds=0.2,
+                startup_timeout_seconds=1.0,
             )
             elapsed = time.monotonic() - started
             output_exists = output.exists()
         self.assertEqual(returncode, 0)
         self.assertTrue(output_exists)
-        self.assertGreaterEqual(elapsed, 0.35)
+        self.assertGreaterEqual(elapsed, 1.1)
 
     def test_unconsumed_large_prompt_is_bounded_during_delivery(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -656,7 +656,20 @@ class SessionFailureTests(unittest.TestCase):
     def test_provider_failure_handoff_has_sanitized_machine_diagnostics(self):
         packet = semantic_packet()
 
-        def run_case(*, returncode=None, output=None, timeout=False, auth=True):
+        def run_case(
+            *,
+            returncode=None,
+            output=None,
+            timeout=False,
+            auth=True,
+            sandbox_unavailable=False,
+        ):
+            sandbox_path_patch = (
+                {"side_effect": ReviewSessionError("RAW_SANDBOX_FAILURE")}
+                if sandbox_unavailable
+                else {"return_value": "/usr/bin/sandbox-exec"}
+            )
+
             def fake_process(command, **kwargs):
                 if output is not None:
                     Path(command[command.index("--output-last-message") + 1]).write_text(
@@ -675,7 +688,7 @@ class SessionFailureTests(unittest.TestCase):
                     )
                 with patch.dict(os.environ, {"CODEX_HOME": str(source_home)}), patch(
                     "tools.ci.adversarial_review_session._sandbox_path",
-                    return_value="/usr/bin/sandbox-exec",
+                    **sandbox_path_patch,
                 ), patch(
                     "tools.ci.adversarial_review_session._run_provider_process",
                     side_effect=fake_process,
@@ -685,22 +698,47 @@ class SessionFailureTests(unittest.TestCase):
                     )
             return result
 
+        raw_provider_error = json.dumps(
+            {"error": "authentication rejected; RAW_PROVIDER_SECRET"}
+        )
         cases = [
-            ("sandbox", run_case(returncode=23, auth=True)),
-            ("authentication", run_case(returncode=23, auth=False)),
-            ("timeout", run_case(timeout=True)),
-            ("invalid-output", run_case(returncode=0, output="not-json")),
+            (
+                "provider-unclassified-auth-present",
+                "provider-unclassified",
+                run_case(returncode=23, output=raw_provider_error, auth=True),
+            ),
+            (
+                "provider-unclassified-auth-absent",
+                "provider-unclassified",
+                run_case(returncode=23, output=raw_provider_error, auth=False),
+            ),
+            (
+                "positive-sandbox-setup-failure",
+                "sandbox",
+                run_case(auth=True, sandbox_unavailable=True),
+            ),
+            ("timeout", "timeout", run_case(timeout=True)),
+            (
+                "invalid-output",
+                "invalid-output",
+                run_case(returncode=0, output="not-json"),
+            ),
         ]
-        for failure_class, result in cases:
-            with self.subTest(failure_class=failure_class):
+        for case_name, failure_class, result in cases:
+            with self.subTest(case=case_name):
                 diagnostic = result["human_handoff"]["session_failure"]
                 self.assertEqual(diagnostic["schema"], SESSION_FAILURE_SCHEMA)
                 self.assertEqual(diagnostic["role"], "reviewer")
                 self.assertEqual(diagnostic["failure_class"], failure_class)
                 self.assertNotIn("raw-secret", json.dumps(result))
+                self.assertNotIn("RAW_PROVIDER_SECRET", json.dumps(result))
+                self.assertNotIn("RAW_SANDBOX_FAILURE", json.dumps(result))
                 self.assertNotIn("sentinel", json.dumps(result))
                 self.assertNotIn("BOUNDARY-PACKET", json.dumps(result))
                 self.assertNotIn("pre-turn startup", json.dumps(result))
+                if failure_class == "provider-unclassified":
+                    self.assertEqual(diagnostic["exit_status"], 23)
+                    self.assertTrue(diagnostic["output_exists"])
                 if failure_class == "invalid-output":
                     self.assertEqual(diagnostic["validation_stage"], "parse")
                     self.assertEqual(diagnostic["diagnostic_code"], "output_json_parse")

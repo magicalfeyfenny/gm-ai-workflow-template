@@ -388,7 +388,6 @@ def _run_fresh_codex_session(
             failure_class = process_failure_class(
                 result_path,
                 output_exists=output_exists,
-                authentication_available=(auth_root / "auth.json").is_file(),
             )
             validation_stage = None
             diagnostic_code = None

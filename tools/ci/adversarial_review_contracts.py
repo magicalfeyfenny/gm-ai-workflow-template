@@ -16,6 +16,7 @@ SESSION_FAILURE_CLASSES = (
     "startup",
     "sandbox",
     "authentication",
+    "provider-unclassified",
     "timeout",
     "invalid-output",
 )
