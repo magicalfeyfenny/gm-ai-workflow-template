@@ -433,6 +433,10 @@ class GovernanceRoutingTests(unittest.TestCase):
             "fresh `codex exec`",
             "exactly one disposition",
             "two content-changing correction cycles",
+            "persisted lifecycle state",
+            "implementation_payload",
+            "final stage 3/completion report",
+            "no accepted `blocker`/`patch-now` correction",
             "immediate pre-transition issue re-fetch",
             "readiness, merge, release, and publication authority remain unchanged",
         ):

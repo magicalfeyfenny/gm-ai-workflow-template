@@ -87,17 +87,17 @@ try:
     from .adversarial_review_state import (
         continuation_delta_reason,
         initial_lifecycle_state,
+        load_continuation_state,
         review_lifecycle_decision,
         stage2_evidence_current,
-        validate_continuation_state,
     )
 except ImportError:  # pragma: no cover - direct script compatibility
     from adversarial_review_state import (  # type: ignore[no-redef]
         continuation_delta_reason,
         initial_lifecycle_state,
+        load_continuation_state,
         review_lifecycle_decision,
         stage2_evidence_current,
-        validate_continuation_state,
     )
 
 
@@ -599,10 +599,12 @@ def _session_failure_outcome(
     handoff = _handoff_summary(candidate, None, transition)
     handoff["session_failure"] = session_failure
     return {
-        "schema": "adversarial-review-outcome:v1",
+        "schema": "adversarial-review-outcome:v2",
         "candidate_identity": candidate_identity(candidate),
         "adjudication": None,
         "transition": transition,
+        "implementation_payload": None,
+        "adjudication_history": lifecycle.get("adjudication_history", []),
         "continuation_state": None,
         "human_handoff": handoff,
     }
@@ -619,10 +621,12 @@ def _state_failure_outcome(candidate: Mapping[str, object], reason: str) -> dict
         "continuation_state": None,
     }
     return {
-        "schema": "adversarial-review-outcome:v1",
+        "schema": "adversarial-review-outcome:v2",
         "candidate_identity": candidate_identity(candidate),
         "adjudication": None,
         "transition": transition,
+        "implementation_payload": None,
+        "adjudication_history": [],
         "continuation_state": None,
         "human_handoff": _handoff_summary(candidate, None, transition),
     }
@@ -654,7 +658,7 @@ def run_review_lifecycle(
         )
     else:
         try:
-            lifecycle = validate_continuation_state(state)
+            lifecycle = load_continuation_state(state)
         except ReviewContractError as exc:
             return _state_failure_outcome(
                 review_packet["candidate"],
@@ -718,18 +722,18 @@ def run_review_lifecycle(
                 initial=initial,
             )
         except (ReviewContractError, ReviewSessionError) as exc:
-            return _session_failure_outcome(
-                review_packet["candidate"], lifecycle, exc
-            )
+            return _session_failure_outcome(review_packet["candidate"], lifecycle, exc)
     return {
-        "schema": "adversarial-review-outcome:v1",
+        "schema": "adversarial-review-outcome:v2",
         "candidate_identity": candidate_identity(review_packet["candidate"]),
         "adjudication": adjudication,
         "transition": transition,
-        "continuation_state": transition.get("continuation_state"),
-        "human_handoff": _handoff_summary(
-            review_packet["candidate"], adjudication, transition
+        "implementation_payload": transition.get("implementation_payload"),
+        "adjudication_history": transition.get(
+            "adjudication_history", lifecycle["adjudication_history"]
         ),
+        "continuation_state": transition.get("continuation_state"),
+        "human_handoff": _handoff_summary(review_packet["candidate"], adjudication, transition),
     }
 
 
@@ -777,11 +781,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ReviewContractError(
                 "run requires --initial for the first candidate or --state for a continuation"
             )
-        state = (
-            validate_continuation_state(_load_json(args.state))
-            if args.state is not None
-            else None
-        )
+        state = load_continuation_state(_load_json(args.state)) if args.state is not None else None
         result = run_review_lifecycle(
             packet,
             state=state,

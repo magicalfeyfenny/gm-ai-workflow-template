@@ -16,6 +16,15 @@ try:
         validate_adjudication_result,
         validate_review_packet,
     )
+    from .adversarial_review_lifecycle_artifact import (
+        CONTINUATION_STATE_SCHEMA,
+        implementation_action_body,
+        history_after_success,
+        history_at_handoff,
+        recover_implementation_payload,
+        validate_adjudication_history,
+        validate_pending_implementation_action,
+    )
 except ImportError:  # pragma: no cover - direct script compatibility
     from adversarial_review import (  # type: ignore[no-redef]
         MAX_CORRECTION_CYCLES,
@@ -25,6 +34,15 @@ except ImportError:  # pragma: no cover - direct script compatibility
         validate_adjudication_packet,
         validate_adjudication_result,
         validate_review_packet,
+    )
+    from adversarial_review_lifecycle_artifact import (  # type: ignore[no-redef]
+        CONTINUATION_STATE_SCHEMA,
+        implementation_action_body,
+        history_after_success,
+        history_at_handoff,
+        recover_implementation_payload,
+        validate_adjudication_history,
+        validate_pending_implementation_action,
     )
 
 
@@ -36,7 +54,6 @@ _CANDIDATE_IDENTITY_FIELDS = (
     "tree_sha",
     "diff_sha256",
 )
-CONTINUATION_STATE_SCHEMA = "adversarial-review-continuation:v1"
 _CONTINUATION_STATE_FIELDS = (
     "schema",
     "state_digest",
@@ -46,6 +63,8 @@ _CONTINUATION_STATE_FIELDS = (
     "previous_candidate",
     "authorized_locations",
     "issue_contract_revision",
+    "adjudication_history",
+    "pending_implementation_action",
 )
 
 
@@ -110,6 +129,8 @@ def _initial_lifecycle_state(issue_contract_revision: str) -> dict[str, object]:
         "issue_contract_revision": _digest(
             issue_contract_revision, "issue contract revision"
         ),
+        "adjudication_history": [],
+        "pending_implementation_action": None,
     }
 
 
@@ -126,6 +147,8 @@ def _state_body(
     previous_candidate: dict[str, object],
     authorized_locations: list[str],
     issue_contract_revision: str,
+    adjudication_history: list[dict[str, object]],
+    pending_implementation_action: dict[str, object],
 ) -> dict[str, object]:
     return {
         "schema": CONTINUATION_STATE_SCHEMA,
@@ -135,6 +158,8 @@ def _state_body(
         "previous_candidate": previous_candidate,
         "authorized_locations": authorized_locations,
         "issue_contract_revision": issue_contract_revision,
+        "adjudication_history": adjudication_history,
+        "pending_implementation_action": pending_implementation_action,
     }
 
 
@@ -169,6 +194,8 @@ def validate_continuation_state(value: Mapping[str, object]) -> dict[str, object
         _identity_snapshot(item, "continuation state candidate history entry")
         for item in history_value
     ]
+    if len(history) != cycle:
+        raise ReviewContractError("continuation state history does not match its cycle")
     history_keys = [_content_key(item) for item in history]
     if len(history_keys) != len(set(history_keys)):
         raise ReviewContractError("continuation state candidate history contains a duplicate")
@@ -186,6 +213,14 @@ def validate_continuation_state(value: Mapping[str, object]) -> dict[str, object
         raise ReviewContractError(
             "continuation state authorized_locations must be unique and sorted"
         )
+    adjudication_history = validate_adjudication_history(
+        raw.get("adjudication_history"), history, cycle
+    )
+    pending_action, expected_locations = validate_pending_implementation_action(
+        raw.get("pending_implementation_action"), adjudication_history, revision, cycle
+    )
+    if authorized != expected_locations:
+        raise ReviewContractError("continuation state authorized locations differ from its action")
     body = _state_body(
         cycle=cycle,
         candidate_history=history,
@@ -193,6 +228,8 @@ def validate_continuation_state(value: Mapping[str, object]) -> dict[str, object
         previous_candidate=previous,
         authorized_locations=authorized,
         issue_contract_revision=revision,
+        adjudication_history=adjudication_history,
+        pending_implementation_action=pending_action,
     )
     state_digest = raw.get("state_digest")
     if not isinstance(state_digest, str) or state_digest != _canonical_digest(body):
@@ -315,6 +352,7 @@ def build_continuation_state(
     adjudication: Mapping[str, object],
     transition: Mapping[str, object],
     issue_contract_revision: str,
+    adjudication_history: list[dict[str, object]],
 ) -> dict[str, object]:
     """Build a complete repository-defined state for the next production run."""
     corrections = _accepted_corrections(adjudication)
@@ -337,6 +375,12 @@ def build_continuation_state(
         locations.update(
             _path_list(correction_locations, "accepted correction locations")
         )
+    pending_action = implementation_action_body(
+        current,
+        adjudication,
+        issue_contract_revision,
+        cycle,
+    )
     body = _state_body(
         cycle=cycle,
         candidate_history=history,
@@ -346,8 +390,34 @@ def build_continuation_state(
         issue_contract_revision=_digest(
             issue_contract_revision, "issue contract revision"
         ),
+        adjudication_history=adjudication_history,
+        pending_implementation_action=pending_action,
     )
-    return {**body, "state_digest": _canonical_digest(body)}
+    state = {**body, "state_digest": _canonical_digest(body)}
+    return validate_continuation_state(state)
+
+
+def implementation_payload_from_state(
+    state: Mapping[str, object],
+) -> dict[str, object]:
+    """Build the immediately consumable action envelope from persisted state."""
+    validated = validate_continuation_state(state)
+    return {
+        **validated["pending_implementation_action"],
+        "continuation_state_digest": validated["state_digest"],
+    }
+
+
+def load_continuation_state(value: object) -> dict[str, object]:
+    """Load a raw state or recover one from its complete saved outcome artifact."""
+    if isinstance(value, Mapping) and value.get("schema") == "adversarial-review-outcome:v2":
+        recover_implementation_payload(value)
+        state = value.get("continuation_state")
+    else:
+        state = value
+    if not isinstance(state, Mapping):
+        raise ReviewContractError("continuation artifact must be an object")
+    return validate_continuation_state(state)
 
 
 def review_loop_decision(
@@ -540,29 +610,64 @@ def review_lifecycle_decision(
         if reason is not None:
             return _handoff_transition(lifecycle["cycle"], reason)
     if adjudication["human_handoff"]["required"]:
-        return _handoff_transition(
+        transition = _handoff_transition(
             lifecycle["cycle"], adjudication["human_handoff"]["reason"]
         )
+        transition["adjudication_history"] = history_at_handoff(
+            lifecycle,
+            validated_review["candidate"],
+            adjudication,
+            lifecycle["cycle"],
+        )
+        transition["implementation_payload"] = None
+        return transition
     corrections = _accepted_corrections(adjudication)
     if not corrections:
+        history = history_after_success(
+            lifecycle,
+            validated_review["candidate"],
+            adjudication,
+            lifecycle["cycle"],
+            "no-action",
+        )
         return {
             "status": "complete",
             "cycle": lifecycle["cycle"],
             "corrections": [],
             "reason": None,
             "continuation_state": None,
+            "implementation_payload": None,
+            "adjudication_history": history,
         }
     if lifecycle["cycle"] >= MAX_CORRECTION_CYCLES:
-        return _handoff_transition(
+        transition = _handoff_transition(
             lifecycle["cycle"],
             f"correction cycle cap {MAX_CORRECTION_CYCLES} reached",
         )
+        transition["implementation_payload"] = None
+        transition["adjudication_history"] = history_after_success(
+            lifecycle,
+            validated_review["candidate"],
+            adjudication,
+            lifecycle["cycle"],
+            "human-handoff",
+        )
+        return transition
+    history = history_after_success(
+        lifecycle,
+        validated_review["candidate"],
+        adjudication,
+        lifecycle["cycle"],
+        "action-pending",
+    )
     transition = {
         "status": "revalidate-and-rereview",
         "cycle": lifecycle["cycle"],
         "next_cycle": lifecycle["cycle"] + 1,
         "corrections": corrections,
         "reason": None,
+        "implementation_payload": None,
+        "adjudication_history": history,
         "requirements": [
             "apply only the accepted corrections",
             "establish a new exact candidate identity",
@@ -577,5 +682,9 @@ def review_lifecycle_decision(
         adjudication,
         transition,
         revision,
+        history,
+    )
+    transition["implementation_payload"] = implementation_payload_from_state(
+        transition["continuation_state"]
     )
     return transition

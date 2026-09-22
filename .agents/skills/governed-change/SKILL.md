@@ -88,10 +88,12 @@ before Stage 2.
    stage. Use the repository-owned contracts and run the reviewer and
    adjudicator in separate fresh, OS-bounded sessions. The adjudicator gets
    actual catalog items for the stable evidence IDs cited by findings, not
-   reviewer paraphrases. The production command must consume its lifecycle
-   state and return only adjudicated dispositions, accepted-correction flags,
-   and bounded handoff information to the implementation route. Apply only
-   an accepted `blocker` or `patch-now` correction within scope; when content
+   reviewer paraphrases. Persist each complete lifecycle outcome. When the
+   transition is `revalidate-and-rereview`, consume its validated
+   `implementation_payload` immediately in the next implementation cycle;
+   do not reconstruct corrections from prose or overwrite the only copy of
+   that pending-action artifact. Apply only an accepted `blocker` or
+   `patch-now` correction within scope; when content
    changes, rerun Stage 2 and both sessions on the new exact candidate, no
    more than two correction cycles. Apply the complete adjudication and handoff
    rule in Governance; use supported dispositions before human handoff.
