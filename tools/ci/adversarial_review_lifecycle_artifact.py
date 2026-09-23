@@ -388,7 +388,11 @@ def _validated_outcome_adjudication_entry(
     ):
         raise ReviewContractError("lifecycle outcome adjudication is not an actionable result")
     correction_cycle = action.get("correction_cycle")
-    if not isinstance(correction_cycle, int) or isinstance(correction_cycle, bool):
+    if (
+        not isinstance(correction_cycle, int)
+        or isinstance(correction_cycle, bool)
+        or correction_cycle < 1
+    ):
         raise ReviewContractError("implementation action correction cycle is invalid")
     try:
         entry = history_entry(
@@ -399,7 +403,16 @@ def _validated_outcome_adjudication_entry(
         )
     except (KeyError, TypeError) as exc:
         raise ReviewContractError("lifecycle outcome adjudication is incomplete") from exc
-    return validate_adjudication_history([entry], [identity], cycle=1)[0]
+    # History validation indexes entries from zero, while a recovered action
+    # may refer to a later absolute correction cycle. Validate the isolated
+    # entry at index zero, then restore its bound lifecycle index for the
+    # comparison with the persisted continuation history.
+    validation_entry = {**entry, "cycle": 0}
+    validated_entry = validate_adjudication_history(
+        [validation_entry], [identity], cycle=1
+    )[0]
+    validated_entry["cycle"] = correction_cycle - 1
+    return validated_entry
 
 
 def recover_implementation_payload(outcome: Mapping[str, object]) -> dict[str, object]:

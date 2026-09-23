@@ -374,6 +374,49 @@ class ContinuationStateTests(unittest.TestCase):
         self.assertEqual(malformed_result["transition"]["status"], "human-handoff")
         self.assertIn("delta", malformed_result["transition"]["reason"])
 
+    def test_second_cycle_action_recovers_from_json_round_trip(self):
+        first = self.accepted_first_pass()
+        corrected = candidate(
+            head_sha="g" * 40,
+            tree_sha="u" * 40,
+            diff=(
+                "diff --git a/tools/ci/adversarial_review.py "
+                "b/tools/ci/adversarial_review.py\ncorrected\n"
+            ),
+        )
+
+        def second_cycle_runner(role, payload, output_schema):
+            if role == "reviewer":
+                return {
+                    "schema": REVIEW_RESULT_SCHEMA,
+                    "candidate_identity": candidate_identity(payload["candidate"]),
+                    "findings": [finding("F-second-cycle")],
+                }
+            return adjudication_result(
+                payload,
+                [decision("F-second-cycle", "blocker", correction())],
+            )
+
+        second = run_review_lifecycle(
+            make_packet(corrected),
+            state=first["continuation_state"],
+            session_runner=second_cycle_runner,
+        )
+        self.assertEqual(
+            second["transition"]["status"], "revalidate-and-rereview"
+        )
+        self.assertEqual(
+            second["continuation_state"]["adjudication_history"][-1]["cycle"], 1
+        )
+        self.assertEqual(second["implementation_payload"]["correction_cycle"], 2)
+
+        saved = json.loads(json.dumps(second))
+        recovered = recover_implementation_payload(saved)
+        self.assertEqual(recovered, saved["implementation_payload"])
+        self.assertEqual(recovered["candidate_identity"], candidate_identity(corrected))
+        self.assertEqual(recovered["issue_contract_revision"], REVISION)
+        self.assertEqual(recovered["correction_cycle"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
