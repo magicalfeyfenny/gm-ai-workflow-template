@@ -335,11 +335,9 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         packet = semantic_packet()
         finding_value = semantic_findings()[0]
         finding_id = finding_value["finding_id"]
-        outside_scope = correction()
-        outside_scope["locations"] = ["model-controlled-outside-scope"]
-        outside_scope["summary"] = "RAW_ADJUDICATOR_CORRECTION"
         acceptance_mismatch = decision(finding_id, "blocker", correction())
         acceptance_mismatch["correction_accepted"] = False
+        acceptance_mismatch["correction"]["summary"] = "RAW_ADJUDICATOR_CORRECTION"
         cases = {
             "adjudication_correction_on_non_mutating_disposition": decision(
                 finding_id, "reject", correction()
@@ -348,9 +346,6 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
                 finding_id, "blocker"
             ),
             "adjudication_correction_acceptance_mismatch": acceptance_mismatch,
-            "adjudication_correction_scope": decision(
-                finding_id, "blocker", outside_scope
-            ),
         }
 
         def run_case(adjudication_decision):
@@ -376,7 +371,6 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
                 self.assertEqual(diagnostic["diagnostic_detail_code"], expected_code)
                 encoded = json.dumps(result)
                 self.assertNotIn("RAW_ADJUDICATOR_CORRECTION", encoded)
-                self.assertNotIn("model-controlled-outside-scope", encoded)
 
     def test_valid_reviewer_and_adjudicator_outputs_remain_accepted(self):
         packet = semantic_packet()

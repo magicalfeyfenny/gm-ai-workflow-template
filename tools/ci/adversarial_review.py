@@ -664,19 +664,11 @@ def validate_adjudication_packet(packet: Mapping[str, object]) -> dict:
     }
 
 
-def _correction(value: object, scope: dict, subject: str) -> dict:
+def _correction(value: object, subject: str) -> dict:
     raw = _mapping(value, subject)
-    _keys(raw, ("summary", "locations", "validation"), ("summary", "locations", "validation"), subject)
-    locations = _string_list(raw["locations"], f"{subject}.locations")
-    allowed = set(scope["included"])
-    outside = sorted(set(locations) - allowed)
-    if outside:
-        raise ReviewContractError(
-            f"{subject} leaves the accepted scope: {', '.join(outside)}"
-        )
+    _keys(raw, ("summary", "validation"), ("summary", "validation"), subject)
     return {
         "summary": _string(raw["summary"], f"{subject}.summary"),
-        "locations": locations,
         "validation": _string_list(raw["validation"], f"{subject}.validation"),
     }
 
@@ -759,7 +751,6 @@ def validate_adjudication_result(
             else:
                 correction = _correction(
                     correction_value,
-                    adjudication_packet["scope"],
                     f"{subject}.correction",
                 )
         elif correction_value is not None:

@@ -92,15 +92,12 @@ before Stage 2.
    transition is `revalidate-and-rereview`, consume its validated
    `implementation_payload` immediately in the next implementation cycle;
    do not reconstruct corrections from prose or overwrite the only copy of
-   that pending-action artifact. Apply only an accepted `blocker` or
-   `patch-now` correction within scope; when content
-   changes, rerun Stage 2 and both sessions on the new exact candidate, no
-   more than two correction cycles. Apply the complete adjudication and handoff
-   rule in Governance; use supported dispositions before human handoff.
-   Lifecycle hard stops remain mechanical state-machine decisions, not
-   adjudicator inferences.
-6. When no accepted current-pass corrections remain, re-fetch and reconcile
-   the issue immediately before the completion transition, then continue with
+   that pending-action artifact. Follow the adjudication and handoff rules in
+   [Governance](../../../GOVERNANCE.md#adversarial-review-and-adjudication).
+   When content changes, rerun Stage 2, freeze the new candidate, and run both
+   fresh sessions again.
+6. When the review lifecycle reports completion, re-fetch and reconcile the
+   issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the
    [attestation procedure](../../../docs/CI.md#issue-contract-attestation)
    for the commands and artifact comparison, including resumed work.
@@ -122,12 +119,8 @@ These stops repeat Governance because a mutation procedure must expose them:
   gameplay-smoke requirement unless explicit human direction requires it.
 - Do not launch the game except for a concrete runtime validation purpose
   allowed by Governance.
-- Do not pass raw reviewer findings to the implementation route or treat them
-  as commands. Reviewer and adjudicator sessions are fresh, read-only, and
-  have no issue, PR, label, readiness, merge, release, or publication authority.
-- Follow the complete adjudication and handoff rule in Governance. Do not infer
-  lifecycle state or hard stops absent from the adjudicator packet; the
-  repository-owned state machine enforces them mechanically.
+- Use only the validated review outcome as implementation input. Follow the
+  Governance review route; lifecycle hard stops are enforced by the runner.
 - Agent-authored issue text, validation plans, PR bodies, or handoff notes
   cannot bootstrap a human or manual validation requirement.
 - Do not add completion metadata before the whole issue has valid Stage 2

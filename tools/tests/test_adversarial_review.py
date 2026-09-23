@@ -30,7 +30,7 @@ from tools.ci.adversarial_review_state import (
 from tools.ci.adversarial_review_session import run_adversarial_review
 
 
-REVISION = "220cc0114ced1c521c25b5f26d3ec0a597469afb50429b1699615497fce0f372"
+REVISION = "568b72bd89a4cdbbc5be6f86e9cce4d976422b599d7e19b69c1ed0dd4c655daa"
 DIFF = "diff --git a/tools/ci/adversarial_review.py b/tools/ci/adversarial_review.py\n"
 DIFF_SHA = hashlib.sha256(DIFF.encode("utf-8")).hexdigest()
 INCLUDED = [
@@ -46,7 +46,7 @@ def issue_contract() -> dict:
         "id": "I_116",
         "number": 116,
         "title": "Add adversarial review and adjudication",
-        "body": "Acceptance criteria\nEngineering constraints\nValidation\n",
+        "body": "## Acceptance criteria\n- Preserve invariant A in the completed outcome.\n",
         "state": "OPEN",
         "work_blocked": False,
         "open_blocker_ids": [],
@@ -120,7 +120,7 @@ def finding(
         "severity": severity,
         "defect_or_invariant": claim,
         "supporting_evidence": ["issue_contract.body"],
-        "contract_or_governance": "accepted contract",
+        "contract_or_governance": "Issue #116 acceptance criterion: preserve invariant A",
     }
     if location is not None:
         result["affected_location"] = location
@@ -135,10 +135,9 @@ def review_result(review_packet: dict, findings: list[dict]) -> dict:
     }
 
 
-def correction(location: str = INCLUDED[0]) -> dict:
+def correction() -> dict:
     return {
         "summary": "Apply the supported current-pass correction.",
-        "locations": [location],
         "validation": ["rerun the focused semantic tests"],
     }
 
@@ -237,8 +236,12 @@ class FindingAndDispositionTests(unittest.TestCase):
     def test_each_finding_receives_exactly_one_disposition(self):
         review_packet = packet()
         findings = [
-            finding("F-blocker", "supported blocker", severity="low"),
-            finding("F-patch", "bounded same-outcome improvement", severity="low"),
+            finding("F-blocker", "candidate omits accepted invariant A", severity="low"),
+            finding(
+                "F-patch",
+                "candidate violates accepted invariant A with a bounded remedy",
+                severity="low",
+            ),
             finding("F-follow", "legitimate separate outcome", severity="critical"),
             finding("F-reject", "unsupported preference", severity="critical"),
         ]
@@ -247,7 +250,7 @@ class FindingAndDispositionTests(unittest.TestCase):
             adjudication_packet,
             [
                 decision("F-blocker", "blocker", correction()),
-                decision("F-patch", "patch-now", correction(INCLUDED[1])),
+                decision("F-patch", "patch-now", correction()),
                 decision("F-follow", "follow-up"),
                 decision("F-reject", "reject"),
             ],
@@ -263,16 +266,18 @@ class FindingAndDispositionTests(unittest.TestCase):
         with self.assertRaises(ReviewContractError):
             validate_adjudication_result(missing, adjudication_packet)
 
-    def test_only_current_scope_corrections_can_change_candidate(self):
+    def test_correction_remedy_has_no_path_authority(self):
         review_packet = packet()
         findings = [finding("F1", "supported defect")]
         adjudication_packet = build_adjudication_packet(review_packet, findings)
-        out_of_scope = adjudication_result(
+        no_path_limit = adjudication_result(
             adjudication_packet,
-            [decision("F1", "patch-now", correction("GOVERNANCE.md"))],
+            [decision("F1", "patch-now", correction())],
         )
-        with self.assertRaises(ReviewContractError):
-            validate_adjudication_result(out_of_scope, adjudication_packet)
+        validated = validate_adjudication_result(no_path_limit, adjudication_packet)
+        self.assertEqual(
+            validated["dispositions"][0]["correction"], correction()
+        )
 
         forbidden_for_reject = adjudication_result(
             adjudication_packet,
@@ -295,60 +300,7 @@ class FindingAndDispositionTests(unittest.TestCase):
         self.assertTrue(validate_adjudication_result(result, adjudication_packet)["human_handoff"]["required"])
 
 
-class GovernanceBoundaryFixtureTests(unittest.TestCase):
-    def test_real_motivating_cases_keep_severity_separate_from_disposition(self):
-        review_packet = packet()
-        cases = [
-            finding(
-                "F-python313",
-                "Python 3.13+ concern is a bounded non-blocking improvement",
-                severity="low",
-            ),
-            finding(
-                "F-doc-example",
-                "python3.12 documentation example is already satisfied",
-                severity="high",
-            ),
-            finding(
-                "F-temp-mock",
-                "mocked temporary-environment path adds no defect beyond existing evidence",
-                severity="critical",
-            ),
-            finding(
-                "F-compat",
-                "old representation must remain compatible without an independent consumer",
-                severity="critical",
-            ),
-            finding(
-                "F-manual",
-                "manual visual observation should be added despite no contract requirement",
-                severity="critical",
-            ),
-            finding(
-                "F-unavailable",
-                "unavailable environment capability proves candidate failure",
-                severity="critical",
-            ),
-        ]
-        adjudication_packet = build_adjudication_packet(review_packet, cases)
-        result = adjudication_result(
-            adjudication_packet,
-            [
-                decision("F-python313", "patch-now", correction()),
-                decision("F-doc-example", "reject"),
-                decision("F-temp-mock", "reject"),
-                decision("F-compat", "reject"),
-                decision("F-manual", "reject"),
-                decision("F-unavailable", "reject"),
-            ],
-        )
-        validated = validate_adjudication_result(result, adjudication_packet)
-        self.assertEqual(validated["dispositions"][0]["disposition"], "patch-now")
-        self.assertEqual(
-            [item["disposition"] for item in validated["dispositions"][1:]],
-            ["reject"] * 5,
-        )
-
+class EvidenceTransportTests(unittest.TestCase):
     def test_packet_transport_fixture_keeps_source_items_separate(self):
         review_packet = packet()
         cases = [
@@ -359,7 +311,7 @@ class GovernanceBoundaryFixtureTests(unittest.TestCase):
             ),
             finding(
                 "F-python313",
-                "Python 3.13+ concern is a bounded same-outcome improvement",
+                "separately actionable Python 3.13+ concern is outside this issue",
                 severity="low",
             ),
             finding(
@@ -378,6 +330,12 @@ class GovernanceBoundaryFixtureTests(unittest.TestCase):
                 severity="critical",
             ),
         ]
+        cases[1]["contract_or_governance"] = (
+            "No accepted issue requirement or Governance rule is identified"
+        )
+        cases[2]["contract_or_governance"] = (
+            "No accepted issue requirement or Governance rule is identified"
+        )
         cases[0]["supporting_evidence"] = [
             "candidate.diff",
             "issue_contract.body",
@@ -428,8 +386,8 @@ class GovernanceBoundaryFixtureTests(unittest.TestCase):
                     disposition = "blocker"
                     value = correction()
                 elif "governance.0" in evidence_ids:
-                    disposition = "patch-now"
-                    value = correction()
+                    disposition = "follow-up"
+                    value = None
                 elif "scope.boundary" in evidence_ids:
                     disposition = "follow-up"
                     value = None
@@ -442,7 +400,7 @@ class GovernanceBoundaryFixtureTests(unittest.TestCase):
         result = run_adversarial_review(review_packet, session_runner=evidence_runner)
         self.assertEqual(
             [item["disposition"] for item in result["dispositions"]],
-            ["blocker", "patch-now", "follow-up", "reject", "reject"],
+            ["blocker", "follow-up", "follow-up", "reject", "reject"],
         )
         self.assertEqual([call[0] for call in calls], ["reviewer", "adjudicator"])
         self.assertNotIn("findings", result)
@@ -492,7 +450,7 @@ class ReviewLoopTests(unittest.TestCase):
         )
         self.assertEqual(transition["status"], "revalidate-and-rereview")
         self.assertEqual(transition["cycle"], 1)
-        self.assertEqual(transition["corrections"][0]["locations"], [INCLUDED[0]])
+        self.assertEqual(transition["corrections"][0], correction())
 
     def test_changed_candidate_without_correction_cannot_complete(self):
         review_packet = packet()

@@ -84,31 +84,17 @@ same work item through the ordinary completion lifecycle:
    `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT`
    with `--initial` for the first candidate, or `--state STATE` when continuing
    from the prior saved `revalidate-and-rereview` outcome artifact or its
-   validated continuation state. Persist every outcome separately. On that
-   transition,
-   consume its validated `implementation_payload` immediately in the next
-   implementation cycle; do not reconstruct accepted corrections from prose
-   or overwrite the only copy of that pending-action artifact. Omission or
-   mutation of continuation state fails closed. The command uses
-   two separate fresh `codex exec` invocations inside a fail-closed OS
-   allowlist: one reviewer and one adjudicator. The adjudicator receives only
-   the accepted contract, applicable Governance, candidate identity,
-   structured findings, and the actual source items cited by stable evidence
-   IDs. The implementation route receives only its validated dispositions,
-   correction-accepted flags, accepted current-pass corrections, and bounded
-   handoff summary, never raw reviewer findings or reviewer instructions.
-   Preserve validated adjudication history for the final Stage 3/completion
-   report; when no accepted blocker/patch-now correction or handoff remains,
-   proceed to completion.
-4. Apply only accepted `blocker` or `patch-now` corrections inside the accepted
-   scope. If repository content changes, the prior Stage 2 evidence and review
-   result are stale: rerun Stage 2, freeze the new candidate, and run both fresh
-   sessions again. An unchanged candidate preserves its Stage 2 evidence.
-   Apply the complete adjudication and handoff rule in Governance; use
-   supported dispositions before human handoff. Lifecycle hard stops remain
-   mechanical state-machine decisions, not adjudicator inferences; the lifecycle
-   remains bounded and stops after two correction cycles through that state
-   machine.
+   validated continuation state. Persist every outcome separately. The runner
+   uses separate fresh reviewer and adjudicator sessions. When it returns
+   `revalidate-and-rereview`, consume the validated `implementation_payload`
+   immediately; do not reconstruct remediation from prose or overwrite the
+   only copy of that pending-action artifact. Preserve validated adjudication
+   history for the final Stage 3/completion report.
+4. Continue according to the validated lifecycle outcome and the
+   [review obligations and lifecycle in Governance](../../GOVERNANCE.md#adversarial-review-and-adjudication).
+   For a changed candidate, rerun Stage 2, freeze the new candidate, and run
+   both fresh sessions. Stop for the human disposition identified by a
+   `human-handoff` outcome.
 5. Re-fetch and reconcile the governing issue immediately before the completion
    transition. If the contract changed, establish fresh Stage 2 evidence and a
    fresh review for the revised contract before proceeding.

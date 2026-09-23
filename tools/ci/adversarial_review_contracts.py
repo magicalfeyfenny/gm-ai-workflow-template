@@ -47,7 +47,6 @@ SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES = (
     "adjudication_correction_on_non_mutating_disposition",
     "adjudication_correction_required_missing",
     "adjudication_correction_acceptance_mismatch",
-    "adjudication_correction_scope",
 )
 MAX_CORRECTION_CYCLES = 2
 DISPOSITIONS = ("blocker", "patch-now", "follow-up", "reject")
@@ -138,10 +137,9 @@ REVIEW_RESULT_OUTPUT_SCHEMA = {
 _CORRECTION_OUTPUT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["summary", "locations", "validation"],
+    "required": ["summary", "validation"],
     "properties": {
         "summary": {"type": "string"},
-        "locations": {"type": "array", "items": {"type": "string"}},
         "validation": {"type": "array", "items": {"type": "string"}},
     },
 }
