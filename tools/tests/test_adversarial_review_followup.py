@@ -14,17 +14,14 @@ from tools.ci.adversarial_review import (
     ADJUDICATION_RESULT_SCHEMA,
     REVIEW_RESULT_SCHEMA,
     ReviewContractError,
-    build_adjudication_packet,
     build_review_packet,
     candidate_identity,
-    validate_adjudication_packet,
     validate_review_packet,
 )
 from tools.ci.adversarial_review_session import (
     ReviewSessionError,
     _run_fresh_codex_session,
     _write_sandbox_profile,
-    run_adversarial_review,
     run_review_lifecycle,
 )
 from tools.ci.adversarial_review_process import (
@@ -42,16 +39,7 @@ INCLUDED = [
     "tools/tests/test_adversarial_review.py",
 ]
 SEMANTIC_SOURCE = """
-Source-backed semantic evidence fixture:
-
-- The candidate omits a required invariant that the accepted contract requires.
-- The Python 3.13+ concern is a bounded same-outcome improvement within this issue.
-- The separately meaningful concern is outside the accepted outcome.
-- The python3.12 documentation example already uses a supported interpreter.
-- The mocked temporary-environment path adds no defect because unit and live integration evidence cover it.
-- The compatibility claim has no independent compatibility evidence and no concrete consumer.
-- Manual visual observation is not an accepted requirement.
-- The unavailable environment capability is not candidate failure because existing evidence passes.
+Synthetic source item for validating evidence transport and diagnostic output.
 """.strip()
 
 
@@ -125,7 +113,7 @@ def semantic_findings() -> list[dict]:
         finding("F-blocker", "candidate omits a required invariant", "high"),
         finding(
             "F-python313",
-            "Python 3.13+ concern is a bounded same-outcome improvement",
+            "separately actionable Python 3.13+ concern has no named obligation",
             "low",
         ),
         finding(
@@ -171,8 +159,6 @@ def review_result(packet: dict, findings: list[dict]) -> dict:
 def correction() -> dict:
     return {
         "summary": "Apply the bounded source-backed correction.",
-        "locations": [INCLUDED[0]],
-        "validation": ["rerun semantic fixtures"],
     }
 
 
@@ -195,90 +181,12 @@ def adjudication_result(packet: dict, decisions: list[dict]) -> dict:
     }
 
 
-FIXTURE_EXPECTED = [
-    "blocker",
-    "patch-now",
-    "follow-up",
-    "reject",
-    "reject",
-    "reject",
-    "reject",
-    "reject",
-]
-FIXTURE_SOURCE_ASSERTIONS = (
-    "accepted contract requires",
-    "bounded same-outcome improvement within this issue",
-    "outside the accepted outcome",
-    "already uses a supported interpreter",
-    "unit and live integration evidence cover it",
-    "no independent compatibility evidence and no concrete consumer",
-    "manual visual observation is not an accepted requirement",
-    "existing evidence passes",
-)
-
-
-def fixed_source_fixture_adjudication(packet: dict) -> dict:
-    source_text = "\n".join(item["text"] for item in packet["evidence"]["source_items"])
-    for assertion in FIXTURE_SOURCE_ASSERTIONS:
-        if assertion not in source_text.casefold():
-            raise AssertionError(f"semantic source fixture is missing: {assertion}")
-    corrections = [correction(), correction(), None, None, None, None, None, None]
-    decisions = [
-        decision(item["finding_id"], disposition, correction_value)
-        for item, disposition, correction_value in zip(
-            packet["findings"], FIXTURE_EXPECTED, corrections
-        )
-    ]
-    return adjudication_result(packet, decisions)
-
-
 class SourceBackedFixtureTests(unittest.TestCase):
     def test_contract_revision_binds_snapshot_contents(self):
         packet = semantic_packet()
         packet["issue_contract"]["body"] += "changed without re-acceptance\n"
         with self.assertRaisesRegex(ReviewContractError, "accepted snapshot"):
             validate_review_packet(packet)
-
-    def test_production_contract_path_covers_fixed_source_classifications(self):
-        review_packet = semantic_packet()
-        findings = semantic_findings()
-
-        def runner(role, payload, output_schema):
-            if role == "reviewer":
-                return review_result(payload, findings)
-            return fixed_source_fixture_adjudication(payload)
-
-        result = run_adversarial_review(review_packet, session_runner=runner)
-        self.assertEqual(
-            [item["disposition"] for item in result["dispositions"]],
-            [
-                "blocker",
-                "patch-now",
-                "follow-up",
-                "reject",
-                "reject",
-                "reject",
-                "reject",
-                "reject",
-            ],
-        )
-
-    def test_material_source_change_exposes_incorrect_fixture_classification(self):
-        review_packet = semantic_packet()
-        findings = semantic_findings()
-        original = build_adjudication_packet(review_packet, findings)
-        changed = json.loads(json.dumps(original))
-        original_item = original["evidence"]["source_items"][0]
-        changed_item = changed["evidence"]["source_items"][0]
-        self.assertEqual(original_item["evidence_id"], changed_item["evidence_id"])
-        changed_item["text"] = changed_item["text"].replace(
-            "bounded same-outcome improvement within this issue",
-            "outside the accepted outcome",
-        )
-        validate_adjudication_packet(changed)
-        fixed_source_fixture_adjudication(original)
-        with self.assertRaisesRegex(AssertionError, "semantic source fixture"):
-            fixed_source_fixture_adjudication(changed)
 
 
 class SandboxBoundaryTests(unittest.TestCase):

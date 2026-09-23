@@ -217,15 +217,11 @@ def _review_finding_shape(value: object) -> str | None:
 
 
 def _correction_shape(value: object) -> str | None:
-    code = _object_shape(value, ("summary", "locations", "validation"))
+    code = _object_shape(value, ("summary",))
     if code:
         return "output_schema" if code == "output_top_level_shape" else code
     assert isinstance(value, Mapping)
     if not isinstance(value["summary"], str) or not value["summary"].strip():
-        return "output_schema"
-    if not _string_list_shape(value["locations"]):
-        return "output_schema"
-    if not _string_list_shape(value["validation"]):
         return "output_schema"
     return None
 
@@ -305,7 +301,6 @@ def structured_output_failure_diagnostic(
     expected_ids = [finding["finding_id"] for finding in findings]
     if len(dispositions) != len(expected_ids):
         return "semantic", "adjudication_disposition_contract", "adjudication_disposition_count"
-    scope = packet["scope"]
     for index, disposition in enumerate(dispositions):
         code = _object_shape(disposition, _DISPOSITION_FIELDS)
         if code:
@@ -326,9 +321,6 @@ def structured_output_failure_diagnostic(
             code = _correction_shape(correction)
             if code:
                 return "shape", code, None
-            assert isinstance(correction, Mapping)
-            if set(correction["locations"]) - set(scope["included"]):
-                return "semantic", "adjudication_correction_contract", "adjudication_correction_scope"
         if decision in {"blocker", "patch-now"}:
             if correction is None and not (decision == "blocker" and handoff["required"]):
                 return "semantic", "adjudication_correction_contract", "adjudication_correction_required_missing"

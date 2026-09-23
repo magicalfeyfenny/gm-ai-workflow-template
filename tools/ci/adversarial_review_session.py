@@ -211,27 +211,28 @@ def _session_prompt(role: str, packet: Mapping[str, object]) -> str:
     )
     if role == "reviewer":
         instructions = (
-            "Act as the read-only adversarial reviewer. Examine only the supplied "
-            "packet against its accepted contract, governance, and exclusions. "
-            "Return JSON matching the output schema. Report evidence-backed "
-            "findings only; do not provide fixes, commands, implementation advice, "
-            "or conversational reasoning. supporting_evidence must contain only "
-            "stable evidence IDs from the packet's evidence_catalog."
+            "Act as the read-only adversarial reviewer. The accepted issue contract "
+            "and standing Governance in the packet are the only authorities. For "
+            "each proposed violation, use contract_or_governance to identify the "
+            "existing issue requirement or Governance rule and cite supporting "
+            "evidence. Apply the packet's review-obligation rules. Return JSON "
+            "matching the output schema. Do not provide fixes, commands, "
+            "implementation advice, or conversational reasoning. supporting_evidence "
+            "must contain only stable evidence IDs from the packet's evidence_catalog."
         )
     elif role == "adjudicator":
         instructions = (
             "Act as the independent read-only adjudicator. Use only the supplied "
             "contract, governance, candidate identity, source_items evidence, scope, "
             "and structured findings. Assign exactly one disposition to every finding. "
-            "Evaluate each reviewer claim against the actual source item text; a "
-            "reviewer paraphrase is not evidence. "
-            "Return JSON matching the output schema. Return current-pass corrections "
-            "only for supported blocker or patch-now decisions. Apply the supplied "
-            "Governance and review doctrine, and make a supported disposition "
-            "whenever reasonably possible. Do not infer lifecycle hard stops or "
-            "state absent from the packet; the repository-owned lifecycle state "
-            "machine enforces those mechanically. Set human_handoff only when "
-            "the supplied Governance rule requires it. Do not return raw findings "
+            "Apply the packet's review-obligation and lifecycle rules. Evaluate each "
+            "reviewer claim against the actual source item text; a reviewer paraphrase "
+            "is not evidence. A blocker or patch-now requires a supported violation "
+            "of a named accepted issue requirement or standing Governance rule; put "
+            "that authority in basis. Return JSON matching the output schema. Make a "
+            "supported disposition whenever reasonably possible. Do not infer "
+            "lifecycle hard stops or state absent from the packet; the repository-owned "
+            "state machine enforces those mechanically. Do not return raw findings "
             "as implementation instructions."
         )
     else:

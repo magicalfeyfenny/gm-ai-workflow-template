@@ -94,8 +94,6 @@ def finding(finding_id: str = "F-correction") -> dict:
 def correction() -> dict:
     return {
         "summary": "Apply the supported correction.",
-        "locations": [INCLUDED[0]],
-        "validation": ["rerun focused tests"],
     }
 
 

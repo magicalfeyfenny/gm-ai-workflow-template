@@ -155,17 +155,15 @@ class CodexAutomationTemplateTests(unittest.TestCase):
         )
         self.assertIn("tools/ci/run_repository_checks.py", prompt)
 
-    def test_scheduled_completion_uses_adjudicated_review_before_metadata(self):
-        """Keep raw findings out of implementation and preserve correction bounds."""
+    def test_scheduled_completion_routes_review_before_metadata(self):
+        """Keep the governed review command between Stage 2 and completion."""
         prompt = " ".join(
             (ROOT / "templates/codex/governed-change.txt")
             .read_text(encoding="utf-8").casefold().split()
         )
         ordered_stages = (
             "stage 2 whole-issue local evidence",
-            "freeze the exact candidate identity",
-            "two separate fresh `codex exec` invocations",
-            "never raw reviewer findings",
+            "adversarial_review_session.py run",
             "immediately before the completion transition",
             "fresh stage 3 exact-head hosted evidence",
         )
@@ -176,7 +174,10 @@ class CodexAutomationTemplateTests(unittest.TestCase):
                 self.assertGreaterEqual(position, 0)
                 positions.append(position)
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("after two correction cycles", prompt)
+        self.assertIn(
+            "governance.md#adversarial-review-and-adjudication",
+            prompt,
+        )
 
 
 if __name__ == "__main__":

@@ -19,8 +19,8 @@ except ImportError:  # pragma: no cover - direct script compatibility
     )
 
 
-CONTINUATION_STATE_SCHEMA = "adversarial-review-continuation:v2"
-IMPLEMENTATION_ACTION_SCHEMA = "adversarial-review-implementation-action:v1"
+CONTINUATION_STATE_SCHEMA = "adversarial-review-continuation:v4"
+IMPLEMENTATION_ACTION_SCHEMA = "adversarial-review-implementation-action:v3"
 MAX_ADJUDICATION_HISTORY_BYTES = 256 * 1024
 _IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
 _HISTORY_FIELDS = ("candidate_identity", "cycle", "dispositions", "correction_status")
@@ -39,7 +39,7 @@ _ACTION_FIELDS = (
     "corrections",
 )
 _ACTION_CORRECTION_FIELDS = ("finding_id", "disposition", "basis", "correction")
-_CORRECTION_FIELDS = ("summary", "locations", "validation")
+_CORRECTION_FIELDS = ("summary",)
 _HISTORY_STATUSES = (
     "action-pending",
     "next-cycle-adjudicated",
@@ -54,35 +54,13 @@ def _identity_snapshot(value: object, subject: str) -> dict[str, str]:
     return candidate_identity(value)
 
 
-def _path_list(value: object, subject: str) -> list[str]:
-    if not isinstance(value, list):
-        raise ReviewContractError(f"{subject} must be a list")
-    paths: list[str] = []
-    for item in value:
-        if not isinstance(item, str) or not item or item.startswith("/"):
-            raise ReviewContractError(f"{subject} contains an invalid repository path")
-        parts = item.split("/")
-        if ".." in parts or "" in parts or "\\" in item:
-            raise ReviewContractError(f"{subject} contains an invalid repository path")
-        paths.append(item)
-    return paths
-
-
 def _validated_correction(value: object, subject: str) -> dict[str, object]:
     if not isinstance(value, Mapping) or set(value) != set(_CORRECTION_FIELDS):
         raise ReviewContractError(f"{subject} must contain exactly the correction fields")
     summary = value.get("summary")
-    validation = value.get("validation")
     if not isinstance(summary, str) or not summary.strip():
         raise ReviewContractError(f"{subject}.summary must be a non-empty string")
-    if not isinstance(validation, list) or not validation or any(
-        not isinstance(item, str) or not item.strip() for item in validation
-    ):
-        raise ReviewContractError(f"{subject}.validation must be a non-empty string list")
-    locations = _path_list(value.get("locations"), f"{subject}.locations")
-    if not locations or len(locations) != len(set(locations)):
-        raise ReviewContractError(f"{subject}.locations must be non-empty and unique")
-    return {"summary": summary, "locations": locations, "validation": list(validation)}
+    return {"summary": summary}
 
 
 def history_entry(
@@ -294,7 +272,7 @@ def validate_pending_implementation_action(
     adjudication_history: list[dict[str, object]],
     issue_contract_revision: str,
     cycle: int,
-) -> tuple[dict[str, object], list[str]]:
+) -> dict[str, object]:
     if not isinstance(value, Mapping) or set(value) != set(_ACTION_FIELDS):
         raise ReviewContractError("continuation state implementation action is incomplete")
     if value.get("schema") != IMPLEMENTATION_ACTION_SCHEMA:
@@ -324,16 +302,13 @@ def validate_pending_implementation_action(
     ]
     if not expected or value.get("corrections") != expected:
         raise ReviewContractError("implementation action differs from validated adjudication")
-    locations = sorted(
-        {path for item in expected for path in item["correction"]["locations"]}
-    )
     return {
         "schema": IMPLEMENTATION_ACTION_SCHEMA,
         "candidate_identity": identity,
         "issue_contract_revision": revision,
         "correction_cycle": action_cycle,
         "corrections": expected,
-    }, locations
+    }
 
 
 def validate_implementation_payload(

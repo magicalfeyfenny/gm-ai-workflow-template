@@ -5,7 +5,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tools.ci.adversarial_review_contracts import SESSION_FAILURE_SCHEMA
+from tools.ci.adversarial_review_contracts import (
+    ADJUDICATION_RESULT_SCHEMA,
+    SESSION_FAILURE_SCHEMA,
+)
 from tools.ci.adversarial_review_process import ProviderHangError
 from tools.ci.adversarial_review_session import ReviewSessionError, run_review_lifecycle
 from tools.tests.test_adversarial_review_followup import (
@@ -207,7 +210,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         finding = semantic_findings()[0]
         reviewer_output = review_result(packet, [finding])
         adjudicator_output = {
-            "schema": "adversarial-adjudication-result:v2",
+            "schema": ADJUDICATION_RESULT_SCHEMA,
             "candidate_identity": reviewer_output["candidate_identity"],
             "dispositions": [],
             "human_handoff": {"required": False, "reason": None},
@@ -335,11 +338,9 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         packet = semantic_packet()
         finding_value = semantic_findings()[0]
         finding_id = finding_value["finding_id"]
-        outside_scope = correction()
-        outside_scope["locations"] = ["model-controlled-outside-scope"]
-        outside_scope["summary"] = "RAW_ADJUDICATOR_CORRECTION"
         acceptance_mismatch = decision(finding_id, "blocker", correction())
         acceptance_mismatch["correction_accepted"] = False
+        acceptance_mismatch["correction"]["summary"] = "RAW_ADJUDICATOR_CORRECTION"
         cases = {
             "adjudication_correction_on_non_mutating_disposition": decision(
                 finding_id, "reject", correction()
@@ -348,9 +349,6 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
                 finding_id, "blocker"
             ),
             "adjudication_correction_acceptance_mismatch": acceptance_mismatch,
-            "adjudication_correction_scope": decision(
-                finding_id, "blocker", outside_scope
-            ),
         }
 
         def run_case(adjudication_decision):
@@ -376,7 +374,32 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
                 self.assertEqual(diagnostic["diagnostic_detail_code"], expected_code)
                 encoded = json.dumps(result)
                 self.assertNotIn("RAW_ADJUDICATOR_CORRECTION", encoded)
-                self.assertNotIn("model-controlled-outside-scope", encoded)
+
+    def test_correction_cannot_supply_validation_instructions(self):
+        packet = semantic_packet()
+        finding_value = semantic_findings()[0]
+        unsupported_correction = {
+            **correction(),
+            "validation": ["RAW_CORRECTION_VALIDATION"],
+        }
+
+        def runner(role, payload, output_schema):
+            if role == "reviewer":
+                return review_result(payload, [finding_value])
+            return adjudication_result(
+                payload,
+                [decision(finding_value["finding_id"], "patch-now", unsupported_correction)],
+            )
+
+        result = run_review_lifecycle(
+            packet, initial=True, session_runner=runner
+        )
+        diagnostic = result["human_handoff"]["session_failure"]
+        self.assertEqual(diagnostic["role"], "adjudicator")
+        self.assertEqual(diagnostic["validation_stage"], "shape")
+        self.assertEqual(diagnostic["diagnostic_code"], "output_unsupported_field")
+        self.assertIsNone(diagnostic["diagnostic_detail_code"])
+        self.assertNotIn("RAW_CORRECTION_VALIDATION", json.dumps(result))
 
     def test_valid_reviewer_and_adjudicator_outputs_remain_accepted(self):
         packet = semantic_packet()

@@ -61,7 +61,6 @@ _CONTINUATION_STATE_FIELDS = (
     "candidate_history",
     "accepted_correction",
     "previous_candidate",
-    "authorized_locations",
     "issue_contract_revision",
     "adjudication_history",
     "pending_implementation_action",
@@ -105,27 +104,12 @@ def _candidate_snapshot(value: object, subject: str = "candidate") -> dict[str, 
     return {**identity, "diff": diff}
 
 
-def _path_list(value: object, subject: str) -> list[str]:
-    if not isinstance(value, list):
-        raise ReviewContractError(f"{subject} must be a list")
-    paths: list[str] = []
-    for item in value:
-        if not isinstance(item, str) or not item or item.startswith("/"):
-            raise ReviewContractError(f"{subject} contains an invalid repository path")
-        parts = item.split("/")
-        if ".." in parts or "" in parts or "\\" in item:
-            raise ReviewContractError(f"{subject} contains an invalid repository path")
-        paths.append(item)
-    return paths
-
-
 def _initial_lifecycle_state(issue_contract_revision: str) -> dict[str, object]:
     return {
         "cycle": 0,
         "candidate_history": [],
         "accepted_correction": False,
         "previous_candidate": None,
-        "authorized_locations": [],
         "issue_contract_revision": _digest(
             issue_contract_revision, "issue contract revision"
         ),
@@ -145,7 +129,6 @@ def _state_body(
     candidate_history: list[dict[str, str]],
     accepted_correction: bool,
     previous_candidate: dict[str, object],
-    authorized_locations: list[str],
     issue_contract_revision: str,
     adjudication_history: list[dict[str, object]],
     pending_implementation_action: dict[str, object],
@@ -156,7 +139,6 @@ def _state_body(
         "candidate_history": candidate_history,
         "accepted_correction": accepted_correction,
         "previous_candidate": previous_candidate,
-        "authorized_locations": authorized_locations,
         "issue_contract_revision": issue_contract_revision,
         "adjudication_history": adjudication_history,
         "pending_implementation_action": pending_implementation_action,
@@ -206,27 +188,17 @@ def validate_continuation_state(value: Mapping[str, object]) -> dict[str, object
         raise ReviewContractError(
             "continuation state previous candidate does not match its history"
         )
-    authorized = _path_list(
-        raw.get("authorized_locations"), "continuation state authorized_locations"
-    )
-    if authorized != sorted(set(authorized)):
-        raise ReviewContractError(
-            "continuation state authorized_locations must be unique and sorted"
-        )
     adjudication_history = validate_adjudication_history(
         raw.get("adjudication_history"), history, cycle
     )
-    pending_action, expected_locations = validate_pending_implementation_action(
+    pending_action = validate_pending_implementation_action(
         raw.get("pending_implementation_action"), adjudication_history, revision, cycle
     )
-    if authorized != expected_locations:
-        raise ReviewContractError("continuation state authorized locations differ from its action")
     body = _state_body(
         cycle=cycle,
         candidate_history=history,
         accepted_correction=True,
         previous_candidate=previous,
-        authorized_locations=authorized,
         issue_contract_revision=revision,
         adjudication_history=adjudication_history,
         pending_implementation_action=pending_action,
@@ -248,74 +220,12 @@ def _accepted_corrections(adjudication: Mapping[str, object]) -> list[dict[str, 
     return corrections
 
 
-def _diff_path(line: str, prefix: str) -> str | None:
-    value = line[len(prefix) :].rstrip("\r\n")
-    value = value.split("\t", 1)[0]
-    if value == "/dev/null":
-        return None
-    if value.startswith("a/") or value.startswith("b/"):
-        value = value[2:]
-    return value
-
-
-def _diff_sections(diff: str) -> dict[str, str]:
-    """Parse only the candidate's supplied patch; never consult live Git state."""
-    lines = diff.splitlines(keepends=True)
-    starts = [index for index, line in enumerate(lines) if line.startswith("diff --git ")]
-    if not starts:
-        raise ReviewContractError("candidate diff has no parseable file sections")
-    sections: dict[str, str] = {}
-    for position, start in enumerate(starts):
-        end = starts[position + 1] if position + 1 < len(starts) else len(lines)
-        section = "".join(lines[start:end])
-        header = lines[start].rstrip("\r\n")
-        pair = header[len("diff --git") :].strip().split(" b/", 1)
-        if len(pair) != 2 or not pair[0].startswith("a/") or not pair[1]:
-            raise ReviewContractError("candidate diff has an invalid file header")
-        paths = {pair[0][2:], pair[1]}
-        for line in lines[start:end]:
-            if line.startswith("--- "):
-                path = _diff_path(line, "--- ")
-                if path is not None:
-                    paths.add(path)
-            elif line.startswith("+++ "):
-                path = _diff_path(line, "+++ ")
-                if path is not None:
-                    paths.add(path)
-            elif line.startswith("rename from "):
-                paths.add(line[len("rename from ") :].rstrip("\r\n"))
-            elif line.startswith("rename to "):
-                paths.add(line[len("rename to ") :].rstrip("\r\n"))
-        for path in paths:
-            if not path or path.startswith("/") or "\\" in path:
-                raise ReviewContractError("candidate diff contains an invalid repository path")
-            if ".." in path.split("/"):
-                raise ReviewContractError("candidate diff contains a parent path")
-            sections[path] = sections.get(path, "") + section
-    return sections
-
-
-def changed_candidate_paths(
-    previous_candidate: Mapping[str, object], current_candidate: Mapping[str, object]
-) -> list[str]:
-    """Return paths whose supplied patch sections changed between candidates."""
-    previous = _candidate_snapshot(previous_candidate, "previous candidate")
-    current = _candidate_snapshot(current_candidate, "current candidate")
-    previous_sections = _diff_sections(previous["diff"])
-    current_sections = _diff_sections(current["diff"])
-    return sorted(
-        path
-        for path in set(previous_sections) | set(current_sections)
-        if previous_sections.get(path) != current_sections.get(path)
-    )
-
-
 def continuation_delta_reason(
     state: Mapping[str, object],
     current_candidate: Mapping[str, object],
     issue_contract_revision: str,
 ) -> str | None:
-    """Return a fail-closed reason when a candidate escapes accepted locations."""
+    """Require a changed, non-repeated candidate under the same issue revision."""
     continuation = validate_continuation_state(state)
     revision = _digest(issue_contract_revision, "issue contract revision")
     if continuation["issue_contract_revision"] != revision:
@@ -329,20 +239,6 @@ def continuation_delta_reason(
     }
     if _content_key(current) in history:
         return "candidate correction oscillated to an earlier identity"
-    try:
-        changed_paths = changed_candidate_paths(previous, current)
-    except ReviewContractError:
-        return "the candidate delta could not be determined safely"
-    if not changed_paths:
-        return "the continuation candidate changed identity without changing a repository path"
-    unauthorized = sorted(
-        set(changed_paths) - set(continuation["authorized_locations"])
-    )
-    if unauthorized:
-        return (
-            "the corrected candidate changes paths outside accepted correction locations: "
-            + ", ".join(unauthorized)
-        )
     return None
 
 
@@ -369,12 +265,6 @@ def build_continuation_state(
     history = [dict(item) for item in prior_history]
     if not history or _content_key(history[-1]) != _content_key(current_identity):
         history.append(current_identity)
-    locations: set[str] = set()
-    for correction in corrections:
-        correction_locations = correction.get("locations")
-        locations.update(
-            _path_list(correction_locations, "accepted correction locations")
-        )
     pending_action = implementation_action_body(
         current,
         adjudication,
@@ -386,7 +276,6 @@ def build_continuation_state(
         candidate_history=history,
         accepted_correction=True,
         previous_candidate=current,
-        authorized_locations=sorted(locations),
         issue_contract_revision=_digest(
             issue_contract_revision, "issue contract revision"
         ),
@@ -669,7 +558,7 @@ def review_lifecycle_decision(
         "implementation_payload": None,
         "adjudication_history": history,
         "requirements": [
-            "apply only the accepted corrections",
+            "address the adjudicated violation with a sufficient remedy",
             "establish a new exact candidate identity",
             "run fresh Stage 2 evidence",
             "run fresh reviewer and adjudicator sessions",
