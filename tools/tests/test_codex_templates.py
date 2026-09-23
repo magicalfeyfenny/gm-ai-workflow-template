@@ -163,7 +163,6 @@ class CodexAutomationTemplateTests(unittest.TestCase):
         )
         ordered_stages = (
             "stage 2 whole-issue local evidence",
-            "freeze the exact candidate identity",
             "adversarial_review_session.py run",
             "immediately before the completion transition",
             "fresh stage 3 exact-head hosted evidence",
