@@ -12,10 +12,13 @@ from tools.ci.adversarial_review import (
     build_adjudication_packet,
     build_review_packet,
     candidate_identity,
-    validate_review_result,
 )
 from tools.ci.adversarial_review_session import main, run_review_lifecycle
-from tools.ci.adversarial_review_state import recover_implementation_payload
+from tools.ci.adversarial_review_state import (
+    LIFECYCLE_ARTIFACT_SCHEMA,
+    lifecycle_artifact,
+    load_lifecycle_artifact,
+)
 
 
 REVISION = "220cc0114ced1c521c25b5f26d3ec0a597469afb50429b1699615497fce0f372"
@@ -85,25 +88,14 @@ def finding(finding_id: str = "F-correction") -> dict:
         "finding_id": finding_id,
         "severity": "medium",
         "defect_or_invariant": "supported current-pass correction",
-        "supporting_evidence": ["issue_contract.body"],
+        "supporting_evidence": ["issue_contract"],
         "contract_or_governance": "accepted contract",
         "affected_location": INCLUDED[0],
     }
 
 
 def correction() -> dict:
-    return {
-        "summary": "Apply the supported correction.",
-    }
-
-
-def adjudication_result(packet: dict, decisions: list[dict]) -> dict:
-    return {
-        "schema": ADJUDICATION_RESULT_SCHEMA,
-        "candidate_identity": packet["candidate_identity"],
-        "dispositions": decisions,
-        "human_handoff": {"required": False, "reason": None},
-    }
+    return {"summary": "Apply the supported correction."}
 
 
 def decision(finding_id: str, disposition: str, value: dict | None = None) -> dict:
@@ -116,15 +108,28 @@ def decision(finding_id: str, disposition: str, value: dict | None = None) -> di
     }
 
 
-class LifecycleOrchestrationTests(unittest.TestCase):
-    def runner(self, findings=None, decisions=None):
+def adjudication_result(packet: dict, decisions: list[dict]) -> dict:
+    return {
+        "schema": ADJUDICATION_RESULT_SCHEMA,
+        "issue_contract_revision": packet["issue_contract_revision"],
+        "candidate_identity": packet["candidate_identity"],
+        "dispositions": decisions,
+        "human_handoff": {"required": False, "reason": None},
+    }
+
+
+class LifecycleArtifactTests(unittest.TestCase):
+    def runner(self, findings=None, decisions=None, calls=None):
         findings = [] if findings is None else findings
         decisions = [] if decisions is None else decisions
 
         def run(role, payload, output_schema):
+            if calls is not None:
+                calls.append(role)
             if role == "reviewer":
                 return {
                     "schema": REVIEW_RESULT_SCHEMA,
+                    "issue_contract_revision": payload["issue_contract"]["revision"],
                     "candidate_identity": candidate_identity(payload["candidate"]),
                     "findings": findings,
                 }
@@ -132,149 +137,174 @@ class LifecycleOrchestrationTests(unittest.TestCase):
 
         return run
 
-    def test_production_orchestration_routes_correction_and_fresh_rereview(self):
-        original = make_packet()
-        stable = run_review_lifecycle(
-            original, initial=True, session_runner=self.runner()
-        )
-        self.assertEqual(stable["transition"]["status"], "complete")
-
-        correction_finding = finding()
-        first = run_review_lifecycle(
-            original,
+    def accepted_first_pass(self):
+        return run_review_lifecycle(
+            make_packet(),
             initial=True,
             session_runner=self.runner(
-                [correction_finding], [decision("F-correction", "patch-now", correction())]
+                [finding()], [decision("F-correction", "patch-now", correction())]
             ),
         )
-        self.assertEqual(first["transition"]["status"], "revalidate-and-rereview")
-        self.assertEqual(first["transition"]["next_cycle"], 1)
 
-        corrected = candidate(
-            head_sha="g" * 40, tree_sha="u" * 40, diff=DIFF + "corrected\n"
+    def test_result_is_the_only_continuation_artifact(self):
+        result = self.accepted_first_pass()
+        self.assertEqual(result["schema"], LIFECYCLE_ARTIFACT_SCHEMA)
+        self.assertEqual(result["status"], "revalidate-and-rereview")
+        self.assertEqual(result["cycle"], 1)
+        self.assertEqual(
+            set(result),
+            {
+                "schema",
+                "status",
+                "issue_contract_revision",
+                "cycle",
+                "candidate_identity",
+                "prior_candidate_identities",
+                "corrections",
+                "reason",
+                "session_failure",
+            },
         )
-        corrected_packet = make_packet(corrected)
-        final = run_review_lifecycle(
-            corrected_packet,
-            state=first["continuation_state"],
-            session_runner=self.runner(),
+        self.assertEqual(result["corrections"][0]["finding_id"], "F-correction")
+        self.assertEqual(result["corrections"][0]["correction"], correction())
+        for obsolete in (
+            "state_digest",
+            "transition",
+            "continuation_state",
+            "implementation_payload",
+            "adjudication_history",
+            "adjudication",
+            "human_handoff",
+        ):
+            self.assertNotIn(obsolete, result)
+        self.assertNotIn("defect_or_invariant", json.dumps(result))
+        self.assertEqual(load_lifecycle_artifact(json.loads(json.dumps(result))), result)
+
+    def test_saved_result_is_consumed_directly_by_the_next_cli_run(self):
+        first_packet = make_packet()
+        first_adjudication_packet = build_adjudication_packet(
+            first_packet, [finding("F-persisted")]
         )
-        self.assertEqual(final["transition"]["status"], "complete")
-
-    def test_cli_writes_deterministic_transition_and_stops_before_stale_sessions(self):
-        packet = make_packet()
-        adjudication_packet = build_adjudication_packet(packet, [])
-        result = adjudication_result(adjudication_packet, [])
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            packet_path = root / "packet.json"
-            state_path = root / "state.json"
-            output_path = root / "result.json"
-            packet_path.write_text(json.dumps(packet), encoding="utf-8")
-            state_path.write_text(
-                json.dumps({"issue_contract_revision": "b" * 64}), encoding="utf-8"
-            )
-            with patch(
-                "tools.ci.adversarial_review_session._run_adversarial_review_sessions"
-            ) as run_sessions:
-                run_sessions.return_value = (result, adjudication_packet)
-                exit_code = main(
-                    [
-                        "run",
-                        "--packet",
-                        str(packet_path),
-                        "--state",
-                        str(state_path),
-                        "--output",
-                        str(output_path),
-                    ]
-                )
-            self.assertEqual(exit_code, 2)
-            self.assertFalse(output_path.exists())
-        run_sessions.assert_not_called()
-
-    def test_saved_cli_outcome_recovers_the_bound_implementation_action(self):
-        packet = make_packet()
-        raw_finding = finding("F-persisted")
-        raw_finding["defect_or_invariant"] = "RAW_REVIEWER_PACKET_SECRET"
-        adjudication_packet = build_adjudication_packet(packet, [raw_finding])
-        result = adjudication_result(
-            adjudication_packet,
+        first_adjudication = adjudication_result(
+            first_adjudication_packet,
             [decision("F-persisted", "patch-now", correction())],
         )
+        corrected = candidate(
+            head_sha="g" * 40,
+            tree_sha="u" * 40,
+            diff=DIFF + "corrected\n",
+        )
+        corrected_packet = make_packet(corrected)
+        corrected_adjudication_packet = build_adjudication_packet(
+            corrected_packet, []
+        )
+        completed = adjudication_result(corrected_adjudication_packet, [])
+
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             packet_path = root / "packet.json"
-            output_path = root / "outcome.json"
-            packet_path.write_text(json.dumps(packet), encoding="utf-8")
+            output_path = root / "lifecycle.json"
+            packet_path.write_text(json.dumps(first_packet), encoding="utf-8")
             with patch(
-                "tools.ci.adversarial_review_session._run_adversarial_review_sessions"
-            ) as run_sessions:
-                run_sessions.return_value = (result, adjudication_packet)
-                exit_code = main(
-                    [
-                        "run",
-                        "--packet",
-                        str(packet_path),
-                        "--output",
-                        str(output_path),
-                        "--initial",
-                    ]
+                "tools.ci.adversarial_review_session._run_adversarial_review_sessions",
+                return_value=(first_adjudication, first_adjudication_packet),
+            ):
+                self.assertEqual(
+                    main(
+                        [
+                            "run",
+                            "--packet",
+                            str(packet_path),
+                            "--output",
+                            str(output_path),
+                            "--initial",
+                        ]
+                    ),
+                    3,
                 )
-            self.assertEqual(exit_code, 0)
-            saved = json.loads(output_path.read_text(encoding="utf-8"))
-            action = recover_implementation_payload(saved)
-            corrected = candidate(
-                head_sha="g" * 40,
-                tree_sha="u" * 40,
-                diff=DIFF + "accepted action consumed\n",
-            )
-            corrected_packet = make_packet(corrected)
-            corrected_packet_path = root / "corrected-packet.json"
-            corrected_output_path = root / "corrected-outcome.json"
-            corrected_packet_path.write_text(json.dumps(corrected_packet), encoding="utf-8")
-            final_adjudication_packet = build_adjudication_packet(corrected_packet, [])
-            with patch(
-                "tools.ci.adversarial_review_session._run_adversarial_review_sessions"
-            ) as run_sessions:
-                run_sessions.return_value = (
-                    adjudication_result(final_adjudication_packet, []),
-                    final_adjudication_packet,
-                )
-                final_exit_code = main(
-                    [
-                        "run",
-                        "--packet",
-                        str(corrected_packet_path),
-                        "--state",
-                        str(output_path),
-                        "--output",
-                        str(corrected_output_path),
-                    ]
-                )
-            final = json.loads(corrected_output_path.read_text(encoding="utf-8"))
-        self.assertEqual(action["corrections"][0]["finding_id"], "F-persisted")
-        self.assertEqual(action["issue_contract_revision"], REVISION)
-        self.assertNotIn("RAW_REVIEWER_PACKET_SECRET", json.dumps(saved))
-        self.assertEqual(saved["implementation_payload"], saved["transition"]["implementation_payload"])
-        self.assertEqual(final_exit_code, 0)
-        self.assertEqual(final["transition"]["status"], "complete")
-        self.assertEqual(final["adjudication_history"][0]["correction_status"], "next-cycle-adjudicated")
+            first = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(first["status"], "revalidate-and-rereview")
 
-    def test_reviewer_paraphrase_cannot_become_adjudicator_evidence(self):
-        packet = make_packet()
-        unsupported = {
-            "schema": REVIEW_RESULT_SCHEMA,
-            "candidate_identity": candidate_identity(packet["candidate"]),
-            "findings": [
-                {
-                    **finding("F-unsupported"),
-                    "supporting_evidence": ["reviewer.paraphrase"],
-                }
-            ],
-        }
-        with self.assertRaisesRegex(ReviewContractError, "unsupported evidence IDs"):
-            validate_review_result(unsupported, packet)
+            packet_path.write_text(json.dumps(corrected_packet), encoding="utf-8")
+            with patch(
+                "tools.ci.adversarial_review_session._run_adversarial_review_sessions",
+                return_value=(completed, corrected_adjudication_packet),
+            ):
+                self.assertEqual(
+                    main(
+                        [
+                            "run",
+                            "--packet",
+                            str(packet_path),
+                            "--state",
+                            str(output_path),
+                            "--output",
+                            str(output_path),
+                        ]
+                    ),
+                    0,
+                )
+            final = json.loads(output_path.read_text(encoding="utf-8"))
+        self.assertEqual(final["status"], "complete")
+        self.assertEqual(final["cycle"], 1)
+        self.assertEqual(final["prior_candidate_identities"][0], first["candidate_identity"])
+
+    def test_invalid_revision_and_repeated_candidates_stop_before_sessions(self):
+        first = self.accepted_first_pass()
+        wrong_revision = {**first, "issue_contract_revision": "f" * 64}
+        calls = []
+        stale = run_review_lifecycle(
+            make_packet(
+                candidate(
+                    head_sha="g" * 40,
+                    tree_sha="u" * 40,
+                    diff=DIFF + "corrected\n",
+                )
+            ),
+            state=wrong_revision,
+            session_runner=self.runner(calls=calls),
+        )
+        self.assertEqual(stale["status"], "human-handoff")
+        self.assertIn("issue contract revision", stale["reason"])
+        self.assertEqual(calls, [])
+
+        unchanged = run_review_lifecycle(
+            make_packet(), state=first, session_runner=self.runner(calls=calls)
+        )
+        self.assertEqual(unchanged["status"], "human-handoff")
+        self.assertIn("did not change", unchanged["reason"])
+        self.assertEqual(calls, [])
+
+    def test_accepted_issue_revision_cannot_be_replaced_by_state_edit(self):
+        first = self.accepted_first_pass()
+        mutated = {**first, "issue_contract_revision": "e" * 64}
+        corrected = candidate(
+            head_sha="g" * 40,
+            tree_sha="u" * 40,
+            diff=DIFF + "corrected\n",
+        )
+        calls = []
+        result = run_review_lifecycle(
+            make_packet(corrected),
+            state=mutated,
+            session_runner=self.runner(calls=calls),
+        )
+        self.assertEqual(result["status"], "human-handoff")
+        self.assertEqual(calls, [])
+        with self.assertRaises(ReviewContractError):
+            load_lifecycle_artifact({**first, "untrusted": "field"})
+
+    def test_handoff_reason_is_sanitized_and_bounded(self):
+        result = lifecycle_artifact(
+            status="human-handoff",
+            issue_contract_revision=REVISION,
+            cycle=0,
+            candidate_identity=candidate_identity(candidate()),
+            reason="failure\n" + "x" * 500,
+        )
+        self.assertLessEqual(len(result["reason"]), 320)
+        self.assertNotIn("\n", result["reason"])
+        self.assertTrue(result["reason"].startswith("failure"))
 
 
 if __name__ == "__main__":
