@@ -694,9 +694,9 @@ remain governed by the paths below.
 ## Adversarial review and adjudication
 
 After whole-issue Stage 2 evidence passes, freeze the exact candidate and its
-accepted issue-contract revision. Use the repository-owned review route and
-contracts to obtain independent findings and adjudication; review does not
-replace Stage 2 or Stage 3.
+accepted issue-contract revision. Use the governed review lifecycle to obtain
+independent findings and adjudication; review does not replace Stage 2 or Stage
+3.
 
 ### Review obligations
 
@@ -704,14 +704,15 @@ Only the accepted issue contract and standing Governance create obligations.
 Issue-specific obligations change only through an explicit issue revision.
 Candidate choices, tests, repository state, diagnostics, review history,
 findings, dispositions, and corrections are evidence or implementation state;
-they do not add requirements. Packet scope and paths provide context, not an
-independent authority or pathname boundary.
+they do not add requirements. Review scope and affected paths provide context,
+not independent authority or pathname boundaries.
 
 Every actionable `blocker` or `patch-now` finding must identify an existing
 accepted issue requirement or standing Governance rule that the current
-candidate violates and cite supporting evidence. The adjudicator checks that
-authority and violation against the supplied source. If no such obligation is
-identified or supported, the finding is not actionable. `follow-up` is for a
+candidate violates and cite supporting evidence. The adjudicator verifies the
+cited authority and violation against authoritative text and supporting
+evidence. If no such obligation is identified or supported, the finding is not
+actionable. `follow-up` is for a
 meaningful separately actionable concern; it is not an inventory of possible
 edge cases. Hypothetical hardening and unrelated diagnostic or robustness
 concerns do not drive current work unless an accepted obligation requires them.
@@ -729,35 +730,33 @@ accidental or obsolete behavior.
 
 ### Review lifecycle
 
-The reviewer and adjudicator use separate fresh read-only sessions and
-repository-owned evidence. The adjudicator assigns one disposition to each
-finding. `blocker` is a supported accepted-issue or Governance violation that
-must be corrected before completion. `patch-now` is a supported violation
-within the same outcome that warrants a current-pass correction but is not
-independently blocking. `follow-up` records a meaningful separate concern;
-`reject` covers unsupported, speculative, already-satisfied, or otherwise
-non-actionable findings. Only `blocker` and `patch-now` may return a
-current-pass correction. Raw reviewer findings are not implementation
-instructions. The implementation route receives only validated adjudication
-and any accepted remediation direction.
+The reviewer and adjudicator act in fresh, independent, read-only contexts.
+Adjudication receives supporting source evidence to assess reviewer claims;
+those claims are not authority or implementation instructions. The
+implementation route may act only on validated adjudication and accepted
+remediation.
 
-Use a supported disposition whenever possible. Human handoff is for an
-unresolved issue or authority ambiguity, required evidence that is missing or
-unusable for adjudication, provider/session failure, missing candidate
-identity, or a mechanical lifecycle stop. The repository-owned runner enforces
-candidate freshness, content changes, oscillation, and the two-cycle correction
-cap; prompts do not infer those states. A content change makes Stage 2 and the
-review result stale. Validate and review the new candidate against the original
-accepted obligations. Do not carry a prior correction forward as a new
-requirement.
+`blocker` is a supported accepted-issue or Governance violation that must be
+corrected before completion. `patch-now` is a supported violation within the
+same outcome that warrants a current correction but is not independently
+blocking. `follow-up` records a meaningful separate concern; `reject` covers
+unsupported, speculative, already-satisfied, or otherwise non-actionable
+findings. Only `blocker` and `patch-now` may direct remediation.
 
-Persist complete lifecycle outcomes and consume a validated
-`implementation_payload` immediately when the runner requests
-`revalidate-and-rereview`; do not reconstruct remediation from reviewer prose.
-When no actionable correction or handoff remains, re-fetch the governing issue
-immediately before the completion transition, then continue with completion
-metadata, Stage 3, and the applicable risk path. This review route does not add
-manual, visual, human-observation, or experiential validation.
+Correction cycling must be mechanically bounded. A correction describes a
+remedy; it does not create validation requirements. For a changed candidate,
+establish fresh applicable evidence under the same accepted issue and standing
+Governance, then obtain fresh review against those obligations. Do not carry a
+prior correction forward as a new requirement.
+
+Use a supported disposition whenever possible. Human handoff is for unresolved
+issue or authority ambiguity, or when required review or adjudication evidence
+is unavailable or unusable. A lifecycle stop also requires handoff rather than
+completion. When no actionable correction or handoff remains, re-fetch the
+governing issue immediately before the completion transition, then continue
+with completion metadata, Stage 3, and the applicable risk path. This review
+route does not add manual, visual, human-observation, or experiential
+validation.
 
 ## Milestone commits and draft publication
 

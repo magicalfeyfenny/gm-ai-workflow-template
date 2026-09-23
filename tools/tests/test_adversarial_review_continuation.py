@@ -51,11 +51,11 @@ class ContinuationStateTests(unittest.TestCase):
     def test_emitted_state_is_the_only_continuation_authority(self):
         first = self.accepted_first_pass()
         state = first["continuation_state"]
-        self.assertEqual(state["schema"], "adversarial-review-continuation:v3")
+        self.assertEqual(state["schema"], "adversarial-review-continuation:v4")
         self.assertTrue(state["accepted_correction"])
         self.assertEqual(state["cycle"], 1)
         self.assertNotIn("authorized_locations", state)
-        self.assertEqual(state["pending_implementation_action"]["schema"], "adversarial-review-implementation-action:v2")
+        self.assertEqual(state["pending_implementation_action"]["schema"], "adversarial-review-implementation-action:v3")
         self.assertNotIn("candidate_changed", state)
         self.assertNotIn("expected_candidate", state)
         self.assertNotIn("previous_candidates", state)
@@ -65,7 +65,15 @@ class ContinuationStateTests(unittest.TestCase):
         self.assertEqual(action["issue_contract_revision"], REVISION)
         self.assertEqual(action["correction_cycle"], 1)
         self.assertEqual(action["corrections"][0]["finding_id"], "F-correction")
+        self.assertEqual(action["corrections"][0]["correction"], correction())
+        self.assertEqual(
+            set(action["corrections"][0]["correction"]), {"summary"}
+        )
         self.assertEqual(state["pending_implementation_action"]["corrections"], action["corrections"])
+        self.assertEqual(
+            state["adjudication_history"][0]["dispositions"][0]["correction"],
+            correction(),
+        )
         self.assertEqual(state["adjudication_history"][0]["correction_status"], "action-pending")
         self.assertNotIn("defect_or_invariant", json.dumps(state))
 
@@ -91,9 +99,23 @@ class ContinuationStateTests(unittest.TestCase):
         tampered_payload["implementation_payload"]["corrections"][0]["basis"] = "changed"
         tampered_state = copy.deepcopy(first)
         tampered_state["continuation_state"]["issue_contract_revision"] = "f" * 64
+        obsolete_validation = copy.deepcopy(first)
+        obsolete_validation["implementation_payload"]["corrections"][0][
+            "correction"
+        ]["validation"] = ["stale instruction"]
+        obsolete_history = copy.deepcopy(first)
+        obsolete_history["continuation_state"]["adjudication_history"][0][
+            "dispositions"
+        ][0]["correction"]["validation"] = ["stale instruction"]
         wrong_candidate = copy.deepcopy(first)
         wrong_candidate["candidate_identity"]["head_sha"] = "z" * 40
-        for outcome in (tampered_payload, tampered_state, wrong_candidate):
+        for outcome in (
+            tampered_payload,
+            tampered_state,
+            obsolete_validation,
+            obsolete_history,
+            wrong_candidate,
+        ):
             with self.subTest(outcome=outcome):
                 with self.assertRaises(ReviewContractError):
                     recover_implementation_payload(outcome)

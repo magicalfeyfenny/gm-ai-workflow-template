@@ -10,7 +10,7 @@ class ReviewContractError(ValueError):
 REVIEW_PACKET_SCHEMA = "adversarial-review-packet:v2"
 REVIEW_RESULT_SCHEMA = "adversarial-review-result:v2"
 ADJUDICATION_PACKET_SCHEMA = "adversarial-adjudication-packet:v2"
-ADJUDICATION_RESULT_SCHEMA = "adversarial-adjudication-result:v2"
+ADJUDICATION_RESULT_SCHEMA = "adversarial-adjudication-result:v3"
 SESSION_FAILURE_SCHEMA = "adversarial-review-session-failure:v3"
 SESSION_FAILURE_CLASSES = (
     "startup",
@@ -137,10 +137,9 @@ REVIEW_RESULT_OUTPUT_SCHEMA = {
 _CORRECTION_OUTPUT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["summary", "validation"],
+    "required": ["summary"],
     "properties": {
         "summary": {"type": "string"},
-        "validation": {"type": "array", "items": {"type": "string"}},
     },
 }
 

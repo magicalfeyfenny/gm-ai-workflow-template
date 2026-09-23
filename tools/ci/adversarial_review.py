@@ -666,10 +666,9 @@ def validate_adjudication_packet(packet: Mapping[str, object]) -> dict:
 
 def _correction(value: object, subject: str) -> dict:
     raw = _mapping(value, subject)
-    _keys(raw, ("summary", "validation"), ("summary", "validation"), subject)
+    _keys(raw, ("summary",), ("summary",), subject)
     return {
         "summary": _string(raw["summary"], f"{subject}.summary"),
-        "validation": _string_list(raw["validation"], f"{subject}.validation"),
     }
 
 

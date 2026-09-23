@@ -136,10 +136,7 @@ def review_result(review_packet: dict, findings: list[dict]) -> dict:
 
 
 def correction() -> dict:
-    return {
-        "summary": "Apply the supported current-pass correction.",
-        "validation": ["rerun the focused semantic tests"],
-    }
+    return {"summary": "Apply the supported current-pass correction."}
 
 
 def adjudication_result(
@@ -731,7 +728,7 @@ else
         reviewer_record="${BASH_REMATCH[1]}"
     fi
     record="$record;reviewer=$reviewer_record"
-    printf '%s\n' '{"schema":"adversarial-adjudication-result:v2","candidate_identity":IDENTITY_JSON,"dispositions":[{"finding_id":"isolation-observation","disposition":"reject","basis":"fixture observation is not an implementation finding","correction":null,"correction_accepted":false}],"human_handoff":{"required":true,"reason":"'"$record"'"}}' > "$output"
+    printf '%s\n' '{"schema":"adversarial-adjudication-result:v3","candidate_identity":IDENTITY_JSON,"dispositions":[{"finding_id":"isolation-observation","disposition":"reject","basis":"fixture observation is not an implementation finding","correction":null,"correction_accepted":false}],"human_handoff":{"required":true,"reason":"'"$record"'"}}' > "$output"
 fi
 """
             script = script.replace("EXTERNAL_SENTINEL", str(external_sentinel))

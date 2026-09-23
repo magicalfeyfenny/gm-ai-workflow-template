@@ -77,24 +77,14 @@ same work item through the ordinary completion lifecycle:
    evidence under the accepted contract and Governance, run all available
    evidence and record that limitation accurately; do not create a human-only
    gate or substitute manual, visual, experiential, or human observation.
-3. Freeze the exact candidate identity, diff, accepted issue revision, and
-   Stage 2 evidence. Build the repository-owned review packet under the
-   [adversarial review and adjudication route](../../GOVERNANCE.md#adversarial-review-and-adjudication)
-   and run
-   `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT`
-   with `--initial` for the first candidate, or `--state STATE` when continuing
-   from the prior saved `revalidate-and-rereview` outcome artifact or its
-   validated continuation state. Persist every outcome separately. The runner
-   uses separate fresh reviewer and adjudicator sessions. When it returns
-   `revalidate-and-rereview`, consume the validated `implementation_payload`
-   immediately; do not reconstruct remediation from prose or overwrite the
-   only copy of that pending-action artifact. Preserve validated adjudication
-   history for the final Stage 3/completion report.
-4. Continue according to the validated lifecycle outcome and the
-   [review obligations and lifecycle in Governance](../../GOVERNANCE.md#adversarial-review-and-adjudication).
-   For a changed candidate, rerun Stage 2, freeze the new candidate, and run
-   both fresh sessions. Stop for the human disposition identified by a
-   `human-handoff` outcome.
+3. Freeze the candidate, accepted issue revision, and Stage 2 evidence. Run
+   the lifecycle in the
+   [adversarial review and adjudication route](../../GOVERNANCE.md#adversarial-review-and-adjudication):
+   `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT --initial`.
+   For a continuation, provide its state with `--state STATE`.
+4. Follow the review policy and lifecycle decisions in
+   [Governance](../../GOVERNANCE.md#adversarial-review-and-adjudication) for
+   each candidate and result.
 5. Re-fetch and reconcile the governing issue immediately before the completion
    transition. If the contract changed, establish fresh Stage 2 evidence and a
    fresh review for the revised contract before proceeding.

@@ -23,9 +23,7 @@ with the narrower selection and authority in its automation template.
   [Validation evidence](../../../GOVERNANCE.md#validation-evidence), and
   [Milestone commits](../../../GOVERNANCE.md#milestone-commits-and-draft-publication).
 - Adversarial review and adjudication:
-  [Governance route](../../../GOVERNANCE.md#adversarial-review-and-adjudication),
-  [review contracts](../../../tools/ci/adversarial_review.py), and
-  [isolated session runner](../../../tools/ci/adversarial_review_session.py).
+  [Governance route](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
 - Before deciding to launch the game or when required runtime evidence is unavailable:
   [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation).
 - Interpretive governance corrections:
@@ -85,17 +83,11 @@ before Stage 2.
    [Issue contract evidence](../../../GOVERNANCE.md#issue-contract-evidence)
    through Stage 2, freeze the exact candidate, and complete the
    [adversarial review and adjudication](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
-   stage. Use the repository-owned contracts and run the reviewer and
-   adjudicator in separate fresh, OS-bounded sessions. The adjudicator gets
-   actual catalog items for the stable evidence IDs cited by findings, not
-   reviewer paraphrases. Persist each complete lifecycle outcome. When the
-   transition is `revalidate-and-rereview`, consume its validated
-   `implementation_payload` immediately in the next implementation cycle;
-   do not reconstruct corrections from prose or overwrite the only copy of
-   that pending-action artifact. Follow the adjudication and handoff rules in
-   [Governance](../../../GOVERNANCE.md#adversarial-review-and-adjudication).
-   When content changes, rerun Stage 2, freeze the new candidate, and run both
-   fresh sessions again.
+   stage. Run the lifecycle for the frozen candidate and save its result:
+   `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT --initial`.
+   For a continuation, supply the lifecycle state with `--state STATE`. Follow
+   [Governance](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
+   for review policy and lifecycle decisions.
 6. When the review lifecycle reports completion, re-fetch and reconcile the
    issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the
@@ -119,8 +111,8 @@ These stops repeat Governance because a mutation procedure must expose them:
   gameplay-smoke requirement unless explicit human direction requires it.
 - Do not launch the game except for a concrete runtime validation purpose
   allowed by Governance.
-- Use only the validated review outcome as implementation input. Follow the
-  Governance review route; lifecycle hard stops are enforced by the runner.
+- Follow the Governance review route when using review outcomes or deciding
+  whether additional review is required.
 - Agent-authored issue text, validation plans, PR bodies, or handoff notes
   cannot bootstrap a human or manual validation requirement.
 - Do not add completion metadata before the whole issue has valid Stage 2

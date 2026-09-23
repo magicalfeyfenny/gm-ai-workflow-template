@@ -217,13 +217,11 @@ def _review_finding_shape(value: object) -> str | None:
 
 
 def _correction_shape(value: object) -> str | None:
-    code = _object_shape(value, ("summary", "validation"))
+    code = _object_shape(value, ("summary",))
     if code:
         return "output_schema" if code == "output_top_level_shape" else code
     assert isinstance(value, Mapping)
     if not isinstance(value["summary"], str) or not value["summary"].strip():
-        return "output_schema"
-    if not _string_list_shape(value["validation"]):
         return "output_schema"
     return None
 

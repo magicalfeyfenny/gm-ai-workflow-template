@@ -19,8 +19,8 @@ except ImportError:  # pragma: no cover - direct script compatibility
     )
 
 
-CONTINUATION_STATE_SCHEMA = "adversarial-review-continuation:v3"
-IMPLEMENTATION_ACTION_SCHEMA = "adversarial-review-implementation-action:v2"
+CONTINUATION_STATE_SCHEMA = "adversarial-review-continuation:v4"
+IMPLEMENTATION_ACTION_SCHEMA = "adversarial-review-implementation-action:v3"
 MAX_ADJUDICATION_HISTORY_BYTES = 256 * 1024
 _IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
 _HISTORY_FIELDS = ("candidate_identity", "cycle", "dispositions", "correction_status")
@@ -39,7 +39,7 @@ _ACTION_FIELDS = (
     "corrections",
 )
 _ACTION_CORRECTION_FIELDS = ("finding_id", "disposition", "basis", "correction")
-_CORRECTION_FIELDS = ("summary", "validation")
+_CORRECTION_FIELDS = ("summary",)
 _HISTORY_STATUSES = (
     "action-pending",
     "next-cycle-adjudicated",
@@ -58,14 +58,9 @@ def _validated_correction(value: object, subject: str) -> dict[str, object]:
     if not isinstance(value, Mapping) or set(value) != set(_CORRECTION_FIELDS):
         raise ReviewContractError(f"{subject} must contain exactly the correction fields")
     summary = value.get("summary")
-    validation = value.get("validation")
     if not isinstance(summary, str) or not summary.strip():
         raise ReviewContractError(f"{subject}.summary must be a non-empty string")
-    if not isinstance(validation, list) or not validation or any(
-        not isinstance(item, str) or not item.strip() for item in validation
-    ):
-        raise ReviewContractError(f"{subject}.validation must be a non-empty string list")
-    return {"summary": summary, "validation": list(validation)}
+    return {"summary": summary}
 
 
 def history_entry(

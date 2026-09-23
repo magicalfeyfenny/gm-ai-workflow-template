@@ -411,16 +411,6 @@ class GovernanceRoutingTests(unittest.TestCase):
                     governance_fragments(source),
                 )
 
-        skill_targets = {
-            target for target, _ in local_destinations(
-                ROOT / ".agents/skills/governed-change/SKILL.md"
-            )
-        }
-        self.assertTrue({
-            (ROOT / "tools/ci/adversarial_review.py").resolve(),
-            (ROOT / "tools/ci/adversarial_review_session.py").resolve(),
-        }.issubset(skill_targets))
-
     def test_review_obligation_policy_has_one_authoritative_route(self):
         """Route review policy to Governance, not copied policy text."""
         governance = ROOT / "GOVERNANCE.md"

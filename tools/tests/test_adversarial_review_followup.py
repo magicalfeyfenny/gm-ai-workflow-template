@@ -159,7 +159,6 @@ def review_result(packet: dict, findings: list[dict]) -> dict:
 def correction() -> dict:
     return {
         "summary": "Apply the bounded source-backed correction.",
-        "validation": ["rerun semantic fixtures"],
     }
 
 
