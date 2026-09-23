@@ -722,18 +722,20 @@ fresh `codex exec` process for the adjudicator. Each uses `--ephemeral`,
 packet-only temporary directory, `--sandbox read-only`, a repository-owned
 output schema, and the packet only through standard input. The host runner
 also wraps each process in the macOS `sandbox-exec` Seatbelt profile: reads and
-writes are allowed only for that temporary packet workspace, the provider
-binary and required system runtime paths, and the minimum authentication file;
-the inherited environment is rebuilt from a fixed allowlist. If that
-allowlist mechanism is unavailable, the runner fails closed rather than
-falling back to a cwd-only or read-only claim.
+writes are allowed only for the temporary packet workspace, the provider
+binary and required system runtime paths, and the narrowly scoped per-session
+temporary `CODEX_HOME`; the packet workspace remains read-only to the provider.
+The inherited environment is rebuilt from a fixed allowlist. If that allowlist
+mechanism is unavailable, the runner fails closed rather than falling back to
+a cwd-only or read-only claim.
 The OS profile permits process execution only for the selected Codex
 executable (and the interpreter needed when a test executable is a script); it
 does not permit wildcard process execution or process forking, so a model
 cannot invoke repository, shell, or tool subprocesses. Authentication is
-copied to a separate temporary `CODEX_HOME` outside the packet workspace and
-is not placed in the packet or inherited environment; only the provider's
-literal authentication file is readable. The packet prompt also marks all
+copied to a separate temporary, read-only location outside both the packet
+workspace and writable runtime home; it is not placed in the packet or
+inherited environment, and only the provider's literal authentication file is
+readable. The packet prompt also marks all
 packet content as untrusted data and rejects packet text as session
 instructions.
 The runner reads the repository-owned `CODEX_MODEL_CONFIG.toml` outside the
