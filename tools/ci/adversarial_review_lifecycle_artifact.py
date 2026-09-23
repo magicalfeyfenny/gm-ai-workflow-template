@@ -6,12 +6,16 @@ from collections.abc import Mapping
 
 try:
     from .adversarial_review import DISPOSITIONS, ReviewContractError, _digest, candidate_identity
+    from .adversarial_review_contracts import ADJUDICATION_RESULT_SCHEMA
 except ImportError:  # pragma: no cover - direct script compatibility
     from adversarial_review import (  # type: ignore[no-redef]
         DISPOSITIONS,
         ReviewContractError,
         _digest,
         candidate_identity,
+    )
+    from adversarial_review_contracts import (  # type: ignore[no-redef]
+        ADJUDICATION_RESULT_SCHEMA,
     )
 
 
@@ -129,6 +133,9 @@ def history_at_handoff(
     cycle: int,
 ) -> list[dict[str, object]]:
     history = [dict(item) for item in lifecycle["adjudication_history"]]
+    for item in history:
+        if item["correction_status"] == "action-pending":
+            item["correction_status"] = "next-cycle-adjudicated"
     history.append(history_entry(candidate, adjudication, cycle, "human-handoff"))
     if history_size(history) > MAX_ADJUDICATION_HISTORY_BYTES:
         raise ReviewContractError("adjudication history exceeds its size bound")
@@ -356,6 +363,45 @@ def validate_implementation_payload(
     return expected
 
 
+def _validated_outcome_adjudication_entry(
+    outcome: Mapping[str, object], action: Mapping[str, object]
+) -> dict[str, object]:
+    """Use the separately retained validated adjudication as the action source."""
+    adjudication = outcome.get("adjudication")
+    expected_fields = {"schema", "candidate_identity", "dispositions", "human_handoff"}
+    if not isinstance(adjudication, Mapping) or set(adjudication) != expected_fields:
+        raise ReviewContractError("lifecycle outcome is missing its validated adjudication")
+    if adjudication.get("schema") != ADJUDICATION_RESULT_SCHEMA:
+        raise ReviewContractError("lifecycle outcome adjudication schema is unsupported")
+    identity = _identity_snapshot(
+        adjudication.get("candidate_identity"),
+        "lifecycle outcome adjudication candidate_identity",
+    )
+    if identity != action.get("candidate_identity"):
+        raise ReviewContractError("lifecycle outcome adjudication targets a different candidate")
+    handoff = adjudication.get("human_handoff")
+    if (
+        not isinstance(handoff, Mapping)
+        or set(handoff) != {"required", "reason"}
+        or handoff.get("required") is not False
+        or handoff.get("reason") is not None
+    ):
+        raise ReviewContractError("lifecycle outcome adjudication is not an actionable result")
+    correction_cycle = action.get("correction_cycle")
+    if not isinstance(correction_cycle, int) or isinstance(correction_cycle, bool):
+        raise ReviewContractError("implementation action correction cycle is invalid")
+    try:
+        entry = history_entry(
+            identity,
+            adjudication,
+            correction_cycle - 1,
+            "action-pending",
+        )
+    except (KeyError, TypeError) as exc:
+        raise ReviewContractError("lifecycle outcome adjudication is incomplete") from exc
+    return validate_adjudication_history([entry], [identity], cycle=1)[0]
+
+
 def recover_implementation_payload(outcome: Mapping[str, object]) -> dict[str, object]:
     """Extract a validated action from a saved lifecycle outcome artifact."""
     if (
@@ -373,6 +419,16 @@ def recover_implementation_payload(outcome: Mapping[str, object]) -> dict[str, o
     if not isinstance(payload, Mapping):
         raise ReviewContractError("lifecycle outcome is missing its implementation payload")
     action = validate_implementation_payload(payload, state)
+    source_entry = _validated_outcome_adjudication_entry(outcome, action)
+    state_history = state.get("adjudication_history")
+    if (
+        not isinstance(state_history, list)
+        or not state_history
+        or state_history[-1] != source_entry
+    ):
+        raise ReviewContractError(
+            "implementation action differs from the separately validated adjudication"
+        )
     if (
         outcome.get("candidate_identity") != action["candidate_identity"]
         or transition.get("next_cycle") != action["correction_cycle"]
