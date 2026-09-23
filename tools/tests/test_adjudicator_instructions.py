@@ -5,55 +5,36 @@ from tools.ci.adversarial_review_session import _session_prompt
 
 
 ROOT = Path(__file__).resolve().parents[2]
+GOVERNANCE_ROUTE = "governance.md#adversarial-review-and-adjudication"
 GOVERNED_SURFACES = (
-    ROOT / "GOVERNANCE.md",
     ROOT / ".agents/skills/governed-change/SKILL.md",
+    ROOT / ".github/pull_request_template.md",
     ROOT / "templates/codex/governed-change.txt",
 )
 
 
 class AdjudicatorInstructionTests(unittest.TestCase):
-    def test_adjudicator_applies_governance_without_inferring_lifecycle_state(self):
-        prompt = _session_prompt("adjudicator", {}).casefold()
-        for phrase in (
-            "apply the supplied governance and review doctrine",
-            "supported disposition whenever reasonably possible",
-            "do not infer lifecycle hard stops",
-            "repository-owned lifecycle state machine",
-            "set human_handoff only when",
-        ):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, prompt)
-        for lifecycle_term in ("oscillation", "correction cap", "stage 2 freshness"):
-            with self.subTest(lifecycle_term=lifecycle_term):
-                self.assertNotIn(lifecycle_term, prompt)
+    def test_review_roles_name_existing_authority_and_evidence(self):
+        reviewer = _session_prompt("reviewer", {}).casefold()
+        adjudicator = _session_prompt("adjudicator", {}).casefold()
 
-    def test_governance_owns_the_complete_decision_boundary(self):
-        normalized = " ".join(
-            (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8").casefold().split()
+        self.assertIn("existing issue requirement or governance rule", reviewer)
+        self.assertIn("contract_or_governance", reviewer)
+        self.assertIn("stable evidence ids", reviewer)
+        self.assertIn(
+            "named accepted issue requirement or standing governance rule",
+            adjudicator,
         )
-        for phrase in (
-            "authority-exceeding reviewer findings normally",
-            "outside the current scope normally",
-            "weak, contradictory, or non-supporting evidence normally",
-            "structurally invalid, missing, or unusable required evidence",
-            "scope or authority ambiguity",
-            "lifecycle state machine enforces those hard stops mechanically",
-        ):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, normalized)
+        self.assertIn("put that authority in basis", adjudicator)
+        self.assertIn("repository-owned state machine", adjudicator)
 
-    def test_secondary_surfaces_reference_governance_rule(self):
-        for surface in GOVERNED_SURFACES[1:]:
-            normalized = " ".join(
-                surface.read_text(encoding="utf-8").casefold().split()
-            )
+    def test_secondary_surfaces_route_review_policy_to_governance(self):
+        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8").casefold()
+        self.assertIn("## adversarial review and adjudication", governance)
+        for surface in GOVERNED_SURFACES:
+            text = surface.read_text(encoding="utf-8").casefold()
             with self.subTest(surface=surface):
-                self.assertIn(
-                    "complete adjudication and handoff rule in governance",
-                    normalized,
-                )
-                self.assertIn("mechanical state-machine decisions", normalized)
+                self.assertIn(GOVERNANCE_ROUTE, text)
 
 
 if __name__ == "__main__":
