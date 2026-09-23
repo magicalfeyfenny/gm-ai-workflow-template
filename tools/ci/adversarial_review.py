@@ -32,6 +32,9 @@ try:
         REVIEW_PACKET_SCHEMA,
         REVIEW_RESULT_OUTPUT_SCHEMA,
         REVIEW_RESULT_SCHEMA,
+        SESSION_FAILURE_CLASSES,
+        SESSION_FAILURE_OUTPUT_SCHEMA,
+        SESSION_FAILURE_SCHEMA,
         ReviewContractError,
         _IDENTITY_FIELDS,
     )
@@ -51,6 +54,9 @@ except ImportError:  # pragma: no cover - direct script compatibility
         REVIEW_PACKET_SCHEMA,
         REVIEW_RESULT_OUTPUT_SCHEMA,
         REVIEW_RESULT_SCHEMA,
+        SESSION_FAILURE_CLASSES,
+        SESSION_FAILURE_OUTPUT_SCHEMA,
+        SESSION_FAILURE_SCHEMA,
         ReviewContractError,
         _IDENTITY_FIELDS,
     )

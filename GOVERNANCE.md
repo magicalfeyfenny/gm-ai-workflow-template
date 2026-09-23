@@ -722,18 +722,20 @@ fresh `codex exec` process for the adjudicator. Each uses `--ephemeral`,
 packet-only temporary directory, `--sandbox read-only`, a repository-owned
 output schema, and the packet only through standard input. The host runner
 also wraps each process in the macOS `sandbox-exec` Seatbelt profile: reads and
-writes are allowed only for that temporary packet workspace, the provider
-binary and required system runtime paths, and the minimum authentication file;
-the inherited environment is rebuilt from a fixed allowlist. If that
-allowlist mechanism is unavailable, the runner fails closed rather than
-falling back to a cwd-only or read-only claim.
+writes are allowed only for the temporary packet workspace, the provider
+binary and required system runtime paths, and the narrowly scoped per-session
+temporary `CODEX_HOME`; the packet workspace remains read-only to the provider.
+The inherited environment is rebuilt from a fixed allowlist. If that allowlist
+mechanism is unavailable, the runner fails closed rather than falling back to
+a cwd-only or read-only claim.
 The OS profile permits process execution only for the selected Codex
 executable (and the interpreter needed when a test executable is a script); it
 does not permit wildcard process execution or process forking, so a model
 cannot invoke repository, shell, or tool subprocesses. Authentication is
-copied to a separate temporary `CODEX_HOME` outside the packet workspace and
-is not placed in the packet or inherited environment; only the provider's
-literal authentication file is readable. The packet prompt also marks all
+copied to a separate temporary, read-only location outside both the packet
+workspace and writable runtime home; it is not placed in the packet or
+inherited environment, and only the provider's literal authentication file is
+readable. The packet prompt also marks all
 packet content as untrusted data and rejects packet text as session
 instructions.
 The runner reads the repository-owned `CODEX_MODEL_CONFIG.toml` outside the
@@ -829,24 +831,43 @@ are not forwarded to the implementation route.
 The production `adversarial_review_session.py run` command consumes
 `--initial` for the first candidate or a complete, validated repository-defined
 continuation state JSON document for a later candidate; omission, mutation,
-incompleteness, or legacy lifecycle fields fail closed. It always invokes the
-repository-owned state transition. It mechanically returns `complete`,
-`revalidate-and-rereview`, `revalidate`, or `human-handoff`; it does not leave
-cycle, freshness, candidate-change, or oscillation decisions to prompt prose.
-The validated continuation state carries the prior candidate snapshot,
-candidate history, cycle, issue-contract revision, and the union of accepted
-current-pass correction locations. Before a continuation session launches, the
-route compares the supplied candidate patch sections with the prior snapshot
-and hands off any path outside that union; it never re-attests the delta through
+incompleteness, or legacy lifecycle fields fail closed. Each complete outcome
+is persisted lifecycle state, not disposable provider output. When the command
+returns `revalidate-and-rereview`, its outcome must include a recoverable
+`implementation_payload` bound to candidate identity, issue-contract revision,
+correction cycle, and continuation-state digest. The implementation route
+consumes that payload immediately in the next implementation cycle and must
+not reconstruct accepted corrections from prose. The full saved
+`revalidate-and-rereview` outcome JSON may be supplied as `--state`; the runner
+validates and recovers its action and continuation state before proceeding.
+Never overwrite the only copy of a pending-action outcome.
+
+The runner always invokes the repository-owned state transition. It
+mechanically returns `complete`, `revalidate-and-rereview`, `revalidate`, or
+`human-handoff`; it does not leave cycle, freshness, candidate-change, or
+oscillation decisions to prompt prose. The validated continuation state carries
+the prior candidate snapshot, candidate history, cycle, issue-contract revision,
+adjudication history, pending action, and the union of accepted current-pass
+correction locations. Before a continuation session launches, the route
+compares the supplied candidate patch sections with the prior snapshot and
+hands off any path outside that union; it never re-attests the delta through
 live Git.
-Its outcome includes an actionable handoff summary containing the exact
-candidate identity, each finding ID and adjudicated disposition, adjudicator
-basis, correction-accepted flag, reason, and cycle. It never includes raw
-reviewer instructions.
+
+Persisted history contains only validated finding IDs, dispositions, bases,
+accepted corrections and locations, plus bounded lifecycle metadata. It
+preserves non-blocking `follow-up`/`reject` decisions and corrected prior
+findings for the final Stage 3/completion report. A history status records
+whether the next cycle was adjudicated; it does not infer that the correction
+succeeded. The outcome includes an
+actionable handoff summary with candidate identity, adjudicated finding IDs and
+dispositions, bounded reason, and cycle; it never includes raw reviewer
+findings or instructions. No implementation-action transition may be emitted
+unless its validated action payload is recoverable.
 
 Both sessions are read-only. Neither may mutate repository content, issues,
 pull requests, labels, readiness, merges, releases, or publication. Once the
-adjudication result has no accepted current-pass corrections, continue with
+adjudication result has no accepted `blocker`/`patch-now` corrections and no
+handoff applies, the lifecycle passes; continue with
 the existing immediate pre-transition issue re-fetch, completion metadata,
 Stage 3 evidence, and applicable low-risk or high-risk/manual path. Review,
 readiness, merge, release, and publication authority remain unchanged. This

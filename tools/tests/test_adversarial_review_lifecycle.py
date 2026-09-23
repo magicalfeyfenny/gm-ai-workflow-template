@@ -15,6 +15,7 @@ from tools.ci.adversarial_review import (
     validate_review_result,
 )
 from tools.ci.adversarial_review_session import main, run_review_lifecycle
+from tools.ci.adversarial_review_state import recover_implementation_payload
 
 
 REVISION = "220cc0114ced1c521c25b5f26d3ec0a597469afb50429b1699615497fce0f372"
@@ -193,6 +194,74 @@ class LifecycleOrchestrationTests(unittest.TestCase):
             self.assertEqual(exit_code, 2)
             self.assertFalse(output_path.exists())
         run_sessions.assert_not_called()
+
+    def test_saved_cli_outcome_recovers_the_bound_implementation_action(self):
+        packet = make_packet()
+        raw_finding = finding("F-persisted")
+        raw_finding["defect_or_invariant"] = "RAW_REVIEWER_PACKET_SECRET"
+        adjudication_packet = build_adjudication_packet(packet, [raw_finding])
+        result = adjudication_result(
+            adjudication_packet,
+            [decision("F-persisted", "patch-now", correction())],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet_path = root / "packet.json"
+            output_path = root / "outcome.json"
+            packet_path.write_text(json.dumps(packet), encoding="utf-8")
+            with patch(
+                "tools.ci.adversarial_review_session._run_adversarial_review_sessions"
+            ) as run_sessions:
+                run_sessions.return_value = (result, adjudication_packet)
+                exit_code = main(
+                    [
+                        "run",
+                        "--packet",
+                        str(packet_path),
+                        "--output",
+                        str(output_path),
+                        "--initial",
+                    ]
+                )
+            self.assertEqual(exit_code, 0)
+            saved = json.loads(output_path.read_text(encoding="utf-8"))
+            action = recover_implementation_payload(saved)
+            corrected = candidate(
+                head_sha="g" * 40,
+                tree_sha="u" * 40,
+                diff=DIFF + "accepted action consumed\n",
+            )
+            corrected_packet = make_packet(corrected)
+            corrected_packet_path = root / "corrected-packet.json"
+            corrected_output_path = root / "corrected-outcome.json"
+            corrected_packet_path.write_text(json.dumps(corrected_packet), encoding="utf-8")
+            final_adjudication_packet = build_adjudication_packet(corrected_packet, [])
+            with patch(
+                "tools.ci.adversarial_review_session._run_adversarial_review_sessions"
+            ) as run_sessions:
+                run_sessions.return_value = (
+                    adjudication_result(final_adjudication_packet, []),
+                    final_adjudication_packet,
+                )
+                final_exit_code = main(
+                    [
+                        "run",
+                        "--packet",
+                        str(corrected_packet_path),
+                        "--state",
+                        str(output_path),
+                        "--output",
+                        str(corrected_output_path),
+                    ]
+                )
+            final = json.loads(corrected_output_path.read_text(encoding="utf-8"))
+        self.assertEqual(action["corrections"][0]["finding_id"], "F-persisted")
+        self.assertEqual(action["issue_contract_revision"], REVISION)
+        self.assertNotIn("RAW_REVIEWER_PACKET_SECRET", json.dumps(saved))
+        self.assertEqual(saved["implementation_payload"], saved["transition"]["implementation_payload"])
+        self.assertEqual(final_exit_code, 0)
+        self.assertEqual(final["transition"]["status"], "complete")
+        self.assertEqual(final["adjudication_history"][0]["correction_status"], "next-cycle-adjudicated")
 
     def test_reviewer_paraphrase_cannot_become_adjudicator_evidence(self):
         packet = make_packet()

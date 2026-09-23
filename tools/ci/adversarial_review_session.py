@@ -6,13 +6,52 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import tomllib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+try:
+    from .adversarial_review_sandbox import (
+        _session_environment,
+        _write_sandbox_profile,
+    )
+except ImportError:  # pragma: no cover - direct script compatibility
+    from adversarial_review_sandbox import (  # type: ignore[no-redef]
+        _session_environment,
+        _write_sandbox_profile,
+    )
+
+try:
+    from .adversarial_review_failures import (
+        output_file_failure_diagnostic,
+        process_failure_class,
+        session_error,
+        session_error_with_role,
+        session_failure_diagnostic,
+        structured_output_failure_diagnostic,
+    )
+except ImportError:  # pragma: no cover - direct script compatibility
+    from adversarial_review_failures import (  # type: ignore[no-redef]
+        output_file_failure_diagnostic,
+        process_failure_class,
+        session_error,
+        session_error_with_role,
+        session_failure_diagnostic,
+        structured_output_failure_diagnostic,
+    )
+
+try:
+    from .adversarial_review_process import (
+        ProviderHangError,
+        run_provider_process as _run_provider_process,
+    )
+except ImportError:  # pragma: no cover - direct script compatibility
+    from adversarial_review_process import (  # type: ignore[no-redef]
+        ProviderHangError,
+        run_provider_process as _run_provider_process,
+    )
 try:
     from .adversarial_review import (
         ADJUDICATION_RESULT_OUTPUT_SCHEMA,
@@ -48,26 +87,32 @@ try:
     from .adversarial_review_state import (
         continuation_delta_reason,
         initial_lifecycle_state,
+        load_continuation_state,
         review_lifecycle_decision,
         stage2_evidence_current,
-        validate_continuation_state,
     )
 except ImportError:  # pragma: no cover - direct script compatibility
     from adversarial_review_state import (  # type: ignore[no-redef]
         continuation_delta_reason,
         initial_lifecycle_state,
+        load_continuation_state,
         review_lifecycle_decision,
         stage2_evidence_current,
-        validate_continuation_state,
     )
 
 
 CODEX_MODEL_CONFIG_FILENAME = "CODEX_MODEL_CONFIG.toml"
 MODEL_CONFIG_ROLES = ("implementer", "reviewer", "adjudicator")
 SUPPORTED_CODEX_MODELS = frozenset(
-    {"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"}
+    {"gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"}
 )
 SUPPORTED_REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
+
+
+class _SessionOutput(dict):
+    def __init__(self, value: Mapping[str, object], exit_status: int) -> None:
+        super().__init__(value)
+        self.provider_exit_status = exit_status
 
 
 def _repository_root() -> Path:
@@ -211,130 +256,6 @@ def _sandbox_path() -> str:
     return path
 
 
-def _sbpl_path(path: Path) -> str:
-    return str(path.resolve()).replace("\\", "\\\\").replace('"', '\\"')
-
-
-_RUNTIME_FRAMEWORKS = (
-    Path("/System/Library/Frameworks/AppKit.framework"),
-    Path("/System/Library/Frameworks/CFNetwork.framework"),
-    Path("/System/Library/Frameworks/CoreFoundation.framework"),
-    Path("/System/Library/Frameworks/CoreGraphics.framework"),
-    Path("/System/Library/Frameworks/CoreServices.framework"),
-    Path("/System/Library/Frameworks/Foundation.framework"),
-    Path("/System/Library/Frameworks/IOKit.framework"),
-    Path("/System/Library/Frameworks/LocalAuthentication.framework"),
-    Path("/System/Library/Frameworks/Security.framework"),
-    Path("/System/Library/Frameworks/SystemConfiguration.framework"),
-)
-_RUNTIME_FILES = (
-    Path("/bin/bash"),
-    Path("/bin/cat"),
-    Path("/bin/sh"),
-    Path("/usr/bin/git"),
-    Path("/usr/bin/grep"),
-    Path("/usr/bin/sed"),
-    Path("/usr/lib/dyld"),
-    Path("/usr/lib/libSystem.B.dylib"),
-    Path("/usr/lib/libobjc.A.dylib"),
-    Path("/usr/lib/libbz2.1.0.dylib"),
-    Path("/usr/lib/libiconv.2.dylib"),
-    Path("/usr/lib/liblzma.5.dylib"),
-)
-
-
-def _session_environment(
-    working_directory: Path, auth_directory: Path
-) -> tuple[dict[str, str], Path]:
-    configured_home = os.environ.get("CODEX_HOME")
-    source_home = (
-        Path(configured_home).expanduser().resolve()
-        if configured_home
-        else Path.home().joinpath(".codex").resolve()
-    )
-    codex_home = auth_directory.resolve()
-    codex_home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    source_auth = source_home / "auth.json"
-    if source_auth.is_file():
-        target_auth = codex_home / "auth.json"
-        shutil.copyfile(source_auth, target_auth)
-        target_auth.chmod(0o600)
-    environment = {
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-        "HOME": str(working_directory),
-        "TMPDIR": str(working_directory),
-        "CODEX_HOME": str(codex_home),
-        "LANG": os.environ.get("LANG", "C"),
-        "LC_CTYPE": os.environ.get("LC_CTYPE", "C"),
-    }
-    return environment, codex_home
-
-
-def _write_sandbox_profile(
-    path: Path,
-    working_directory: Path,
-    command_path: Path,
-    codex_home: Path,
-) -> None:
-    lines = [
-        "(version 1)",
-        "(deny default)",
-        '(import "system.sb")',
-        "(allow ipc-posix*)",
-        "(allow socket-ioctl)",
-        "(allow socket-option*)",
-        "(allow syscall*)",
-        "(allow system-fcntl)",
-        "(allow system-mac-syscall)",
-        "(allow system-socket)",
-        "(allow mach-lookup)",
-        "(allow darwin-notification-post)",
-        "(allow signal (target self))",
-        "(allow network-outbound)",
-    ]
-    for root in _RUNTIME_FRAMEWORKS:
-        encoded = _sbpl_path(root)
-        lines.append(f'(allow file-read* (subpath "{encoded}"))')
-        lines.append(f'(allow file-map-executable (subpath "{encoded}"))')
-    for runtime_file in (command_path, *_RUNTIME_FILES):
-        encoded = _sbpl_path(runtime_file)
-        lines.append(f'(allow file-read* (literal "{encoded}"))')
-        lines.append(f'(allow file-map-executable (literal "{encoded}"))')
-        lines.append(
-            f'(allow file-read-metadata file-test-existence (path-ancestors "{encoded}"))'
-        )
-    lines.append(f'(allow process-exec (literal "{_sbpl_path(command_path)}"))')
-    try:
-        first_line = command_path.read_bytes().splitlines()[0].decode("utf-8")
-    except (OSError, IndexError, UnicodeDecodeError):
-        first_line = ""
-    if first_line.startswith("#!"):
-        interpreter = first_line[2:].strip().split(maxsplit=1)[0]
-        if interpreter.startswith("/"):
-            lines.append(
-                f'(allow process-exec (literal "{_sbpl_path(Path(interpreter))}"))'
-            )
-    workspace = _sbpl_path(working_directory)
-    lines.append(
-        f'(allow file-read-metadata file-test-existence (path-ancestors "{workspace}"))'
-    )
-    lines.append(f'(allow file-read* file-write* (subpath "{workspace}"))')
-    if codex_home.is_dir():
-        encoded_home = _sbpl_path(codex_home)
-        lines.append(f'(allow file-read-metadata (literal "{encoded_home}"))')
-        auth_path = codex_home / "auth.json"
-        if auth_path.is_file():
-            lines.append(f'(allow file-read* (literal "{_sbpl_path(auth_path)}"))')
-    lines.extend(
-        [
-            '(allow file-read* (literal "/private/etc/ssl/cert.pem"))',
-            '(allow file-read* (literal "/private/etc/hosts"))',
-            '(allow file-read* (literal "/private/etc/resolv.conf"))',
-        ]
-    )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 def _run_fresh_codex_session(
     role: str,
     packet: Mapping[str, object],
@@ -356,24 +277,55 @@ def _run_fresh_codex_session(
         else model_config
     )
     selection = _role_model_config(configured_roles, role)
-    command_path = Path(_codex_path(executable)).resolve()
-    sandbox_path = _sandbox_path()
+    try:
+        command_path = Path(_codex_path(executable)).resolve()
+    except ReviewSessionError as exc:
+        raise session_error(
+            f"{role} session could not start",
+            role=role,
+            failure_class="startup",
+        ) from exc
+    try:
+        sandbox_path = _sandbox_path()
+    except ReviewSessionError as exc:
+        raise session_error(
+            f"{role} session sandbox is unavailable",
+            role=role,
+            failure_class="sandbox",
+        ) from exc
     with tempfile.TemporaryDirectory(prefix=f"governed-{role}-") as directory, tempfile.TemporaryDirectory(
+        prefix=f"governed-runtime-{role}-"
+    ) as runtime_directory, tempfile.TemporaryDirectory(
         prefix=f"governed-auth-{role}-"
     ) as auth_directory:
         working_directory = Path(directory).resolve()
+        runtime_root = Path(runtime_directory).resolve()
         auth_root = Path(auth_directory).resolve()
         schema_path = working_directory / "output-schema.json"
-        result_path = working_directory / "last-message.json"
+        result_path = runtime_root / "codex-home" / "last-message.json"
         profile_path = working_directory / "sandbox.sb"
-        environment, codex_home = _session_environment(working_directory, auth_root)
-        schema_path.write_text(
-            json.dumps(schema, ensure_ascii=False, sort_keys=True),
-            encoding="utf-8",
-        )
-        _write_sandbox_profile(
-            profile_path, working_directory, command_path, codex_home
-        )
+        try:
+            environment, codex_home = _session_environment(
+                working_directory, auth_root, runtime_root
+            )
+            schema_path.write_text(
+                json.dumps(schema, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+            _write_sandbox_profile(
+                profile_path,
+                working_directory,
+                command_path,
+                codex_home,
+                authentication_path=auth_root / "auth.json",
+            )
+        except OSError as exc:
+            raise session_error(
+                f"{role} session could not initialize its temporary runtime",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="startup",
+            ) from exc
         command = [
             sandbox_path,
             "-f",
@@ -389,6 +341,7 @@ def _run_fresh_codex_session(
             "--ignore-user-config",
             "--ignore-rules",
             "--skip-git-repo-check",
+            "--json",
             "--sandbox",
             "read-only",
             "--output-schema",
@@ -400,43 +353,93 @@ def _run_fresh_codex_session(
             "-",
         ]
         try:
-            completed = subprocess.run(
+            returncode = _run_provider_process(
                 command,
                 cwd=working_directory,
-                input=_session_prompt(role, copied_packet),
-                env=environment,
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=300,
+                environment=environment,
+                prompt=_session_prompt(role, copied_packet),
             )
-        except OSError as exc:
-            raise ReviewSessionError(
-                f"{role} session could not start: {type(exc).__name__}"
+        except ProviderHangError as exc:
+            raise session_error(
+                f"{role} session liveness guard failed",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="timeout",
             ) from exc
-        except subprocess.TimeoutExpired as exc:
-            raise ReviewSessionError(
-                f"{role} session timed out after 300 seconds"
+        except OSError as exc:
+            raise session_error(
+                f"{role} session could not start: {type(exc).__name__}",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="startup",
             ) from exc
         except UnicodeError as exc:
-            raise ReviewSessionError(
-                f"{role} session output could not be decoded"
+            diagnostic_code = getattr(exc, "diagnostic_code", "output_read_failure")
+            raise session_error(
+                f"{role} session output could not be decoded",
+                role=role,
+                output_exists=result_path.exists(),
+                failure_class="invalid-output",
+                validation_stage="parse",
+                diagnostic_code=diagnostic_code,
             ) from exc
-        if completed.returncode != 0:
-            raise ReviewSessionError(
-                f"{role} session failed with exit status {completed.returncode}"
+        output_exists = result_path.exists()
+        if returncode != 0:
+            failure_class = process_failure_class(
+                result_path,
+                output_exists=output_exists,
+            )
+            validation_stage = None
+            diagnostic_code = None
+            if failure_class == "invalid-output":
+                validation_stage, diagnostic_code = output_file_failure_diagnostic(
+                    result_path, output_exists=output_exists
+                )
+            raise session_error(
+                f"{role} session failed with exit status {returncode}",
+                role=role,
+                exit_status=returncode,
+                output_exists=output_exists,
+                failure_class=failure_class,
+                validation_stage=validation_stage,
+                diagnostic_code=diagnostic_code,
+            )
+        if not output_exists:
+            raise session_error(
+                f"{role} session returned no output file",
+                role=role,
+                exit_status=returncode,
+                output_exists=False,
+                failure_class="invalid-output",
+                validation_stage="shape",
+                diagnostic_code="output_missing_file",
             )
         try:
-            output = result_path.read_text(encoding="utf-8")
-            parsed = json.loads(output)
+            parsed = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            raise ReviewSessionError(f"{role} session returned invalid JSON: {exc}") from exc
-    parsed_mapping = _mapping(parsed, f"{role} session result")
-    return parsed_mapping
-
-
+            raise session_error(
+                f"{role} session output could not be read or parsed",
+                role=role,
+                exit_status=returncode,
+                output_exists=True,
+                failure_class="invalid-output",
+                validation_stage="parse",
+                diagnostic_code="output_json_parse" if isinstance(exc, json.JSONDecodeError) else "output_read_failure",
+            ) from exc
+    try:
+        parsed_mapping = _mapping(parsed, f"{role} session result")
+    except ReviewContractError as exc:
+        raise session_error(
+            f"{role} session returned a non-object result",
+            role=role,
+            exit_status=returncode,
+            output_exists=True,
+            failure_class="invalid-output",
+            validation_stage="shape",
+            diagnostic_code="output_top_level_shape",
+        ) from exc
+    return _SessionOutput(parsed_mapping, exit_status=returncode)
 SessionRunner = Callable[[str, Mapping[str, object], Mapping[str, object]], Mapping[str, object]]
-
 
 def _run_adversarial_review_sessions(
     packet: Mapping[str, object],
@@ -461,19 +464,55 @@ def _run_adversarial_review_sessions(
                 model_config=model_config,
             )
 
-    reviewer_raw = session_runner(
-        "reviewer", review_packet, REVIEW_RESULT_OUTPUT_SCHEMA
-    )
-    reviewer_result = validate_review_result(reviewer_raw, review_packet)
-    adjudication_packet = build_adjudication_packet(
-        review_packet, reviewer_result["findings"]
-    )
-    adjudicator_raw = session_runner(
-        "adjudicator", adjudication_packet, ADJUDICATION_RESULT_OUTPUT_SCHEMA
-    )
-    adjudication = validate_adjudication_result(
-        adjudicator_raw, adjudication_packet
-    )
+    try:
+        reviewer_raw = session_runner(
+            "reviewer", review_packet, REVIEW_RESULT_OUTPUT_SCHEMA
+        )
+    except ReviewSessionError as exc:
+        raise session_error_with_role(exc, "reviewer") from exc
+    try:
+        reviewer_result = validate_review_result(reviewer_raw, review_packet)
+        adjudication_packet = build_adjudication_packet(
+            review_packet, reviewer_result["findings"]
+        )
+    except ReviewContractError as exc:
+        validation_stage, diagnostic_code, diagnostic_detail_code = structured_output_failure_diagnostic(
+            "reviewer", reviewer_raw, review_packet
+        )
+        raise session_error(
+            "reviewer session returned an invalid structured result",
+            role="reviewer",
+            exit_status=getattr(reviewer_raw, "provider_exit_status", None),
+            output_exists=True,
+            failure_class="invalid-output",
+            validation_stage=validation_stage,
+            diagnostic_code=diagnostic_code,
+            diagnostic_detail_code=diagnostic_detail_code,
+        ) from None
+    try:
+        adjudicator_raw = session_runner(
+            "adjudicator", adjudication_packet, ADJUDICATION_RESULT_OUTPUT_SCHEMA
+        )
+    except ReviewSessionError as exc:
+        raise session_error_with_role(exc, "adjudicator") from exc
+    try:
+        adjudication = validate_adjudication_result(
+            adjudicator_raw, adjudication_packet
+        )
+    except ReviewContractError as exc:
+        validation_stage, diagnostic_code, diagnostic_detail_code = structured_output_failure_diagnostic(
+            "adjudicator", adjudicator_raw, adjudication_packet
+        )
+        raise session_error(
+            "adjudicator session returned an invalid structured result",
+            role="adjudicator",
+            exit_status=getattr(adjudicator_raw, "provider_exit_status", None),
+            output_exists=True,
+            failure_class="invalid-output",
+            validation_stage=validation_stage,
+            diagnostic_code=diagnostic_code,
+            diagnostic_detail_code=diagnostic_detail_code,
+        ) from None
     return adjudication, adjudication_packet
 
 
@@ -525,31 +564,47 @@ def _handoff_summary(
 
 
 def _session_failure_outcome(
-    candidate: Mapping[str, object], lifecycle: Mapping[str, object]
+    candidate: Mapping[str, object],
+    lifecycle: Mapping[str, object],
+    error: BaseException | None = None,
 ) -> dict:
     """Return a bounded handoff without exposing unvalidated provider output."""
+    if isinstance(error, ReviewSessionError):
+        session_failure = session_failure_diagnostic(error)
+    else:
+        session_failure = session_failure_diagnostic(
+            session_error(
+                "isolated session returned an invalid result",
+                failure_class="invalid-output",
+            )
+        )
     reason = (
-        "a fresh reviewer or adjudicator session failed bounded validation or "
-        "execution; human disposition is required before rerun"
+        f"{session_failure['role']} isolated session failed with "
+        f"{session_failure['failure_class']}; human disposition is required before rerun"
     )
     transition = {
         "status": "human-handoff",
         "cycle": lifecycle["cycle"],
         "corrections": [],
         "reason": reason,
+        "session_failure": session_failure,
         "requirements": [
             "human disposition of the failed review session",
             "fresh reviewer and adjudicator sessions",
         ],
         "continuation_state": None,
     }
+    handoff = _handoff_summary(candidate, None, transition)
+    handoff["session_failure"] = session_failure
     return {
-        "schema": "adversarial-review-outcome:v1",
+        "schema": "adversarial-review-outcome:v2",
         "candidate_identity": candidate_identity(candidate),
         "adjudication": None,
         "transition": transition,
+        "implementation_payload": None,
+        "adjudication_history": lifecycle.get("adjudication_history", []),
         "continuation_state": None,
-        "human_handoff": _handoff_summary(candidate, None, transition),
+        "human_handoff": handoff,
     }
 
 
@@ -564,10 +619,12 @@ def _state_failure_outcome(candidate: Mapping[str, object], reason: str) -> dict
         "continuation_state": None,
     }
     return {
-        "schema": "adversarial-review-outcome:v1",
+        "schema": "adversarial-review-outcome:v2",
         "candidate_identity": candidate_identity(candidate),
         "adjudication": None,
         "transition": transition,
+        "implementation_payload": None,
+        "adjudication_history": [],
         "continuation_state": None,
         "human_handoff": _handoff_summary(candidate, None, transition),
     }
@@ -599,7 +656,7 @@ def run_review_lifecycle(
         )
     else:
         try:
-            lifecycle = validate_continuation_state(state)
+            lifecycle = load_continuation_state(state)
         except ReviewContractError as exc:
             return _state_failure_outcome(
                 review_packet["candidate"],
@@ -662,17 +719,19 @@ def run_review_lifecycle(
                 state=None if initial else state,
                 initial=initial,
             )
-        except (ReviewContractError, ReviewSessionError):
-            return _session_failure_outcome(review_packet["candidate"], lifecycle)
+        except (ReviewContractError, ReviewSessionError) as exc:
+            return _session_failure_outcome(review_packet["candidate"], lifecycle, exc)
     return {
-        "schema": "adversarial-review-outcome:v1",
+        "schema": "adversarial-review-outcome:v2",
         "candidate_identity": candidate_identity(review_packet["candidate"]),
         "adjudication": adjudication,
         "transition": transition,
-        "continuation_state": transition.get("continuation_state"),
-        "human_handoff": _handoff_summary(
-            review_packet["candidate"], adjudication, transition
+        "implementation_payload": transition.get("implementation_payload"),
+        "adjudication_history": transition.get(
+            "adjudication_history", lifecycle["adjudication_history"]
         ),
+        "continuation_state": transition.get("continuation_state"),
+        "human_handoff": _handoff_summary(review_packet["candidate"], adjudication, transition),
     }
 
 
@@ -720,11 +779,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ReviewContractError(
                 "run requires --initial for the first candidate or --state for a continuation"
             )
-        state = (
-            validate_continuation_state(_load_json(args.state))
-            if args.state is not None
-            else None
-        )
+        state = load_continuation_state(_load_json(args.state)) if args.state is not None else None
         result = run_review_lifecycle(
             packet,
             state=state,
