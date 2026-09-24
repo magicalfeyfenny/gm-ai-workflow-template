@@ -138,6 +138,59 @@ class RiskTierPolicyTests(unittest.TestCase):
             )
         )
 
+    def test_medium_prose_placeholders_and_noop_commands_are_not_evidence(self) -> None:
+        """Require a selected machine-check target, not arbitrary backtick text."""
+        declarations = (
+            "Focused validation: `this specifically verifies the new behavior`\n",
+            "Focused validation: `<test command or deterministic contract check>`\n",
+            "Focused validation: `echo test the medium policy`\n",
+            "Focused validation: `python3 -m unittest`\n",
+        )
+        for declaration in declarations:
+            with self.subTest(declaration=declaration):
+                evaluation = evaluate_pull_request(
+                    base="dev",
+                    head="work/12-titan-finale",
+                    head_repository="owner/game",
+                    repository="owner/game",
+                    body="Closes #12\n" + declaration,
+                    labels={"risk:medium", "work:complete"},
+                    additions=100,
+                    deletions=10,
+                    changed_paths=["project/scripts/titan/state.gml"],
+                    changed_file_count=1,
+                )
+
+                self.assertTrue(
+                    any(
+                        "specific machine-verifiable" in error
+                        for error in evaluation.errors
+                    )
+                )
+                self.assertFalse(evaluation.auto_merge_allowed)
+
+    def test_medium_specific_contract_check_target_is_valid(self) -> None:
+        """Allow an explicit checker target as focused machine evidence."""
+        evaluation = evaluate_pull_request(
+            base="dev",
+            head="work/12-asset-contract",
+            head_repository="owner/game",
+            repository="owner/game",
+            body=(
+                "Closes #12\n"
+                "Focused validation: `python3 tools/ci/check_asset_contract.py "
+                "--fixture tools/tests/fixtures/asset_contract.json`\n"
+            ),
+            labels={"risk:medium", "work:complete"},
+            additions=100,
+            deletions=10,
+            changed_paths=["assets/source/symbol.svg"],
+            changed_file_count=1,
+        )
+
+        self.assertEqual(evaluation.errors, ())
+        self.assertTrue(evaluation.auto_merge_allowed)
+
     def test_medium_cannot_override_forced_high(self) -> None:
         """Keep governance and CI paths monotonically high risk."""
         evaluation = evaluate_pull_request(

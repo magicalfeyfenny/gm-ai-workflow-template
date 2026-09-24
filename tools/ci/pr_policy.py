@@ -7,6 +7,7 @@ import fnmatch
 import json
 import os
 import re
+import shlex
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -47,6 +48,79 @@ GENERIC_VALIDATION_COMMANDS = frozenset(
         "format",
         "repository policy",
     }
+)
+VALIDATION_TARGET_RE = re.compile(
+    r"(?i)(?:^|[/_.:-])(?:test|tests|spec|check|checks|verify|validate|"
+    r"validation|contract|assert|lint|compile|typecheck|benchmark|profile|measure)"
+    r"(?:$|[/_.:-])"
+)
+VALIDATION_EXECUTABLES = frozenset(
+    {
+        "bash",
+        "bun",
+        "cargo",
+        "cmake",
+        "ctest",
+        "dotnet",
+        "git",
+        "go",
+        "gradle",
+        "make",
+        "mvn",
+        "node",
+        "npm",
+        "npx",
+        "pnpm",
+        "py.test",
+        "pytest",
+        "python",
+        "python3",
+        "sh",
+        "yarn",
+        "zsh",
+    }
+)
+NON_EVIDENCE_EXECUTABLES = frozenset(
+    {
+        "cat",
+        "date",
+        "echo",
+        "false",
+        "head",
+        "ls",
+        "pwd",
+        "printf",
+        "tail",
+        "true",
+    }
+)
+GENERIC_VALIDATION_TARGETS = frozenset(
+    {
+        "-m",
+        ".",
+        "all",
+        "benchmark",
+        "check",
+        "checks",
+        "compile",
+        "contract",
+        "format",
+        "lint",
+        "measure",
+        "profile",
+        "pytest",
+        "py.test",
+        "test",
+        "tests",
+        "typecheck",
+        "unittest",
+        "validate",
+        "validation",
+        "verify",
+    }
+)
+NON_EVIDENCE_PLACEHOLDER_RE = re.compile(
+    r"(?i)<[^>]*>|\b(?:todo|tbd|placeholder|replace me|fill this in)\b"
 )
 @dataclass(frozen=True)
 class PolicyEvaluation:
@@ -234,6 +308,48 @@ def focused_validation_items(body: str) -> list[str]:
     ]
 
 
+def _specific_validation_target(item: str) -> bool:
+    """Require a command naming a selected test or contract-check target."""
+    if NON_EVIDENCE_PLACEHOLDER_RE.search(item):
+        return False
+
+    try:
+        tokens = shlex.split(item)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+
+    executable = tokens[0].casefold()
+    executable_name = Path(executable).name
+    executable_is_path = "/" in executable or executable.startswith(".")
+    is_python = re.fullmatch(r"python(?:3(?:\.\d+)?)?", executable_name) is not None
+    if (
+        executable_name in NON_EVIDENCE_EXECUTABLES
+        or (
+            executable_name not in VALIDATION_EXECUTABLES
+            and not is_python
+            and not executable_is_path
+        )
+    ):
+        return False
+    if (is_python or executable_name in {"bash", "node", "sh", "zsh"}) and any(
+        token in {"-c", "-e"} for token in tokens[1:]
+    ):
+        return False
+
+    targets = [token.casefold() for token in tokens[1:]]
+    if any(
+        target not in GENERIC_VALIDATION_TARGETS
+        and VALIDATION_TARGET_RE.search(target)
+        for target in targets
+    ):
+        return True
+
+    # A specifically named executable script can itself be the focused check.
+    return executable_is_path and VALIDATION_TARGET_RE.search(executable) is not None
+
+
 def medium_validation_errors(
     body: str,
     completion_labels: set[str],
@@ -258,14 +374,17 @@ def medium_validation_errors(
             or "run_repository_checks.py all" in normalized
             or "run_repository_checks.py repository-policy" in normalized
             or "run_repository_checks.py tests" in normalized
+            or "check_repo.py" in normalized
+            or "check_format.py" in normalized
         )
-        if not generic:
+        if not generic and _specific_validation_target(item):
             meaningful.append(item)
 
     if not meaningful:
         return [
             "risk:medium focused validation must establish a "
-            "change-specific claim"
+            "change-specific claim with a specific machine-verifiable "
+            "test or contract-check target"
         ]
 
     return []

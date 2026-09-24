@@ -916,6 +916,10 @@ focused, change-specific machine-verifiable validation item in this form:
 
 `Focused validation: \`<test command or deterministic contract check>\``
 
+The command must name a specific test or contract-check target, such as a test
+module, file, named test, or focused checker. Prose, placeholders, no-op
+commands, and unselected suite-wide commands are not evidence.
+
 Repository-policy, formatting, and other generic checks alone do not satisfy
 the medium evidence requirement. Missing or generic-only medium evidence
 blocks completion and automatic readiness; it does not promote the change to

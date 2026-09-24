@@ -14,6 +14,10 @@ other generic checks:
 
 `Focused validation: \`<test command or deterministic contract check>\``
 
+Name a specific test module, file, test case, or focused contract-check target;
+prose, placeholders, no-op commands, and unselected suite-wide commands do not
+count.
+
 For voluntary `risk:high` without an automatic-high trigger, include one or
 more recognized structured bases using this exact form:
 
