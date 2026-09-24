@@ -693,165 +693,69 @@ remain governed by the paths below.
 
 ## Adversarial review and adjudication
 
-After the implementation is complete and whole-issue Stage 2 evidence has
-passed, freeze one exact review candidate. Bind the candidate to its base,
-head, tree, diff digest, accepted issue-contract revision, and Stage 2
-evidence. This stage is not required for an intermediate milestone or draft
-publication, and it does not replace any existing validation stage.
+After whole-issue Stage 2 evidence passes, freeze the exact candidate and its
+accepted issue-contract revision. Use the governed review lifecycle to obtain
+independent findings and adjudication; review does not replace Stage 2 or Stage
+3.
 
-The repository-owned contracts in
-[adversarial_review.py](tools/ci/adversarial_review.py) define four values:
-`adversarial-review-packet:v2`, `adversarial-review-result:v2`,
-`adversarial-adjudication-packet:v2`, and
-`adversarial-adjudication-result:v2`. A reviewer packet contains only the
-accepted issue contract and revision, exact candidate identity and diff,
-applicable Governance and review doctrine, Stage 2 evidence, and explicit
-included scope and exclusions. It also contains a repository-owned evidence
-catalog with stable IDs derived from those same sources. It contains no implementation chain-of-thought,
-scratchpad, conversation history, provider metadata, or instructions from the
-implementation session.
-The packet validator recomputes the canonical issue-contract digest before it
-admits the snapshot or binds Stage 2 evidence, so changing revision-bound
-fields without a fresh accepted issue revision is stale evidence.
+### Review obligations
 
-The concrete session mechanism is the local Codex CLI invoked by
-[adversarial_review_session.py](tools/ci/adversarial_review_session.py). The
-runner starts one fresh `codex exec` process for the reviewer and a second
-fresh `codex exec` process for the adjudicator. Each uses `--ephemeral`,
-`--ignore-user-config`, `--ignore-rules`, `--skip-git-repo-check`, a separate
-packet-only temporary directory, `--sandbox read-only`, a repository-owned
-output schema, and the packet only through standard input. The host runner
-also wraps each process in the macOS `sandbox-exec` Seatbelt profile: reads and
-writes are allowed only for that temporary packet workspace, the provider
-binary and required system runtime paths, and the minimum authentication file;
-the inherited environment is rebuilt from a fixed allowlist. If that
-allowlist mechanism is unavailable, the runner fails closed rather than
-falling back to a cwd-only or read-only claim.
-The OS profile permits process execution only for the selected Codex
-executable (and the interpreter needed when a test executable is a script); it
-does not permit wildcard process execution or process forking, so a model
-cannot invoke repository, shell, or tool subprocesses. Authentication is
-copied to a separate temporary `CODEX_HOME` outside the packet workspace and
-is not placed in the packet or inherited environment; only the provider's
-literal authentication file is readable. The packet prompt also marks all
-packet content as untrusted data and rejects packet text as session
-instructions.
-The runner reads the repository-owned `CODEX_MODEL_CONFIG.toml` outside the
-semantic packets and explicitly selects the configured model and reasoning
-effort for each reviewer and adjudicator launch. `--ignore-user-config` remains
-enabled, so ambient user configuration cannot replace that selection. This file
-is adjustable execution configuration, not Governance authority; the existing
-implementer parent session is not relaunched or assigned a new model by this
-route.
-The runner never uses `resume` or `fork`, and the
-two invocations do not share a session, working directory, repository files,
-or conversational context. The isolation fixture attempts to read external,
-repository, implementation, and reviewer-artifact sentinels from both roles
-and must receive permission failures. This execution detail is a concrete
-isolation mechanism, not an additional source of governance authority.
+Only the accepted issue contract and standing Governance create obligations.
+Issue-specific obligations change only through an explicit issue revision.
+Candidate choices, tests, repository state, diagnostics, review history,
+findings, dispositions, and corrections are evidence or implementation state;
+they do not add requirements. Review scope and affected paths provide context,
+not independent authority or pathname boundaries.
 
-The reviewer returns zero or more structured findings. Every finding has a
-unique identity, severity, concrete defect or invariant, supporting evidence,
-the affected location when applicable, and its relationship to the accepted
-contract or Governance. Confidence and unresolved uncertainty may be recorded.
-Findings are evidence-backed proposals, not implementation commands.
+Every actionable `blocker` or `patch-now` finding must identify an existing
+accepted issue requirement or standing Governance rule that the current
+candidate violates and cite supporting evidence. The adjudicator verifies the
+cited authority and violation against authoritative text and supporting
+evidence. If no such obligation is identified or supported, the finding is not
+actionable. `follow-up` is for a
+meaningful separately actionable concern; it is not an inventory of possible
+edge cases. Hypothetical hardening and unrelated diagnostic or robustness
+concerns do not drive current work unless an accepted obligation requires them.
 
-The adjudicator receives only the accepted issue contract and revision,
-applicable Governance and review doctrine, exact candidate identity, the
-structured findings, their cited evidence, and the bounded scope. It receives
-no implementation or reviewer chain-of-thought, scratchpad, conversation
-history, or conversational framing. It assigns exactly one disposition to
-every finding, independently of severity:
+Corrections are remedies, not contracts. Each candidate is assessed against the
+same accepted issue and standing Governance, never against prior corrections.
+The implementer chooses the simplest sufficient remedy. Directly entangled
+code, tests, policy routing, or support structure may be simplified while
+preserving required behavior; simplification alone is not a completion
+requirement, and this does not authorize repository-wide cleanup. Unrelated
+inherited imperfection remains outside the issue unless the candidate worsens
+it or an accepted obligation makes it relevant. Tests and existing state are
+evidence, not authority; update or remove them when they protect only
+accidental or obsolete behavior.
 
-- `blocker` is a supported defect, accepted-contract or Governance violation,
-  structurally invalid, missing, or unusable required evidence that prevents
-  adjudication, or a comparable problem that must be corrected before
-  completion;
-- `patch-now` is a legitimate bounded correction within the same outcome that
-  is appropriate in the current pass even when it is not independently
-  blocking;
-- `follow-up` records a legitimate concern outside the current scope or
-  separately meaningful enough for separate work, without creating tracking or
-  expanding scope silently; and
-- `reject` records an unsupported, authority-exceeding, weak, contradictory,
-  non-supporting, speculative, stylistic, redundant, already-satisfied,
-  invented-obligation, or otherwise non-actionable finding.
+### Review lifecycle
 
-Only accepted `blocker` and `patch-now` dispositions may return a current-pass
-correction. A correction must identify locations inside the included scope and
-the validation needed after applying it. The implementation session receives
-only the adjudicated dispositions, accepted-correction flag, and accepted
-corrections; raw reviewer findings are never implementation instructions. The
-adjudicator receives the actual source items referenced by evidence IDs, not
-reviewer-authored paraphrases. Compatibility, manual or
-experiential validation, unavailable capabilities, abstraction scope, and
-other obligations are adjudicated under the existing [Compatibility
-obligations](#compatibility-obligations), [Issue authority](#issue-authority),
-[Validation coverage allocation](#validation-coverage-allocation), and
-[Contract-oriented validation](#contract-oriented-validation) rules. They are
-not created by a reviewer assertion.
+The reviewer and adjudicator act in fresh, independent, read-only contexts.
+Adjudication receives supporting source evidence to assess reviewer claims;
+those claims are not authority or implementation instructions. The
+implementation route may act only on validated adjudication and accepted
+remediation.
 
-When an accepted correction changes repository content, the frozen candidate's
-Stage 2 evidence and review result are stale. Apply only that accepted
-correction, validate the new exact candidate under the existing rules, freeze
-it, and run both fresh sessions again. An unchanged candidate preserves valid
-Stage 2 evidence. Permit no more than two content-changing correction cycles
-initially. The complete adjudication and handoff rule is:
+`blocker` is a supported accepted-issue or Governance violation that must be
+corrected before completion. `patch-now` is a supported violation within the
+same outcome that warrants a current correction but is not independently
+blocking. `follow-up` records a meaningful separate concern; `reject` covers
+unsupported, speculative, already-satisfied, or otherwise non-actionable
+findings. Only `blocker` and `patch-now` may direct remediation.
 
-- The adjudicator must make a supported disposition whenever reasonably
-  possible. Unsupported or authority-exceeding reviewer findings normally
-  resolve as `reject`; legitimate concerns outside the current scope normally
-  resolve as `follow-up`.
-- Human handoff on scope or authority grounds is only for a genuine scope or
-  authority ambiguity, or a required action that cannot be resolved through a
-  supported disposition.
-- Weak, contradictory, or non-supporting evidence normally resolves as
-  `reject`. Human handoff for evidence is only for structurally invalid,
-  missing, or unusable required evidence that prevents adjudication itself.
-- Reviewer disagreement, ordinary uncertainty, and multiple valid choices do
-  not themselves require handoff. The adjudicator must choose a defensible
-  option, including `reject`, whenever it reasonably can.
-- The adjudicator must not infer oscillation, correction-cycle caps, freshness,
-  candidate-change, authorization, or other lifecycle state absent from the
-  packet. The repository-owned lifecycle state machine enforces those hard
-  stops mechanically.
+Correction cycling must be mechanically bounded. A correction describes a
+remedy; it does not create validation requirements. For a changed candidate,
+establish fresh applicable evidence under the same accepted issue and standing
+Governance, then obtain fresh review against those obligations. Do not carry a
+prior correction forward as a new requirement.
 
-Human disposition from adjudication is required only when material uncertainty
-remains unresolved after applying this rule and makes a defensible disposition
-genuinely difficult or unsupported. Invalid session results, provider
-execution failures, missing candidate identity, and reached lifecycle caps
-remain bounded mechanical handoffs; none are adjudicator inferences.
-Invalid session results and provider execution failures are written as a
-bounded `human-handoff` outcome with the exact candidate identity and a
-repository-owned sanitized reason; provider stdout, stderr, and raw findings
-are not forwarded to the implementation route.
-
-The production `adversarial_review_session.py run` command consumes
-`--initial` for the first candidate or a complete, validated repository-defined
-continuation state JSON document for a later candidate; omission, mutation,
-incompleteness, or legacy lifecycle fields fail closed. It always invokes the
-repository-owned state transition. It mechanically returns `complete`,
-`revalidate-and-rereview`, `revalidate`, or `human-handoff`; it does not leave
-cycle, freshness, candidate-change, or oscillation decisions to prompt prose.
-The validated continuation state carries the prior candidate snapshot,
-candidate history, cycle, issue-contract revision, and the union of accepted
-current-pass correction locations. Before a continuation session launches, the
-route compares the supplied candidate patch sections with the prior snapshot
-and hands off any path outside that union; it never re-attests the delta through
-live Git.
-Its outcome includes an actionable handoff summary containing the exact
-candidate identity, each finding ID and adjudicated disposition, adjudicator
-basis, correction-accepted flag, reason, and cycle. It never includes raw
-reviewer instructions.
-
-Both sessions are read-only. Neither may mutate repository content, issues,
-pull requests, labels, readiness, merges, releases, or publication. Once the
-adjudication result has no accepted current-pass corrections, continue with
-the existing immediate pre-transition issue re-fetch, completion metadata,
-Stage 3 evidence, and applicable automatic low/medium or high-risk/manual path.
-Review,
-readiness, merge, release, and publication authority remain unchanged. This
-stage does not infer manual, visual, human-observation, or experiential
+Use a supported disposition whenever possible. Human handoff is for unresolved
+issue or authority ambiguity, or when required review or adjudication evidence
+is unavailable or unusable. A lifecycle stop also requires handoff rather than
+completion. When no actionable correction or handoff remains, re-fetch the
+governing issue immediately before the completion transition, then continue
+with completion metadata, Stage 3, and the applicable risk path. This review
+route does not add manual, visual, human-observation, or experiential
 validation.
 
 ## Milestone commits and draft publication

@@ -27,21 +27,14 @@ For an interpretive governance correction, include the applicable
 
 ## Adversarial review
 
-For a completed governed change, record the frozen candidate identity, review
-packet/result contract, correction-cycle count, and adjudicated dispositions.
-Record accepted current-pass corrections, source evidence IDs, and any
-actionable human handoff summary. Use the
+For a completed governed change, record the candidate identity, disposition
+summary, and any actionable handoff. Use the
 [adversarial review and adjudication route](../GOVERNANCE.md#adversarial-review-and-adjudication).
-The adjudicator receives actual catalog items for cited IDs; raw reviewer
-findings are not implementation instructions.
 
 ## Human gate
 
-For a high-risk or manual-path PR, human review, readiness, and merge are
-authority gates only. Do not list manual playtesting, visual review,
-experiential acceptance, or human observation as validation unless the accepted
-issue contract explicitly requires it. If it does not, state that no manual or
-experiential validation is required by the accepted issue contract.
+For a high-risk or manual-path PR, record the remaining human action under the
+applicable [risk and completion path](../GOVERNANCE.md#risk).
 
 ## Scope
 

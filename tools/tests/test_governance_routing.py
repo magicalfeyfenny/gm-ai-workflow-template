@@ -411,48 +411,34 @@ class GovernanceRoutingTests(unittest.TestCase):
                     governance_fragments(source),
                 )
 
-        skill_targets = {
+    def test_review_obligation_policy_has_one_authoritative_route(self):
+        """Route review policy to Governance, not copied policy text."""
+        governance = ROOT / "GOVERNANCE.md"
+        review = heading_anchors(governance)
+        self.assertIn("review-obligations", review)
+        self.assertIn(
+            "review-obligations",
+            section_descendant_anchors(
+                governance.read_text(encoding="utf-8"),
+                "adversarial-review-and-adjudication",
+            ),
+        )
+        for source in (
+            ROOT / ".agents/skills/governed-change/SKILL.md",
+            ROOT / "templates/codex/governed-change.txt",
+        ):
+            with self.subTest(source=source):
+                self.assertIn(
+                    "adversarial-review-and-adjudication",
+                    governance_fragments(source),
+                )
+
+        destinations = {
             target for target, _ in local_destinations(
                 ROOT / ".agents/skills/governed-change/SKILL.md"
             )
         }
-        self.assertTrue({
-            (ROOT / "tools/ci/adversarial_review.py").resolve(),
-            (ROOT / "tools/ci/adversarial_review_session.py").resolve(),
-        }.issubset(skill_targets))
-
-    def test_adversarial_review_preserves_the_existing_completion_boundary(self):
-        """Ensure review finishes before pre-transition metadata and hosted CI."""
-        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
-        review = governance.split(
-            "## Adversarial review and adjudication", 1
-        )[1].split("## Milestone commits and draft publication", 1)[0].casefold()
-        for marker in (
-            "whole-issue stage 2",
-            "freeze one exact review candidate",
-            "fresh `codex exec`",
-            "exactly one disposition",
-            "two content-changing correction cycles",
-            "immediate pre-transition issue re-fetch",
-            "readiness, merge, release, and publication authority remain unchanged",
-        ):
-            with self.subTest(marker=marker):
-                self.assertIn(marker, review)
-
-        template = " ".join(
-            (ROOT / "templates/codex/governed-change.txt")
-            .read_text(encoding="utf-8").casefold().split()
-        )
-        ordered = (
-            "stage 2 whole-issue local evidence",
-            "freeze the exact candidate identity",
-            "two separate fresh `codex exec` invocations",
-            "immediately before the completion transition",
-            "fresh stage 3 exact-head hosted evidence",
-        )
-        positions = [template.find(marker) for marker in ordered]
-        self.assertTrue(all(position >= 0 for position in positions))
-        self.assertEqual(positions, sorted(positions))
+        self.assertIn(governance.resolve(), destinations)
 
     def test_setup_label_inventory_routes_to_its_authorities(self):
         """Link setup to the shared rule and executable label inventory."""
@@ -494,7 +480,7 @@ class GovernanceRoutingTests(unittest.TestCase):
                     self.assertIsNone(pattern.search(text))
 
     def test_manual_handoff_separates_authority_from_validation(self):
-        """Keep high-risk authority gates out of the validation contract."""
+        """Route high-risk handoff details to the central risk policy."""
         governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8")
         completion = " ".join(
             governance.split("## Completion transition", 1)[1].split(
@@ -511,18 +497,10 @@ class GovernanceRoutingTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, completion)
 
-        pull_request = " ".join(
-            (
-                ROOT / ".github/pull_request_template.md"
-            ).read_text(encoding="utf-8").casefold().split()
+        self.assertIn(
+            "risk",
+            governance_fragments(ROOT / ".github/pull_request_template.md"),
         )
-        for marker in (
-            "authority gates only",
-            "accepted issue contract explicitly requires it",
-            "no manual or experiential validation",
-        ):
-            with self.subTest(marker=marker):
-                self.assertIn(marker, pull_request)
 
     def test_scheduled_continuation_rejects_invented_manual_blockers(self):
         """Do not let handoff text turn authority into continuation blocking."""

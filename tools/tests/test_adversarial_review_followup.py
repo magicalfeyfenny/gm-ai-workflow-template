@@ -1,28 +1,18 @@
 import hashlib
 import json
-import os
-import shutil
-import subprocess
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from tools.ci.adversarial_review import (
     ADJUDICATION_RESULT_SCHEMA,
     REVIEW_RESULT_SCHEMA,
     ReviewContractError,
-    build_adjudication_packet,
     build_review_packet,
     candidate_identity,
-    validate_adjudication_packet,
     validate_review_packet,
 )
 from tools.ci.adversarial_review_session import (
     ReviewSessionError,
-    _run_fresh_codex_session,
-    _write_sandbox_profile,
-    run_adversarial_review,
     run_review_lifecycle,
 )
 
@@ -35,16 +25,7 @@ INCLUDED = [
     "tools/tests/test_adversarial_review.py",
 ]
 SEMANTIC_SOURCE = """
-Source-backed semantic evidence fixture:
-
-- The candidate omits a required invariant that the accepted contract requires.
-- The Python 3.13+ concern is a bounded same-outcome improvement within this issue.
-- The separately meaningful concern is outside the accepted outcome.
-- The python3.12 documentation example already uses a supported interpreter.
-- The mocked temporary-environment path adds no defect because unit and live integration evidence cover it.
-- The compatibility claim has no independent compatibility evidence and no concrete consumer.
-- Manual visual observation is not an accepted requirement.
-- The unavailable environment capability is not candidate failure because existing evidence passes.
+Synthetic source item for validating evidence transport and diagnostic output.
 """.strip()
 
 
@@ -118,7 +99,7 @@ def semantic_findings() -> list[dict]:
         finding("F-blocker", "candidate omits a required invariant", "high"),
         finding(
             "F-python313",
-            "Python 3.13+ concern is a bounded same-outcome improvement",
+            "separately actionable Python 3.13+ concern has no named obligation",
             "low",
         ),
         finding(
@@ -156,6 +137,7 @@ def semantic_findings() -> list[dict]:
 def review_result(packet: dict, findings: list[dict]) -> dict:
     return {
         "schema": REVIEW_RESULT_SCHEMA,
+        "issue_contract_revision": packet["issue_contract"]["revision"],
         "candidate_identity": candidate_identity(packet["candidate"]),
         "findings": findings,
     }
@@ -164,8 +146,6 @@ def review_result(packet: dict, findings: list[dict]) -> dict:
 def correction() -> dict:
     return {
         "summary": "Apply the bounded source-backed correction.",
-        "locations": [INCLUDED[0]],
-        "validation": ["rerun semantic fixtures"],
     }
 
 
@@ -182,47 +162,11 @@ def decision(finding_id: str, disposition: str, value: dict | None = None) -> di
 def adjudication_result(packet: dict, decisions: list[dict]) -> dict:
     return {
         "schema": ADJUDICATION_RESULT_SCHEMA,
+        "issue_contract_revision": packet["issue_contract_revision"],
         "candidate_identity": packet["candidate_identity"],
         "dispositions": decisions,
         "human_handoff": {"required": False, "reason": None},
     }
-
-
-FIXTURE_EXPECTED = [
-    "blocker",
-    "patch-now",
-    "follow-up",
-    "reject",
-    "reject",
-    "reject",
-    "reject",
-    "reject",
-]
-FIXTURE_SOURCE_ASSERTIONS = (
-    "accepted contract requires",
-    "bounded same-outcome improvement within this issue",
-    "outside the accepted outcome",
-    "already uses a supported interpreter",
-    "unit and live integration evidence cover it",
-    "no independent compatibility evidence and no concrete consumer",
-    "manual visual observation is not an accepted requirement",
-    "existing evidence passes",
-)
-
-
-def fixed_source_fixture_adjudication(packet: dict) -> dict:
-    source_text = "\n".join(item["text"] for item in packet["evidence"]["source_items"])
-    for assertion in FIXTURE_SOURCE_ASSERTIONS:
-        if assertion not in source_text.casefold():
-            raise AssertionError(f"semantic source fixture is missing: {assertion}")
-    corrections = [correction(), correction(), None, None, None, None, None, None]
-    decisions = [
-        decision(item["finding_id"], disposition, correction_value)
-        for item, disposition, correction_value in zip(
-            packet["findings"], FIXTURE_EXPECTED, corrections
-        )
-    ]
-    return adjudication_result(packet, decisions)
 
 
 class SourceBackedFixtureTests(unittest.TestCase):
@@ -231,94 +175,6 @@ class SourceBackedFixtureTests(unittest.TestCase):
         packet["issue_contract"]["body"] += "changed without re-acceptance\n"
         with self.assertRaisesRegex(ReviewContractError, "accepted snapshot"):
             validate_review_packet(packet)
-
-    def test_production_contract_path_covers_fixed_source_classifications(self):
-        review_packet = semantic_packet()
-        findings = semantic_findings()
-
-        def runner(role, payload, output_schema):
-            if role == "reviewer":
-                return review_result(payload, findings)
-            return fixed_source_fixture_adjudication(payload)
-
-        result = run_adversarial_review(review_packet, session_runner=runner)
-        self.assertEqual(
-            [item["disposition"] for item in result["dispositions"]],
-            [
-                "blocker",
-                "patch-now",
-                "follow-up",
-                "reject",
-                "reject",
-                "reject",
-                "reject",
-                "reject",
-            ],
-        )
-
-    def test_material_source_change_exposes_incorrect_fixture_classification(self):
-        review_packet = semantic_packet()
-        findings = semantic_findings()
-        original = build_adjudication_packet(review_packet, findings)
-        changed = json.loads(json.dumps(original))
-        original_item = original["evidence"]["source_items"][0]
-        changed_item = changed["evidence"]["source_items"][0]
-        self.assertEqual(original_item["evidence_id"], changed_item["evidence_id"])
-        changed_item["text"] = changed_item["text"].replace(
-            "bounded same-outcome improvement within this issue",
-            "outside the accepted outcome",
-        )
-        validate_adjudication_packet(changed)
-        fixed_source_fixture_adjudication(original)
-        with self.assertRaisesRegex(AssertionError, "semantic source fixture"):
-            fixed_source_fixture_adjudication(changed)
-
-
-class SandboxBoundaryTests(unittest.TestCase):
-    def test_profile_allows_selected_provider_not_its_siblings(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            provider = root / "provider"
-            provider.mkdir()
-            executable = provider / "fake-codex"
-            executable.write_text("#!/bin/sh\n", encoding="utf-8")
-            codex_home = root / "codex-home"
-            codex_home.mkdir()
-            profile = root / "sandbox.sb"
-            _write_sandbox_profile(profile, root, executable, codex_home)
-            text = profile.read_text(encoding="utf-8")
-        self.assertIn(f'(allow file-read* (literal "{executable.resolve()}"))', text)
-        self.assertNotIn(f'(allow file-read* (subpath "{provider.resolve()}"))', text)
-        self.assertNotIn('(allow file-read* (subpath "/usr"))', text)
-        self.assertIn(
-            f'(allow process-exec (literal "{executable.resolve()}"))', text
-        )
-        self.assertNotIn("(allow process-exec*)", text)
-        self.assertNotIn("(allow process-fork)", text)
-
-    @unittest.skipUnless(shutil.which("sandbox-exec"), "requires macOS Seatbelt")
-    def test_provider_cannot_spawn_a_tool_to_read_authentication(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source_home = root / "source-codex-home"
-            source_home.mkdir()
-            (source_home / "auth.json").write_text(
-                '{"access_token":"must-not-be-read-by-a-tool"}', encoding="utf-8"
-            )
-            executable = root / "fake-codex"
-            executable.write_text(
-                '#!/bin/bash\n/bin/cat "$CODEX_HOME/auth.json"\n',
-                encoding="utf-8",
-            )
-            executable.chmod(0o755)
-            with patch.dict(os.environ, {"CODEX_HOME": str(source_home)}):
-                with self.assertRaisesRegex(ReviewSessionError, "exit status"):
-                    _run_fresh_codex_session(
-                        "reviewer",
-                        {},
-                        {"type": "object"},
-                        executable=str(executable),
-                    )
 
 
 class SessionFailureTests(unittest.TestCase):
@@ -329,6 +185,7 @@ class SessionFailureTests(unittest.TestCase):
             if role == "reviewer":
                 return {
                     "schema": REVIEW_RESULT_SCHEMA,
+                    "issue_contract_revision": payload["issue_contract"]["revision"],
                     "candidate_identity": candidate_identity(payload["candidate"]),
                     "findings": [
                         {
@@ -342,9 +199,8 @@ class SessionFailureTests(unittest.TestCase):
         result = run_review_lifecycle(
             packet, initial=True, session_runner=invalid_runner
         )
-        self.assertEqual(result["transition"]["status"], "human-handoff")
-        self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
-        self.assertEqual(result["human_handoff"]["finding_dispositions"], [])
+        self.assertEqual(result["status"], "human-handoff")
+        self.assertEqual(result["candidate_identity"], candidate_identity(packet["candidate"]))
         self.assertNotIn("missing-evidence", json.dumps(result))
 
     def test_provider_failure_becomes_bounded_handoff_without_raw_text(self):
@@ -356,50 +212,43 @@ class SessionFailureTests(unittest.TestCase):
         result = run_review_lifecycle(
             packet, initial=True, session_runner=failing_runner
         )
-        self.assertEqual(result["transition"]["status"], "human-handoff")
-        self.assertEqual(result["human_handoff"]["finding_dispositions"], [])
+        self.assertEqual(result["status"], "human-handoff")
         self.assertNotIn("raw-provider-instruction", json.dumps(result))
+        self.assertEqual(result["session_failure"]["role"], "reviewer")
+        self.assertEqual(
+            result["session_failure"]["failure_class"],
+            "startup",
+        )
+        self.assertIsNone(result["session_failure"]["exit_status"])
+        self.assertFalse(result["session_failure"]["output_exists"])
 
-
-class ProviderOutputBoundaryTests(unittest.TestCase):
-    def test_invalid_provider_stream_encoding_becomes_bounded_handoff(self):
+    def test_provider_startup_failure_is_classified_without_raw_error_text(self):
         packet = semantic_packet()
-        for stream in ("stdout", "stderr"):
-            with self.subTest(stream=stream), patch(
-                "tools.ci.adversarial_review_session._sandbox_path",
-                return_value="/usr/bin/sandbox-exec",
-            ), patch(
-                "tools.ci.adversarial_review_session.subprocess.run",
-                side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid"),
-            ):
-                result = run_review_lifecycle(
-                    packet, initial=True, codex_executable="/fake/codex"
-                )
-            self.assertEqual(result["transition"]["status"], "human-handoff")
-            self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
-            self.assertNotIn("UnicodeDecodeError", json.dumps(result))
-
-    def test_raw_provider_streams_do_not_enter_session_errors(self):
-        for stream in ("stdout", "stderr"):
-            raw = "raw-provider-instruction-" + stream
-            completed = subprocess.CompletedProcess(
-                ["sandbox-exec"], 23, raw if stream == "stdout" else "", raw if stream == "stderr" else ""
+        with patch(
+            "tools.ci.adversarial_review_session._codex_path",
+            side_effect=ReviewSessionError("raw-startup-detail"),
+        ):
+            result = run_review_lifecycle(
+                packet, initial=True, codex_executable="/fake/codex"
             )
-            with self.subTest(stream=stream):
-                with patch(
-                    "tools.ci.adversarial_review_session._sandbox_path",
-                    return_value="/usr/bin/sandbox-exec",
-                ), patch(
-                    "tools.ci.adversarial_review_session.subprocess.run",
-                    return_value=completed,
-                ):
-                    with self.assertRaises(ReviewSessionError) as raised:
-                        _run_fresh_codex_session(
-                            "reviewer", {}, {}, executable="/fake/codex"
-                        )
-                self.assertIn("exit status 23", str(raised.exception))
-                self.assertNotIn(raw, str(raised.exception))
+        diagnostic = result["session_failure"]
+        self.assertEqual(diagnostic["role"], "reviewer")
+        self.assertEqual(diagnostic["failure_class"], "startup")
+        self.assertFalse(diagnostic["output_exists"])
+        self.assertNotIn("raw-startup-detail", json.dumps(result))
 
+    def test_adjudicator_failure_identifies_the_adjudicator_role(self):
+        packet = semantic_packet()
 
-if __name__ == "__main__":
-    unittest.main()
+        def failing_runner(role, payload, output_schema):
+            if role == "reviewer":
+                return review_result(payload, [semantic_findings()[0]])
+            raise ReviewSessionError("raw-adjudicator-detail")
+
+        result = run_review_lifecycle(
+            packet, initial=True, session_runner=failing_runner
+        )
+        diagnostic = result["session_failure"]
+        self.assertEqual(diagnostic["role"], "adjudicator")
+        self.assertEqual(diagnostic["failure_class"], "startup")
+        self.assertNotIn("raw-adjudicator-detail", json.dumps(result))

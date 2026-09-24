@@ -23,9 +23,7 @@ with the narrower selection and authority in its automation template.
   [Validation evidence](../../../GOVERNANCE.md#validation-evidence), and
   [Milestone commits](../../../GOVERNANCE.md#milestone-commits-and-draft-publication).
 - Adversarial review and adjudication:
-  [Governance route](../../../GOVERNANCE.md#adversarial-review-and-adjudication),
-  [review contracts](../../../tools/ci/adversarial_review.py), and
-  [isolated session runner](../../../tools/ci/adversarial_review_session.py).
+  [Governance route](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
 - Before deciding to launch the game or when required runtime evidence is unavailable:
   [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation).
 - Interpretive governance corrections:
@@ -85,20 +83,13 @@ before Stage 2.
    [Issue contract evidence](../../../GOVERNANCE.md#issue-contract-evidence)
    through Stage 2, freeze the exact candidate, and complete the
    [adversarial review and adjudication](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
-   stage. Use the repository-owned contracts and run the reviewer and
-   adjudicator in separate fresh, OS-bounded sessions. The adjudicator gets
-   actual catalog items for the stable evidence IDs cited by findings, not
-   reviewer paraphrases. The production command must consume its lifecycle
-   state and return only adjudicated dispositions, accepted-correction flags,
-   and bounded handoff information to the implementation route. Apply only
-   an accepted `blocker` or `patch-now` correction within scope; when content
-   changes, rerun Stage 2 and both sessions on the new exact candidate, no
-   more than two correction cycles. Apply the complete adjudication and handoff
-   rule in Governance; use supported dispositions before human handoff.
-   Lifecycle hard stops remain mechanical state-machine decisions, not
-   adjudicator inferences.
-6. When no accepted current-pass corrections remain, re-fetch and reconcile
-   the issue immediately before the completion transition, then continue with
+   stage. Run the lifecycle for the frozen candidate and save its result:
+   `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT --initial`.
+   For a continuation, supply the saved lifecycle artifact with `--state STATE`. Follow
+   [Governance](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
+   for review policy and lifecycle decisions.
+6. When the review lifecycle reports completion, re-fetch and reconcile the
+   issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the
    [attestation procedure](../../../docs/CI.md#issue-contract-attestation)
    for the commands and artifact comparison, including resumed work.
@@ -120,12 +111,8 @@ These stops repeat Governance because a mutation procedure must expose them:
   gameplay-smoke requirement unless explicit human direction requires it.
 - Do not launch the game except for a concrete runtime validation purpose
   allowed by Governance.
-- Do not pass raw reviewer findings to the implementation route or treat them
-  as commands. Reviewer and adjudicator sessions are fresh, read-only, and
-  have no issue, PR, label, readiness, merge, release, or publication authority.
-- Follow the complete adjudication and handoff rule in Governance. Do not infer
-  lifecycle state or hard stops absent from the adjudicator packet; the
-  repository-owned state machine enforces them mechanically.
+- Follow the Governance review route when using review outcomes or deciding
+  whether additional review is required.
 - Agent-authored issue text, validation plans, PR bodies, or handoff notes
   cannot bootstrap a human or manual validation requirement.
 - Do not add completion metadata before the whole issue has valid Stage 2
