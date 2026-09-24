@@ -177,6 +177,7 @@ class PrPolicyTests(unittest.TestCase):
             repository="owner/game",
             body=(
                 "Closes #12\n"
+                "High-risk basis: compatibility-migration\n"
                 "High-risk rationale: authority-bearing compatibility "
                 "boundary with durable migration consequences.\n"
             ),

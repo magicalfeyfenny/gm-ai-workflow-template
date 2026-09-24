@@ -64,6 +64,8 @@ they must be visible before mutation:
   bypass.
 - Do not work a PR labeled `work:blocked` until its blockers are resolved.
 - Keep the change bounded to its issue and do not perform unrelated cleanup.
+- Treat complexity, importance, and ordinary scope as medium-risk signals, not
+  high-risk bases; voluntary high risk requires a configured structured basis.
 - Do not force-push, automatically delete branches, or rewrite history merely
   to simplify it.
 - Add completion metadata only after the entire issue scope has valid
@@ -73,7 +75,8 @@ they must be visible before mutation:
 - Before completion metadata, complete the bounded
   [adversarial review and adjudication](GOVERNANCE.md#adversarial-review-and-adjudication)
   stage. Use its validated lifecycle outcome as the implementation and handoff
-  input.
+  input; the actual risk tier provides one correction retry for low and two for
+  medium or high, with no autonomous reset after handoff.
 - High-risk and `manual-merge` work waits for human review, readiness, and
   merge after valid [Stage 3 evidence](GOVERNANCE.md#stage-3-hosted-pr-evidence).
 - Do not merge into `main` or create release builds, tags, releases, or

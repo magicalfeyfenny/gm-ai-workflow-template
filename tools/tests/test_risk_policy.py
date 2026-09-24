@@ -2,7 +2,10 @@ import unittest
 
 from tools.ci.pr_policy import (
     AUTOMATIC_RISK_LABELS,
+    CORRECTION_RETRY_BUDGETS,
+    HIGH_RISK_BASES,
     RISK_LABELS,
+    correction_retry_budget,
     evaluate_pull_request,
 )
 
@@ -20,6 +23,28 @@ class RiskTierPolicyTests(unittest.TestCase):
             AUTOMATIC_RISK_LABELS,
             {"risk:low", "risk:medium"},
         )
+
+    def test_structured_high_risk_bases_and_retry_budgets_are_configured(self) -> None:
+        self.assertEqual(
+            HIGH_RISK_BASES,
+            {
+                "governance-authority",
+                "ci-merge-release",
+                "security-credentials",
+                "destructive-operation",
+                "compatibility-migration",
+                "persistence-data-loss",
+                "cross-system-blast-radius",
+                "exceptional-uncertainty",
+            },
+        )
+        self.assertEqual(
+            CORRECTION_RETRY_BUDGETS,
+            {"low": 1, "medium": 2, "high": 2},
+        )
+        self.assertEqual(correction_retry_budget("low"), 1)
+        self.assertEqual(correction_retry_budget("medium"), 2)
+        self.assertEqual(correction_retry_budget("high"), 2)
 
     def test_medium_substantial_ordinary_work_is_automatic(self) -> None:
         """Keep substantial safe product work on the automatic path."""
@@ -154,7 +179,7 @@ class RiskTierPolicyTests(unittest.TestCase):
         self.assertEqual(evaluation.errors, ())
         self.assertTrue(evaluation.effective_high)
 
-    def test_voluntary_high_requires_concrete_rationale(self) -> None:
+    def test_voluntary_high_requires_structured_basis(self) -> None:
         """Expected importance or difficulty cannot manufacture high risk."""
         evaluation = evaluate_pull_request(
             base="dev",
@@ -174,10 +199,47 @@ class RiskTierPolicyTests(unittest.TestCase):
 
         self.assertTrue(
             any(
-                "structural or operational danger" in error
+                "recognized High-risk basis" in error
                 for error in evaluation.errors
             )
         )
+
+    def test_voluntary_high_rejects_unrecognized_basis(self) -> None:
+        evaluation = evaluate_pull_request(
+            base="dev",
+            head="work/12-save-schema",
+            head_repository="owner/game",
+            repository="owner/game",
+            body="High-risk basis: important-feature\n",
+            labels={"risk:high"},
+            additions=10,
+            deletions=2,
+            changed_paths=["project/scripts/save/write_save.gml"],
+            changed_file_count=1,
+        )
+
+        self.assertTrue(
+            any("unrecognized High-risk basis" in error for error in evaluation.errors)
+        )
+
+    def test_voluntary_high_accepts_multiple_structured_bases(self) -> None:
+        evaluation = evaluate_pull_request(
+            base="dev",
+            head="work/12-save-schema",
+            head_repository="owner/game",
+            repository="owner/game",
+            body=(
+                "High-risk basis: compatibility-migration\n"
+                "High-risk basis: persistence-data-loss\n"
+            ),
+            labels={"risk:high"},
+            additions=10,
+            deletions=2,
+            changed_paths=["project/scripts/save/write_save.gml"],
+            changed_file_count=1,
+        )
+
+        self.assertEqual(evaluation.errors, ())
 
     def test_manual_merge_forces_manual_path_for_medium(self) -> None:
         """Keep manual-merge authoritative without promoting medium to high."""

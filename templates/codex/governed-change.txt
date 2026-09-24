@@ -84,7 +84,10 @@ same work item through the ordinary completion lifecycle:
    For a continuation, provide its state with `--state STATE`.
 4. Follow the review policy and lifecycle decisions in
    [Governance](../../GOVERNANCE.md#adversarial-review-and-adjudication) for
-   each candidate and result.
+   each candidate and result. The packet's actual risk tier selects the
+   configured retry budget: low gets one correction retry, while medium and
+   high get two. A handoff artifact never authorizes an autonomous reset; a
+   human-authorized new candidate starts a fresh lifecycle.
 5. Re-fetch and reconcile the governing issue immediately before the completion
    transition. If the contract changed, establish fresh Stage 2 evidence and a
    fresh review for the revised contract before proceeding.

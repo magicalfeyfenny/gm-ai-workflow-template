@@ -59,7 +59,7 @@ def candidate(
     }
 
 
-def make_packet(value: dict | None = None) -> dict:
+def make_packet(value: dict | None = None, *, risk: str = "high") -> dict:
     current = candidate() if value is None else value
     return build_review_packet(
         issue_contract(),
@@ -80,6 +80,7 @@ def make_packet(value: dict | None = None) -> dict:
             "checks": [{"name": "fresh", "result": "passed", "evidence": ["tests"]}],
         },
         {"included": INCLUDED, "exclusions": ["readiness", "merge", "release"]},
+        risk=risk,
     )
 
 
@@ -156,6 +157,7 @@ class LifecycleArtifactTests(unittest.TestCase):
             {
                 "schema",
                 "status",
+                "risk",
                 "issue_contract_revision",
                 "cycle",
                 "candidate_identity",
@@ -297,6 +299,7 @@ class LifecycleArtifactTests(unittest.TestCase):
     def test_handoff_reason_is_sanitized_and_bounded(self):
         result = lifecycle_artifact(
             status="human-handoff",
+            risk="high",
             issue_contract_revision=REVISION,
             cycle=0,
             candidate_identity=candidate_identity(candidate()),

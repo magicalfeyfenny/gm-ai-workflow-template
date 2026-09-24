@@ -14,10 +14,15 @@ other generic checks:
 
 `Focused validation: \`<test command or deterministic contract check>\``
 
-For voluntary `risk:high` without an automatic-high trigger, include a
-concrete structural or operational reason using this exact form:
+For voluntary `risk:high` without an automatic-high trigger, include one or
+more recognized structured bases using this exact form:
 
-`High-risk rationale: <authority, security, compatibility, destructive, or other concrete danger>`
+`High-risk basis: <governance-authority|ci-merge-release|security-credentials|destructive-operation|compatibility-migration|persistence-data-loss|cross-system-blast-radius|exceptional-uncertainty>`
+
+`High-risk rationale: <optional explanatory context>`
+
+Automatic-high triggers already establish the high-risk classification; a
+structured basis is still useful context but is not required.
 
 At completion, record the accepted issue revision and marker under
 [Issue contract evidence](../GOVERNANCE.md#issue-contract-evidence).

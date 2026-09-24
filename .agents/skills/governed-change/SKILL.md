@@ -87,7 +87,10 @@ before Stage 2.
    `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT --initial`.
    For a continuation, supply the saved lifecycle artifact with `--state STATE`. Follow
    [Governance](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
-   for review policy and lifecycle decisions.
+   for review policy and lifecycle decisions. The packet's actual risk tier
+   selects the configured retry budget: low gets one correction retry, while
+   medium and high get two; a handoff artifact never authorizes an autonomous
+   reset.
 6. When the review lifecycle reports completion, re-fetch and reconcile the
    issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the

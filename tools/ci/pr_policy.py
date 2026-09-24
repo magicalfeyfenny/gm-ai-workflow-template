@@ -26,12 +26,20 @@ AUTOMATIC_RISK_LABELS = frozenset(
     str(label)
     for label in POLICY["risk"]["automatic_risk_labels"]
 )
+HIGH_RISK_BASES = frozenset(
+    str(value)
+    for value in POLICY["risk"]["high_risk_bases"]
+)
+CORRECTION_RETRY_BUDGETS = {
+    str(risk): int(retries)
+    for risk, retries in POLICY["risk"]["correction_retries"].items()
+}
 
 FOCUSED_VALIDATION_RE = re.compile(
     r"(?mi)^[ \t]*Focused validation:[ \t]*`([^`\n]+)`[ \t]*$"
 )
-HIGH_RISK_RATIONALE_RE = re.compile(
-    r"(?mi)^[ \t]*High-risk rationale:[ \t]*(.+?)[ \t]*$"
+HIGH_RISK_BASIS_RE = re.compile(
+    r"(?mi)^[ \t]*High-risk basis:[ \t]*(.*?)[ \t]*$"
 )
 GENERIC_VALIDATION_COMMANDS = frozenset(
     {
@@ -40,28 +48,6 @@ GENERIC_VALIDATION_COMMANDS = frozenset(
         "repository policy",
     }
 )
-CONCRETE_HIGH_RISK_MARKERS = (
-    "authority",
-    "governance",
-    "ci/",
-    "merge enforcement",
-    "release",
-    "publication",
-    "security",
-    "credential",
-    "destructive",
-    "irreversible",
-    "compatibility",
-    "migration",
-    "persistence",
-    "data loss",
-    "data-loss",
-    "cross-system",
-    "blast radius",
-    "uncertainty",
-)
-
-
 @dataclass(frozen=True)
 class PolicyEvaluation:
     """Report policy validity, risk, and automatic-merge eligibility."""
@@ -290,30 +276,37 @@ def voluntary_high_risk_errors(
     forced_high: bool,
     labels: set[str],
 ) -> list[str]:
-    """Require concrete rationale when high risk is not forced by policy."""
+    """Require structured danger bases when high risk is voluntary."""
     if "risk:high" not in labels or forced_high:
         return []
 
-    matches = HIGH_RISK_RATIONALE_RE.findall(body)
+    matches = [match.group(1).strip() for match in HIGH_RISK_BASIS_RE.finditer(body)]
 
     if not matches:
         return [
-            "voluntary risk:high classification requires a concrete "
-            "high-risk rationale"
+            "voluntary risk:high classification requires at least one "
+            "recognized High-risk basis entry"
         ]
 
-    rationale = " ".join(matches).casefold()
+    errors: list[str] = []
+    unknown = sorted(set(matches) - HIGH_RISK_BASES)
+    if unknown:
+        errors.append(
+            "unrecognized High-risk basis value(s): "
+            + ", ".join(unknown)
+            + "; use a configured structured basis"
+        )
+    if len(matches) != len(set(matches)):
+        errors.append("High-risk basis entries must not be duplicated")
 
-    if len(rationale) < 20 or not any(
-        marker in rationale
-        for marker in CONCRETE_HIGH_RISK_MARKERS
-    ):
-        return [
-            "voluntary risk:high classification requires evidence of "
-            "structural or operational danger"
-        ]
+    return errors
 
-    return []
+
+def correction_retry_budget(risk: str) -> int:
+    """Return the repository-configured accepted-correction retry budget."""
+    if risk not in CORRECTION_RETRY_BUDGETS:
+        raise ValueError(f"unsupported risk tier: {risk}")
+    return CORRECTION_RETRY_BUDGETS[risk]
 
 
 def completion_policy_errors(

@@ -65,20 +65,20 @@ except ImportError:  # pragma: no cover - direct script compatibility
 
 try:
     from .adversarial_review_state import (
-        MAX_CORRECTION_CYCLES,
         accepted_corrections,
         continuation_reason,
         lifecycle_artifact,
         load_lifecycle_artifact,
     )
+    from .pr_policy import correction_retry_budget
 except ImportError:  # pragma: no cover - direct script compatibility
     from adversarial_review_state import (  # type: ignore[no-redef]
-        MAX_CORRECTION_CYCLES,
         accepted_corrections,
         continuation_reason,
         lifecycle_artifact,
         load_lifecycle_artifact,
     )
+    from pr_policy import correction_retry_budget  # type: ignore[no-redef]
 
 
 CODEX_MODEL_CONFIG_FILENAME = "CODEX_MODEL_CONFIG.toml"
@@ -519,6 +519,7 @@ def _session_failure_outcome(
     )
     return lifecycle_artifact(
         status="human-handoff",
+        risk=review_packet["risk"],
         issue_contract_revision=issue_contract_revision,
         cycle=cycle,
         candidate_identity=candidate_identity(review_packet["candidate"]),
@@ -534,6 +535,7 @@ def _state_failure_outcome(
     """Fail closed when the caller omits or supplies an invalid artifact."""
     return lifecycle_artifact(
         status="human-handoff",
+        risk=review_packet["risk"],
         issue_contract_revision=review_packet["issue_contract"]["revision"],
         cycle=0,
         candidate_identity=candidate_identity(review_packet["candidate"]),
@@ -585,6 +587,7 @@ def run_review_lifecycle(
             continuation,
             issue_contract_revision=revision,
             candidate=review_packet["candidate"],
+            risk=review_packet["risk"],
         )
         if reason is not None:
             prior = [
@@ -593,6 +596,7 @@ def run_review_lifecycle(
             ]
             return lifecycle_artifact(
                 status="human-handoff",
+                risk=review_packet["risk"],
                 issue_contract_revision=revision,
                 cycle=continuation["cycle"],
                 candidate_identity=current_candidate,
@@ -623,6 +627,7 @@ def run_review_lifecycle(
     if adjudication is None:
         return lifecycle_artifact(
             status="complete",
+            risk=review_packet["risk"],
             issue_contract_revision=revision,
             cycle=cycle,
             candidate_identity=current_candidate,
@@ -631,6 +636,7 @@ def run_review_lifecycle(
     if adjudication["human_handoff"]["required"]:
         return lifecycle_artifact(
             status="human-handoff",
+            risk=review_packet["risk"],
             issue_contract_revision=revision,
             cycle=cycle,
             candidate_identity=current_candidate,
@@ -642,22 +648,29 @@ def run_review_lifecycle(
     if not corrections:
         return lifecycle_artifact(
             status="complete",
+            risk=review_packet["risk"],
             issue_contract_revision=revision,
             cycle=cycle,
             candidate_identity=current_candidate,
             prior_candidate_identities=prior_candidate_identities,
         )
-    if cycle >= MAX_CORRECTION_CYCLES:
+    retry_budget = correction_retry_budget(review_packet["risk"])
+    if cycle >= retry_budget:
         return lifecycle_artifact(
             status="human-handoff",
+            risk=review_packet["risk"],
             issue_contract_revision=revision,
             cycle=cycle,
             candidate_identity=current_candidate,
             prior_candidate_identities=prior_candidate_identities,
-            reason=f"correction cycle cap {MAX_CORRECTION_CYCLES} reached",
+            reason=(
+                f"correction retry budget {retry_budget} for "
+                f"risk:{review_packet['risk']} exhausted"
+            ),
         )
     return lifecycle_artifact(
         status="revalidate-and-rereview",
+        risk=review_packet["risk"],
         issue_contract_revision=revision,
         cycle=cycle + 1,
         candidate_identity=current_candidate,

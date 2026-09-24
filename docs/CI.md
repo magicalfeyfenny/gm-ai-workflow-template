@@ -3,6 +3,12 @@
 [Governance](../GOVERNANCE.md#ci) owns the CI requirements. This document owns
 the project extension procedure for [the CI workflow](../.github/workflows/ci.yml).
 
+The post-Stage-2 adversarial review lifecycle is separate from hosted CI. Its
+packet binds the actual PR risk tier and uses the configured correction retry
+budget: one retry for low risk and two for medium or high risk. An exhausted
+budget or unavailable review evidence produces human handoff; a handoff result
+does not authorize an automatic reset.
+
 The `template-tests` job runs the template's Python unittest suite. The `tests`
 job publishes the stable required check name `Tests` and evaluates its required
 constituent jobs with [aggregate_tests.py](../tools/ci/aggregate_tests.py).

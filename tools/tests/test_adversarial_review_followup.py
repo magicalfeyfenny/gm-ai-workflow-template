@@ -80,6 +80,7 @@ def semantic_packet() -> dict:
             ],
         },
         {"included": INCLUDED, "exclusions": ["readiness", "merge", "release"]},
+        risk="high",
     )
 
 

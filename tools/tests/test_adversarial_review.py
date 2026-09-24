@@ -101,6 +101,7 @@ def packet() -> dict:
         governance(),
         stage2(),
         {"included": INCLUDED, "exclusions": ["readiness", "merge", "release"]},
+        risk="high",
     )
 
 
@@ -167,6 +168,7 @@ class ReviewPacketTests(unittest.TestCase):
         value = packet()
 
         self.assertEqual(value["issue_contract"]["revision"], REVISION)
+        self.assertEqual(value["risk"], "high")
         self.assertEqual(value["candidate"]["diff_sha256"], DIFF_SHA)
         self.assertEqual(
             value["stage2_evidence"]["candidate_identity"],
@@ -199,6 +201,11 @@ class ReviewPacketTests(unittest.TestCase):
         with self.assertRaises(ReviewContractError):
             validate_review_packet(hidden)
 
+        invalid_risk = packet()
+        invalid_risk["risk"] = "important"
+        with self.assertRaises(ReviewContractError):
+            validate_review_packet(invalid_risk)
+
         tampered_source = packet()
         tampered_source["candidate"]["evidence_id"] = "reviewer.paraphrase"
         with self.assertRaisesRegex(ReviewContractError, "evidence ID"):
@@ -216,6 +223,7 @@ class ReviewPacketTests(unittest.TestCase):
             build_review_packet(
                 closed, candidate(), governance(), stage2(),
                 {"included": INCLUDED, "exclusions": []},
+                risk="high",
             )
 
 

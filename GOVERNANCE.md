@@ -749,6 +749,14 @@ establish fresh applicable evidence under the same accepted issue and standing
 Governance, then obtain fresh review against those obligations. Do not carry a
 prior correction forward as a new requirement.
 
+The actual PR risk tier is bound into the review packet and lifecycle artifact.
+The executable correction retry budgets are low: one retry, medium: two
+retries, and high: two retries. The initial review pass is not a retry. An
+exhausted budget produces human handoff; high risk does not receive a larger
+budget merely because the work is more consequential. A human-authorized new
+candidate after handoff starts a fresh lifecycle and fresh tier budget, while a
+handoff artifact cannot be used as an autonomous continuation.
+
 Use a supported disposition whenever possible. Human handoff is for unresolved
 issue or authority ambiguity, or when required review or adjudication evidence
 is unavailable or unusable. A lifecycle stop also requires handoff rather than
@@ -858,6 +866,13 @@ classified from that issue's scope and the PR's actual changes and
 circumstances. A coordinating parent's risk does not determine a sub-issue's
 risk, and risk does not propagate between sub-issues.
 
+When an agent authors or revises an issue, `Expected risk: High` requires a
+named concrete structural or operational danger. Use the configured structured
+bases in the issue's risk-basis field when applicable; ordinary size,
+importance, difficulty, broad product scope, or implementation complexity
+belongs at Medium unless a separate automatic-high condition applies. Expected
+risk is planning evidence, not a command to the PR classifier.
+
 A PR is automatically high risk if:
 
 - it targets `main`;
@@ -873,14 +888,23 @@ domain. The size limits are backstops for genuinely massive structural changes,
 not ordinary production scope.
 
 Any change may be voluntarily classified high risk only when its concrete
-behavior or circumstances show structural or operational danger. The PR must
-record a concrete rationale, such as materially relevant authority or
-governance changes, CI/merge/release/publication enforcement, security or
-credential boundaries, destructive or difficult-to-reverse operations, durable
-compatibility or migration boundaries, persistence or data-loss risk,
-exceptional cross-system blast radius, or unusual uncertainty. A large,
-important, difficult, finale-related, or multi-file ordinary feature is not
-high risk by itself.
+behavior or circumstances show structural or operational danger. Without an
+automatic-high trigger, the PR must record one or more exact `High-risk basis:`
+entries from the configured values:
+
+- `governance-authority`
+- `ci-merge-release`
+- `security-credentials`
+- `destructive-operation`
+- `compatibility-migration`
+- `persistence-data-loss`
+- `cross-system-blast-radius`
+- `exceptional-uncertainty`
+
+An optional `High-risk rationale:` line may explain the selected bases but is
+not itself machine-readable classification evidence. A large, important,
+difficult, finale-related, or multi-file ordinary feature is not high risk by
+itself.
 
 Automatically high-risk changes may not be downgraded. Neither issue metadata,
 an agent, adjudication, nor a human-authored Expected risk: Medium value can

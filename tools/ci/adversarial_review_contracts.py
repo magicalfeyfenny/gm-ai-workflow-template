@@ -20,7 +20,7 @@ class ReviewContractError(ValueError):
         self.diagnostic_detail_code = diagnostic_detail_code
 
 
-REVIEW_PACKET_SCHEMA = "adversarial-review-packet:v3"
+REVIEW_PACKET_SCHEMA = "adversarial-review-packet:v4"
 REVIEW_RESULT_SCHEMA = "adversarial-review-result:v3"
 ADJUDICATION_PACKET_SCHEMA = "adversarial-adjudication-packet:v2"
 ADJUDICATION_RESULT_SCHEMA = "adversarial-adjudication-result:v4"
@@ -63,7 +63,7 @@ SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES = (
     "adjudication_correction_required_missing",
     "adjudication_correction_acceptance_mismatch",
 )
-MAX_CORRECTION_CYCLES = 2
+RISK_TIERS = ("low", "medium", "high")
 DISPOSITIONS = ("blocker", "patch-now", "follow-up", "reject")
 _IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
 
