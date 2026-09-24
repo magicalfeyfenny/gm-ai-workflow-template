@@ -1,579 +1,298 @@
-"""Bound correction and evidence transitions for adversarial review."""
+"""Persist the single validated result and continuation input for review."""
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping, Sequence
 
 try:
-    from .adversarial_review import (
+    from .adversarial_review import _digest, candidate_identity
+    from .adversarial_review_contracts import (
         MAX_CORRECTION_CYCLES,
+        SESSION_FAILURE_CLASSES,
+        SESSION_FAILURE_DIAGNOSTIC_CODES,
+        SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES,
+        SESSION_FAILURE_SCHEMA,
+        SESSION_FAILURE_VALIDATION_STAGES,
         ReviewContractError,
-        _digest,
-        candidate_identity,
-        validate_adjudication_packet,
-        validate_adjudication_result,
-        validate_review_packet,
-    )
-    from .adversarial_review_lifecycle_artifact import (
-        CONTINUATION_STATE_SCHEMA,
-        implementation_action_body,
-        history_after_success,
-        history_at_handoff,
-        recover_implementation_payload,
-        validate_adjudication_history,
-        validate_pending_implementation_action,
     )
 except ImportError:  # pragma: no cover - direct script compatibility
-    from adversarial_review import (  # type: ignore[no-redef]
+    from adversarial_review import _digest, candidate_identity  # type: ignore[no-redef]
+    from adversarial_review_contracts import (  # type: ignore[no-redef]
         MAX_CORRECTION_CYCLES,
+        SESSION_FAILURE_CLASSES,
+        SESSION_FAILURE_DIAGNOSTIC_CODES,
+        SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES,
+        SESSION_FAILURE_SCHEMA,
+        SESSION_FAILURE_VALIDATION_STAGES,
         ReviewContractError,
-        _digest,
-        candidate_identity,
-        validate_adjudication_packet,
-        validate_adjudication_result,
-        validate_review_packet,
-    )
-    from adversarial_review_lifecycle_artifact import (  # type: ignore[no-redef]
-        CONTINUATION_STATE_SCHEMA,
-        implementation_action_body,
-        history_after_success,
-        history_at_handoff,
-        recover_implementation_payload,
-        validate_adjudication_history,
-        validate_pending_implementation_action,
     )
 
 
-_CONTENT_FIELDS = ("tree_sha", "diff_sha256")
-_CANDIDATE_IDENTITY_FIELDS = (
-    "base_ref",
-    "head_ref",
-    "head_sha",
-    "tree_sha",
-    "diff_sha256",
-)
-_CONTINUATION_STATE_FIELDS = (
+LIFECYCLE_ARTIFACT_SCHEMA = "adversarial-review-lifecycle:v1"
+MAX_HANDOFF_REASON_LENGTH = 320
+_ARTIFACT_FIELDS = {
     "schema",
-    "state_digest",
-    "cycle",
-    "candidate_history",
-    "accepted_correction",
-    "previous_candidate",
+    "status",
     "issue_contract_revision",
-    "adjudication_history",
-    "pending_implementation_action",
-)
+    "cycle",
+    "candidate_identity",
+    "prior_candidate_identities",
+    "corrections",
+    "reason",
+    "session_failure",
+}
+_IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
+_CONTENT_FIELDS = ("tree_sha", "diff_sha256")
+_CORRECTION_FIELDS = {
+    "finding_id",
+    "disposition",
+    "basis",
+    "correction",
+}
+_SESSION_FAILURE_FIELDS = {
+    "schema",
+    "role",
+    "exit_status",
+    "output_exists",
+    "failure_class",
+    "validation_stage",
+    "diagnostic_code",
+    "diagnostic_detail_code",
+}
+_STATUSES = {"complete", "revalidate-and-rereview", "human-handoff"}
 
 
-def _content_key(value: Mapping[str, object]) -> tuple[str, ...]:
-    identity = candidate_identity(value)
-    return tuple(identity[field] for field in _CONTENT_FIELDS)
+def _text(value: object, subject: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ReviewContractError(f"{subject} must be a non-empty string")
+    return value
 
 
-def _canonical_digest(value: Mapping[str, object]) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _identity_snapshot(value: object, subject: str) -> dict[str, str]:
-    if not isinstance(value, Mapping) or set(value) != set(_CANDIDATE_IDENTITY_FIELDS):
-        raise ReviewContractError(
-            f"{subject} must contain exactly the candidate identity fields"
-        )
+def _identity(value: object, subject: str) -> dict[str, str]:
+    if not isinstance(value, Mapping) or set(value) != set(_IDENTITY_FIELDS):
+        raise ReviewContractError(f"{subject} must contain exactly the candidate identity")
     return candidate_identity(value)
 
 
-def _candidate_snapshot(value: object, subject: str = "candidate") -> dict[str, object]:
-    if not isinstance(value, Mapping):
-        raise ReviewContractError(f"{subject} must be an object")
-    if set(value) != set(_CANDIDATE_IDENTITY_FIELDS) | {"diff"}:
-        raise ReviewContractError(
-            f"{subject} must contain exactly its identity fields and diff"
-        )
+def _content_key(value: Mapping[str, object]) -> tuple[str, str]:
     identity = candidate_identity(value)
-    diff = value.get("diff")
-    if not isinstance(diff, str):
-        raise ReviewContractError(f"{subject}.diff must be a string")
-    return {**identity, "diff": diff}
+    return tuple(identity[field] for field in _CONTENT_FIELDS)  # type: ignore[return-value]
 
 
-def _initial_lifecycle_state(issue_contract_revision: str) -> dict[str, object]:
-    return {
-        "cycle": 0,
-        "candidate_history": [],
-        "accepted_correction": False,
-        "previous_candidate": None,
-        "issue_contract_revision": _digest(
-            issue_contract_revision, "issue contract revision"
-        ),
-        "adjudication_history": [],
-        "pending_implementation_action": None,
-    }
+def _reason(value: object) -> str:
+    reason = _text(value, "lifecycle handoff reason")
+    normalized = " ".join("".join(
+        char if char.isprintable() else " " for char in reason
+    ).split())
+    if not normalized:
+        raise ReviewContractError("lifecycle handoff reason is empty after sanitizing")
+    return normalized[:MAX_HANDOFF_REASON_LENGTH]
 
 
-def initial_lifecycle_state(issue_contract_revision: str) -> dict[str, object]:
-    """Return the internal, explicitly requested first-candidate state."""
-    return _initial_lifecycle_state(issue_contract_revision)
-
-
-def _state_body(
-    *,
-    cycle: int,
-    candidate_history: list[dict[str, str]],
-    accepted_correction: bool,
-    previous_candidate: dict[str, object],
-    issue_contract_revision: str,
-    adjudication_history: list[dict[str, object]],
-    pending_implementation_action: dict[str, object],
-) -> dict[str, object]:
-    return {
-        "schema": CONTINUATION_STATE_SCHEMA,
-        "cycle": cycle,
-        "candidate_history": candidate_history,
-        "accepted_correction": accepted_correction,
-        "previous_candidate": previous_candidate,
-        "issue_contract_revision": issue_contract_revision,
-        "adjudication_history": adjudication_history,
-        "pending_implementation_action": pending_implementation_action,
-    }
-
-
-def validate_continuation_state(value: Mapping[str, object]) -> dict[str, object]:
-    """Validate the complete repository-defined state for a correction cycle."""
-    if not isinstance(value, Mapping):
-        raise ReviewContractError("continuation state must be an object")
-    raw = dict(value)
-    if set(raw) != set(_CONTINUATION_STATE_FIELDS):
-        raise ReviewContractError(
-            "continuation state must be complete and contain only repository-defined fields"
+def _corrections(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        raise ReviewContractError("lifecycle corrections must be a list")
+    corrections = []
+    seen: set[str] = set()
+    for index, raw in enumerate(value):
+        subject = f"lifecycle corrections[{index}]"
+        if not isinstance(raw, Mapping) or set(raw) != _CORRECTION_FIELDS:
+            raise ReviewContractError(f"{subject} has unsupported or missing fields")
+        finding_id = _text(raw["finding_id"], f"{subject}.finding_id")
+        if finding_id in seen:
+            raise ReviewContractError("lifecycle corrections contain a duplicate finding")
+        seen.add(finding_id)
+        disposition = raw["disposition"]
+        if disposition not in {"blocker", "patch-now"}:
+            raise ReviewContractError(f"{subject}.disposition cannot direct remediation")
+        basis = _text(raw["basis"], f"{subject}.basis")
+        correction = raw["correction"]
+        if not isinstance(correction, Mapping) or set(correction) != {"summary"}:
+            raise ReviewContractError(f"{subject}.correction is malformed")
+        corrections.append(
+            {
+                "finding_id": finding_id,
+                "disposition": disposition,
+                "basis": basis,
+                "correction": {
+                    "summary": _text(correction["summary"], f"{subject}.correction.summary")
+                },
+            }
         )
-    if raw.get("schema") != CONTINUATION_STATE_SCHEMA:
-        raise ReviewContractError("unsupported continuation state schema")
-    cycle = raw.get("cycle")
-    if (
-        not isinstance(cycle, int)
-        or isinstance(cycle, bool)
-        or cycle < 1
-        or cycle > MAX_CORRECTION_CYCLES
-    ):
-        raise ReviewContractError("continuation state cycle is outside the correction cap")
-    if raw.get("accepted_correction") is not True:
-        raise ReviewContractError(
-            "continuation state must record an accepted correction"
-        )
-    revision = _digest(raw.get("issue_contract_revision"), "issue contract revision")
-    history_value = raw.get("candidate_history")
-    if not isinstance(history_value, list) or not history_value:
-        raise ReviewContractError("continuation state candidate history is incomplete")
-    history = [
-        _identity_snapshot(item, "continuation state candidate history entry")
-        for item in history_value
-    ]
-    if len(history) != cycle:
-        raise ReviewContractError("continuation state history does not match its cycle")
-    history_keys = [_content_key(item) for item in history]
-    if len(history_keys) != len(set(history_keys)):
-        raise ReviewContractError("continuation state candidate history contains a duplicate")
-    previous = _candidate_snapshot(
-        raw.get("previous_candidate"), "continuation state previous candidate"
-    )
-    if candidate_identity(previous) != history[-1]:
-        raise ReviewContractError(
-            "continuation state previous candidate does not match its history"
-        )
-    adjudication_history = validate_adjudication_history(
-        raw.get("adjudication_history"), history, cycle
-    )
-    pending_action = validate_pending_implementation_action(
-        raw.get("pending_implementation_action"), adjudication_history, revision, cycle
-    )
-    body = _state_body(
-        cycle=cycle,
-        candidate_history=history,
-        accepted_correction=True,
-        previous_candidate=previous,
-        issue_contract_revision=revision,
-        adjudication_history=adjudication_history,
-        pending_implementation_action=pending_action,
-    )
-    state_digest = raw.get("state_digest")
-    if not isinstance(state_digest, str) or state_digest != _canonical_digest(body):
-        raise ReviewContractError("continuation state digest does not match its contents")
-    return {**body, "state_digest": state_digest}
-
-
-def _accepted_corrections(adjudication: Mapping[str, object]) -> list[dict[str, object]]:
-    corrections: list[dict[str, object]] = []
-    for item in adjudication["dispositions"]:
-        if item["correction_accepted"]:
-            correction = item["correction"]
-            if not isinstance(correction, Mapping):
-                raise ReviewContractError("accepted correction is not an object")
-            corrections.append(dict(correction))
     return corrections
 
 
-def continuation_delta_reason(
-    state: Mapping[str, object],
-    current_candidate: Mapping[str, object],
-    issue_contract_revision: str,
-) -> str | None:
-    """Require a changed, non-repeated candidate under the same issue revision."""
-    continuation = validate_continuation_state(state)
-    revision = _digest(issue_contract_revision, "issue contract revision")
-    if continuation["issue_contract_revision"] != revision:
-        return "continuation state belongs to a different issue contract revision"
-    current = _candidate_snapshot(current_candidate, "current candidate")
-    previous = continuation["previous_candidate"]
-    if _content_key(current) == _content_key(previous):
-        return "the continuation candidate did not change the reviewed candidate"
-    history = {
-        _content_key(candidate) for candidate in continuation["candidate_history"]
+def _session_failure(value: object) -> dict[str, object] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != _SESSION_FAILURE_FIELDS:
+        raise ReviewContractError("lifecycle session failure has unsupported or missing fields")
+    if value["schema"] != SESSION_FAILURE_SCHEMA:
+        raise ReviewContractError("lifecycle session failure schema is unsupported")
+    if value["role"] not in {"reviewer", "adjudicator", "unknown"}:
+        raise ReviewContractError("lifecycle session failure role is unsupported")
+    exit_status = value["exit_status"]
+    if exit_status is not None and (
+        not isinstance(exit_status, int) or isinstance(exit_status, bool)
+    ):
+        raise ReviewContractError("lifecycle session failure exit status is invalid")
+    if not isinstance(value["output_exists"], bool):
+        raise ReviewContractError("lifecycle session failure output state is invalid")
+    if value["failure_class"] not in SESSION_FAILURE_CLASSES:
+        raise ReviewContractError("lifecycle session failure class is unsupported")
+    stage = value["validation_stage"]
+    if stage is not None and stage not in SESSION_FAILURE_VALIDATION_STAGES:
+        raise ReviewContractError("lifecycle session failure validation stage is unsupported")
+    code = value["diagnostic_code"]
+    if code is not None and code not in SESSION_FAILURE_DIAGNOSTIC_CODES:
+        raise ReviewContractError("lifecycle session failure diagnostic is unsupported")
+    detail = value["diagnostic_detail_code"]
+    if detail is not None and detail not in SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES:
+        raise ReviewContractError("lifecycle session failure detail is unsupported")
+    return dict(value)
+
+
+def validate_lifecycle_artifact(value: object) -> dict[str, object]:
+    """Validate the one persisted outcome and, when needed, continuation input."""
+    if not isinstance(value, Mapping) or set(value) != _ARTIFACT_FIELDS:
+        raise ReviewContractError("lifecycle artifact has unsupported or missing fields")
+    if value["schema"] != LIFECYCLE_ARTIFACT_SCHEMA:
+        raise ReviewContractError("lifecycle artifact schema is unsupported")
+    status = value["status"]
+    if status not in _STATUSES:
+        raise ReviewContractError("lifecycle artifact status is unsupported")
+    revision = _digest(value["issue_contract_revision"], "issue contract revision")
+    cycle = value["cycle"]
+    if (
+        not isinstance(cycle, int)
+        or isinstance(cycle, bool)
+        or cycle < 0
+        or cycle > MAX_CORRECTION_CYCLES
+    ):
+        raise ReviewContractError("lifecycle artifact cycle is outside the correction cap")
+    identity = _identity(value["candidate_identity"], "lifecycle candidate identity")
+    history_value = value["prior_candidate_identities"]
+    if not isinstance(history_value, list):
+        raise ReviewContractError("lifecycle prior candidates must be a list")
+    history = [
+        _identity(item, f"lifecycle prior candidates[{index}]")
+        for index, item in enumerate(history_value)
+    ]
+    keys = [_content_key(identity) for identity in history]
+    if len(keys) != len(set(keys)):
+        raise ReviewContractError("lifecycle prior candidates contain a repeated candidate")
+    current_key = _content_key(identity)
+    corrections = _corrections(value["corrections"])
+    reason_value = value["reason"]
+    failure = _session_failure(value["session_failure"])
+    if status == "revalidate-and-rereview":
+        if (
+            cycle < 1
+            or len(history) != cycle - 1
+            or current_key in set(keys)
+            or not corrections
+            or reason_value is not None
+            or failure is not None
+        ):
+            raise ReviewContractError("continuation artifact is incomplete")
+        reason = None
+    elif status == "complete":
+        if (
+            len(history) != cycle
+            or current_key in set(keys)
+            or corrections
+            or reason_value is not None
+            or failure is not None
+        ):
+            raise ReviewContractError("completed artifact is inconsistent")
+        reason = None
+    else:
+        if len(history) != cycle or corrections:
+            raise ReviewContractError("human handoff artifact is inconsistent")
+        reason = _reason(reason_value)
+    return {
+        "schema": LIFECYCLE_ARTIFACT_SCHEMA,
+        "status": status,
+        "issue_contract_revision": revision,
+        "cycle": cycle,
+        "candidate_identity": identity,
+        "prior_candidate_identities": history,
+        "corrections": corrections,
+        "reason": reason,
+        "session_failure": failure,
     }
-    if _content_key(current) in history:
+
+
+def lifecycle_artifact(
+    *,
+    status: str,
+    issue_contract_revision: str,
+    cycle: int,
+    candidate_identity: Mapping[str, object],
+    prior_candidate_identities: Sequence[Mapping[str, object]] = (),
+    corrections: Sequence[Mapping[str, object]] = (),
+    reason: str | None = None,
+    session_failure: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build the canonical persisted result without synchronized projections."""
+    return validate_lifecycle_artifact(
+        {
+            "schema": LIFECYCLE_ARTIFACT_SCHEMA,
+            "status": status,
+            "issue_contract_revision": issue_contract_revision,
+            "cycle": cycle,
+            "candidate_identity": dict(candidate_identity),
+            "prior_candidate_identities": [
+                dict(item) for item in prior_candidate_identities
+            ],
+            "corrections": [dict(item) for item in corrections],
+            "reason": reason,
+            "session_failure": (
+                None if session_failure is None else dict(session_failure)
+            ),
+        }
+    )
+
+
+def load_lifecycle_artifact(value: object) -> dict[str, object]:
+    """Load the same artifact emitted as the result of a prior review cycle."""
+    return validate_lifecycle_artifact(value)
+
+
+def continuation_reason(
+    artifact: Mapping[str, object],
+    *,
+    issue_contract_revision: str,
+    candidate: Mapping[str, object],
+) -> str | None:
+    """Reject stale, unchanged, repeated, or non-continuation candidates."""
+    continuation = validate_lifecycle_artifact(artifact)
+    if continuation["status"] != "revalidate-and-rereview":
+        return "saved lifecycle does not require another correction cycle"
+    if continuation["issue_contract_revision"] != _digest(
+        issue_contract_revision, "issue contract revision"
+    ):
+        return "continuation artifact belongs to a different issue contract revision"
+    history = continuation["prior_candidate_identities"]
+    current = candidate_identity(candidate)
+    current_key = _content_key(current)
+    previous_key = _content_key(continuation["candidate_identity"])
+    if current_key == previous_key:
+        return "the continuation candidate did not change the reviewed candidate"
+    if current_key in {_content_key(item) for item in history}:
         return "candidate correction oscillated to an earlier identity"
     return None
 
 
-def build_continuation_state(
-    lifecycle: Mapping[str, object],
-    current_candidate: Mapping[str, object],
-    adjudication: Mapping[str, object],
-    transition: Mapping[str, object],
-    issue_contract_revision: str,
-    adjudication_history: list[dict[str, object]],
-) -> dict[str, object]:
-    """Build a complete repository-defined state for the next production run."""
-    corrections = _accepted_corrections(adjudication)
-    if not corrections:
-        raise ReviewContractError(
-            "cannot emit continuation state without an accepted correction"
-        )
-    cycle = transition.get("next_cycle")
-    if not isinstance(cycle, int) or cycle < 1 or cycle > MAX_CORRECTION_CYCLES:
-        raise ReviewContractError("continuation state next cycle exceeds the correction cap")
-    current = _candidate_snapshot(current_candidate, "current candidate")
-    current_identity = candidate_identity(current)
-    prior_history = list(lifecycle.get("candidate_history", []))
-    history = [dict(item) for item in prior_history]
-    if not history or _content_key(history[-1]) != _content_key(current_identity):
-        history.append(current_identity)
-    pending_action = implementation_action_body(
-        current,
-        adjudication,
-        issue_contract_revision,
-        cycle,
-    )
-    body = _state_body(
-        cycle=cycle,
-        candidate_history=history,
-        accepted_correction=True,
-        previous_candidate=current,
-        issue_contract_revision=_digest(
-            issue_contract_revision, "issue contract revision"
-        ),
-        adjudication_history=adjudication_history,
-        pending_implementation_action=pending_action,
-    )
-    state = {**body, "state_digest": _canonical_digest(body)}
-    return validate_continuation_state(state)
-
-
-def implementation_payload_from_state(
-    state: Mapping[str, object],
-) -> dict[str, object]:
-    """Build the immediately consumable action envelope from persisted state."""
-    validated = validate_continuation_state(state)
-    return {
-        **validated["pending_implementation_action"],
-        "continuation_state_digest": validated["state_digest"],
-    }
-
-
-def load_continuation_state(value: object) -> dict[str, object]:
-    """Load a raw state or recover one from its complete saved outcome artifact."""
-    if isinstance(value, Mapping) and value.get("schema") == "adversarial-review-outcome:v2":
-        recover_implementation_payload(value)
-        state = value.get("continuation_state")
-    else:
-        state = value
-    if not isinstance(state, Mapping):
-        raise ReviewContractError("continuation artifact must be an object")
-    return validate_continuation_state(state)
-
-
-def review_loop_decision(
-    result: Mapping[str, object],
-    packet: Mapping[str, object],
-    *,
-    cycle: int,
-    candidate_changed: bool,
-    next_candidate: Mapping[str, object] | None = None,
-    previous_candidates: Sequence[Mapping[str, object]] = (),
-) -> dict:
-    """Decide whether to revalidate, complete, or stop for human disposition."""
-    if not isinstance(cycle, int) or isinstance(cycle, bool) or cycle < 0:
-        raise ReviewContractError("review correction cycle must be a nonnegative integer")
-    adjudication_packet = validate_adjudication_packet(packet)
-    adjudication = validate_adjudication_result(result, adjudication_packet)
-    if adjudication["human_handoff"]["required"]:
-        return {
-            "status": "human-handoff",
-            "cycle": cycle,
-            "corrections": [],
-            "reason": adjudication["human_handoff"]["reason"],
+def accepted_corrections(adjudication: Mapping[str, object]) -> list[dict[str, object]]:
+    """Project only validated, accepted remediation into the canonical artifact."""
+    return [
+        {
+            "finding_id": item["finding_id"],
+            "disposition": item["disposition"],
+            "basis": item["basis"],
+            "correction": item["correction"],
         }
-    corrections = [
-        item["correction"]
         for item in adjudication["dispositions"]
-        if item["disposition"] in {"blocker", "patch-now"}
-        and item["correction"] is not None
+        if item["correction_accepted"]
     ]
-    if not isinstance(candidate_changed, bool):
-        raise ReviewContractError("candidate_changed must be boolean")
-    if not candidate_changed and next_candidate is not None:
-        return {
-            "status": "human-handoff",
-            "cycle": cycle,
-            "corrections": [],
-            "reason": "a next candidate was supplied without a candidate change",
-        }
-    if not corrections:
-        if candidate_changed:
-            return {
-                "status": "human-handoff",
-                "cycle": cycle,
-                "corrections": [],
-                "reason": "candidate changed after review without an accepted correction",
-            }
-        return {
-            "status": "complete",
-            "cycle": cycle,
-            "corrections": [],
-            "reason": None,
-        }
-    if not candidate_changed:
-        return {
-            "status": "human-handoff",
-            "cycle": cycle,
-            "corrections": [],
-            "reason": "an accepted correction did not change the candidate",
-        }
-    if next_candidate is None:
-        return {
-            "status": "human-handoff",
-            "cycle": cycle,
-            "corrections": [],
-            "reason": "the corrected candidate identity was not established",
-        }
-    next_key = _content_key(next_candidate)
-    history = {_content_key(candidate) for candidate in previous_candidates}
-    history.add(_content_key(adjudication_packet["candidate_identity"]))
-    if next_key in history:
-        return {
-            "status": "human-handoff",
-            "cycle": cycle,
-            "corrections": [],
-            "reason": "candidate correction oscillated to an earlier identity",
-        }
-    if cycle >= MAX_CORRECTION_CYCLES:
-        return {
-            "status": "human-handoff",
-            "cycle": cycle,
-            "corrections": [],
-            "reason": f"correction cycle cap {MAX_CORRECTION_CYCLES} reached",
-        }
-    return {
-        "status": "revalidate-and-rereview",
-        "cycle": cycle + 1,
-        "corrections": corrections,
-        "reason": None,
-    }
-
-
-def stage2_evidence_current(
-    packet: Mapping[str, object],
-    candidate: Mapping[str, object],
-    issue_contract_revision: str | None = None,
-) -> bool:
-    """Return whether Stage 2 still binds the unchanged candidate and revision."""
-    try:
-        validated = validate_review_packet(packet)
-        revision = (
-            validated["issue_contract"]["revision"]
-            if issue_contract_revision is None
-            else _digest(issue_contract_revision, "issue contract revision")
-        )
-        return (
-            revision == validated["issue_contract"]["revision"]
-            and _content_key(candidate)
-            == _content_key(validated["stage2_evidence"]["candidate_identity"])
-        )
-    except ReviewContractError:
-        return False
-
-
-def validate_lifecycle_state(
-    value: Mapping[str, object] | None = None,
-) -> dict[str, object]:
-    """Compatibility name for strict continuation-state validation."""
-    if value is None:
-        raise ReviewContractError(
-            "continuation state is required; explicitly request the initial lifecycle"
-        )
-    return validate_continuation_state(value)
-
-
-def _handoff_transition(
-    cycle: int, reason: str, requirements: list[str] | None = None
-) -> dict:
-    return {
-        "status": "human-handoff",
-        "cycle": cycle,
-        "corrections": [],
-        "reason": reason,
-        "requirements": [] if requirements is None else requirements,
-        "continuation_state": None,
-    }
-
-
-def review_lifecycle_decision(
-    result: Mapping[str, object],
-    review_packet: Mapping[str, object],
-    adjudication_packet: Mapping[str, object],
-    *,
-    state: Mapping[str, object] | None = None,
-    initial: bool = False,
-) -> dict:
-    """Apply the deterministic transition to a validated lifecycle state."""
-    validated_review = validate_review_packet(review_packet)
-    if state is None:
-        if not initial:
-            raise ReviewContractError(
-                "continuation state is required; explicitly request the initial lifecycle"
-            )
-        lifecycle = _initial_lifecycle_state(
-            validated_review["issue_contract"]["revision"]
-        )
-    else:
-        if initial:
-            raise ReviewContractError(
-                "initial lifecycle cannot also consume continuation state"
-            )
-        lifecycle = validate_continuation_state(state)
-    adjudication = validate_adjudication_result(result, adjudication_packet)
-    revision = validated_review["issue_contract"]["revision"]
-    if lifecycle["issue_contract_revision"] != revision:
-        return _handoff_transition(
-            lifecycle["cycle"],
-            "continuation state belongs to a different issue contract revision",
-            [
-                "fresh Stage 2 evidence",
-                "fresh complete validated continuation state",
-            ],
-        )
-    if not stage2_evidence_current(
-        validated_review,
-        validated_review["candidate"],
-        lifecycle["issue_contract_revision"],
-    ):
-        return {
-            "status": "revalidate",
-            "cycle": lifecycle["cycle"],
-            "corrections": [],
-            "reason": "Stage 2 evidence is stale or uses a different issue revision",
-            "requirements": ["fresh Stage 2 evidence", "fresh exact candidate"],
-            "continuation_state": None,
-        }
-    if lifecycle["previous_candidate"] is not None:
-        reason = continuation_delta_reason(
-            lifecycle, validated_review["candidate"], revision
-        )
-        if reason is not None:
-            return _handoff_transition(lifecycle["cycle"], reason)
-    if adjudication["human_handoff"]["required"]:
-        transition = _handoff_transition(
-            lifecycle["cycle"], adjudication["human_handoff"]["reason"]
-        )
-        transition["adjudication_history"] = history_at_handoff(
-            lifecycle,
-            validated_review["candidate"],
-            adjudication,
-            lifecycle["cycle"],
-        )
-        transition["implementation_payload"] = None
-        return transition
-    corrections = _accepted_corrections(adjudication)
-    if not corrections:
-        history = history_after_success(
-            lifecycle,
-            validated_review["candidate"],
-            adjudication,
-            lifecycle["cycle"],
-            "no-action",
-        )
-        return {
-            "status": "complete",
-            "cycle": lifecycle["cycle"],
-            "corrections": [],
-            "reason": None,
-            "continuation_state": None,
-            "implementation_payload": None,
-            "adjudication_history": history,
-        }
-    if lifecycle["cycle"] >= MAX_CORRECTION_CYCLES:
-        transition = _handoff_transition(
-            lifecycle["cycle"],
-            f"correction cycle cap {MAX_CORRECTION_CYCLES} reached",
-        )
-        transition["implementation_payload"] = None
-        transition["adjudication_history"] = history_after_success(
-            lifecycle,
-            validated_review["candidate"],
-            adjudication,
-            lifecycle["cycle"],
-            "human-handoff",
-        )
-        return transition
-    history = history_after_success(
-        lifecycle,
-        validated_review["candidate"],
-        adjudication,
-        lifecycle["cycle"],
-        "action-pending",
-    )
-    transition = {
-        "status": "revalidate-and-rereview",
-        "cycle": lifecycle["cycle"],
-        "next_cycle": lifecycle["cycle"] + 1,
-        "corrections": corrections,
-        "reason": None,
-        "implementation_payload": None,
-        "adjudication_history": history,
-        "requirements": [
-            "address the adjudicated violation with a sufficient remedy",
-            "establish a new exact candidate identity",
-            "run fresh Stage 2 evidence",
-            "run fresh reviewer and adjudicator sessions",
-        ],
-        "continuation_state": None,
-    }
-    transition["continuation_state"] = build_continuation_state(
-        lifecycle,
-        validated_review["candidate"],
-        adjudication,
-        transition,
-        revision,
-        history,
-    )
-    transition["implementation_payload"] = implementation_payload_from_state(
-        transition["continuation_state"]
-    )
-    return transition

@@ -85,7 +85,7 @@ before Stage 2.
    [adversarial review and adjudication](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
    stage. Run the lifecycle for the frozen candidate and save its result:
    `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT --initial`.
-   For a continuation, supply the lifecycle state with `--state STATE`. Follow
+   For a continuation, supply the saved lifecycle artifact with `--state STATE`. Follow
    [Governance](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
    for review policy and lifecycle decisions.
 6. When the review lifecycle reports completion, re-fetch and reconcile the

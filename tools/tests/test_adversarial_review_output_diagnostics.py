@@ -114,7 +114,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         ]
         for case_name, failure_class, result in cases:
             with self.subTest(case=case_name):
-                diagnostic = result["human_handoff"]["session_failure"]
+                diagnostic = result["session_failure"]
                 self.assertEqual(diagnostic["schema"], SESSION_FAILURE_SCHEMA)
                 self.assertEqual(diagnostic["role"], "reviewer")
                 self.assertEqual(diagnostic["failure_class"], failure_class)
@@ -141,8 +141,8 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         )
         shaped = self.provider_output_handoff("[]")
 
-        malformed_diagnostic = malformed["human_handoff"]["session_failure"]
-        shaped_diagnostic = shaped["human_handoff"]["session_failure"]
+        malformed_diagnostic = malformed["session_failure"]
+        shaped_diagnostic = shaped["session_failure"]
         self.assertEqual(malformed_diagnostic["validation_stage"], "parse")
         self.assertEqual(malformed_diagnostic["diagnostic_code"], "output_json_parse")
         self.assertIsNone(malformed_diagnostic["diagnostic_detail_code"])
@@ -181,7 +181,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
                 packet, initial=True, codex_executable="/fake/codex"
             )
 
-        diagnostic = result["human_handoff"]["session_failure"]
+        diagnostic = result["session_failure"]
         self.assertEqual(diagnostic["role"], "reviewer")
         self.assertEqual(diagnostic["failure_class"], "invalid-output")
         self.assertEqual(diagnostic["exit_status"], 0)
@@ -195,7 +195,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         output = review_result(packet, [])
         output.pop("findings")
         result = self.provider_output_handoff(json.dumps(output))
-        diagnostic = result["human_handoff"]["session_failure"]
+        diagnostic = result["session_failure"]
         self.assertEqual(diagnostic["role"], "reviewer")
         self.assertEqual(diagnostic["exit_status"], 0)
         self.assertTrue(diagnostic["output_exists"])
@@ -211,6 +211,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         reviewer_output = review_result(packet, [finding])
         adjudicator_output = {
             "schema": ADJUDICATION_RESULT_SCHEMA,
+            "issue_contract_revision": packet["issue_contract"]["revision"],
             "candidate_identity": reviewer_output["candidate_identity"],
             "dispositions": [],
             "human_handoff": {"required": False, "reason": None},
@@ -236,7 +237,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             result = run_review_lifecycle(
                 packet, initial=True, codex_executable="/fake/codex"
             )
-        diagnostic = result["human_handoff"]["session_failure"]
+        diagnostic = result["session_failure"]
         self.assertEqual(diagnostic["role"], "adjudicator")
         self.assertEqual(diagnostic["exit_status"], 0)
         self.assertTrue(diagnostic["output_exists"])
@@ -273,8 +274,8 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         semantic = run_review_lifecycle(
             packet, initial=True, session_runner=semantic_runner
         )
-        shaped_diagnostic = shaped["human_handoff"]["session_failure"]
-        semantic_diagnostic = semantic["human_handoff"]["session_failure"]
+        shaped_diagnostic = shaped["session_failure"]
+        semantic_diagnostic = semantic["session_failure"]
         self.assertEqual(shaped_diagnostic["validation_stage"], "shape")
         self.assertEqual(
             shaped_diagnostic["diagnostic_code"],
@@ -300,7 +301,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         disposition = run_review_lifecycle(
             packet, initial=True, session_runner=disposition_runner
         )
-        disposition_diagnostic = disposition["human_handoff"]["session_failure"]
+        disposition_diagnostic = disposition["session_failure"]
         self.assertEqual(disposition_diagnostic["role"], "adjudicator")
         self.assertEqual(disposition_diagnostic["validation_stage"], "semantic")
         self.assertEqual(
@@ -318,7 +319,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         correction_failure = run_review_lifecycle(
             packet, initial=True, session_runner=correction_runner
         )
-        correction_diagnostic = correction_failure["human_handoff"]["session_failure"]
+        correction_diagnostic = correction_failure["session_failure"]
         self.assertEqual(correction_diagnostic["role"], "adjudicator")
         self.assertEqual(correction_diagnostic["validation_stage"], "semantic")
         self.assertEqual(
@@ -333,6 +334,51 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         self.assertNotIn("source-backed correction", encoded)
         self.assertNotIn("BOUNDARY-PACKET", encoded)
         self.assertNotIn("access_token", encoded)
+
+    def test_review_outputs_are_bound_to_the_accepted_issue_revision(self):
+        packet = semantic_packet()
+
+        def stale_reviewer(role, payload, output_schema):
+            output = review_result(payload, [])
+            output["issue_contract_revision"] = "a" * 64
+            return output
+
+        stale_review = run_review_lifecycle(
+            packet, initial=True, session_runner=stale_reviewer
+        )
+        self.assertEqual(stale_review["status"], "human-handoff")
+        self.assertEqual(
+            stale_review["session_failure"]["diagnostic_code"],
+            "review_issue_revision_mismatch",
+        )
+        self.assertEqual(
+            stale_review["session_failure"]["validation_stage"], "semantic"
+        )
+
+        finding_value = semantic_findings()[0]
+
+        def stale_adjudicator(role, payload, output_schema):
+            if role == "reviewer":
+                return review_result(payload, [finding_value])
+            output = adjudication_result(
+                payload,
+                [decision(finding_value["finding_id"], "reject")],
+            )
+            output["issue_contract_revision"] = "b" * 64
+            return output
+
+        stale_adjudication = run_review_lifecycle(
+            packet, initial=True, session_runner=stale_adjudicator
+        )
+        self.assertEqual(stale_adjudication["status"], "human-handoff")
+        self.assertEqual(
+            stale_adjudication["session_failure"]["diagnostic_code"],
+            "adjudication_issue_revision_mismatch",
+        )
+        self.assertEqual(
+            stale_adjudication["session_failure"]["validation_stage"],
+            "semantic",
+        )
 
     def test_correction_contract_rules_have_distinct_sanitized_detail_codes(self):
         packet = semantic_packet()
@@ -364,7 +410,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         for expected_code, adjudication_decision in cases.items():
             with self.subTest(expected_code=expected_code):
                 result = run_case(adjudication_decision)
-                diagnostic = result["human_handoff"]["session_failure"]
+                diagnostic = result["session_failure"]
                 self.assertEqual(diagnostic["role"], "adjudicator")
                 self.assertEqual(diagnostic["validation_stage"], "semantic")
                 self.assertEqual(
@@ -394,27 +440,29 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         result = run_review_lifecycle(
             packet, initial=True, session_runner=runner
         )
-        diagnostic = result["human_handoff"]["session_failure"]
+        diagnostic = result["session_failure"]
         self.assertEqual(diagnostic["role"], "adjudicator")
         self.assertEqual(diagnostic["validation_stage"], "shape")
         self.assertEqual(diagnostic["diagnostic_code"], "output_unsupported_field")
         self.assertIsNone(diagnostic["diagnostic_detail_code"])
         self.assertNotIn("RAW_CORRECTION_VALIDATION", json.dumps(result))
 
-    def test_valid_reviewer_and_adjudicator_outputs_remain_accepted(self):
+    def test_valid_zero_finding_reviewer_output_skips_adjudication(self):
         packet = semantic_packet()
+        calls = []
 
         def valid_runner(role, payload, output_schema):
+            calls.append(role)
             if role == "reviewer":
                 return review_result(payload, [])
-            return adjudication_result(payload, [])
+            raise AssertionError("empty reviewer output must skip adjudication")
 
         result = run_review_lifecycle(
             packet, initial=True, session_runner=valid_runner
         )
-        self.assertEqual(result["transition"]["status"], "complete")
-        self.assertEqual(result["adjudication"]["dispositions"], [])
-        self.assertNotIn("session_failure", result)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(calls, ["reviewer"])
+        self.assertIsNone(result["session_failure"])
 
 
 if __name__ == "__main__":

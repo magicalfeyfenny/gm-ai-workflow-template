@@ -151,6 +151,7 @@ def semantic_findings() -> list[dict]:
 def review_result(packet: dict, findings: list[dict]) -> dict:
     return {
         "schema": REVIEW_RESULT_SCHEMA,
+        "issue_contract_revision": packet["issue_contract"]["revision"],
         "candidate_identity": candidate_identity(packet["candidate"]),
         "findings": findings,
     }
@@ -175,6 +176,7 @@ def decision(finding_id: str, disposition: str, value: dict | None = None) -> di
 def adjudication_result(packet: dict, decisions: list[dict]) -> dict:
     return {
         "schema": ADJUDICATION_RESULT_SCHEMA,
+        "issue_contract_revision": packet["issue_contract_revision"],
         "candidate_identity": packet["candidate_identity"],
         "dispositions": decisions,
         "human_handoff": {"required": False, "reason": None},
@@ -522,6 +524,7 @@ class SessionFailureTests(unittest.TestCase):
             if role == "reviewer":
                 return {
                     "schema": REVIEW_RESULT_SCHEMA,
+                    "issue_contract_revision": payload["issue_contract"]["revision"],
                     "candidate_identity": candidate_identity(payload["candidate"]),
                     "findings": [
                         {
@@ -535,9 +538,8 @@ class SessionFailureTests(unittest.TestCase):
         result = run_review_lifecycle(
             packet, initial=True, session_runner=invalid_runner
         )
-        self.assertEqual(result["transition"]["status"], "human-handoff")
-        self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
-        self.assertEqual(result["human_handoff"]["finding_dispositions"], [])
+        self.assertEqual(result["status"], "human-handoff")
+        self.assertEqual(result["candidate_identity"], candidate_identity(packet["candidate"]))
         self.assertNotIn("missing-evidence", json.dumps(result))
 
     def test_provider_failure_becomes_bounded_handoff_without_raw_text(self):
@@ -549,16 +551,15 @@ class SessionFailureTests(unittest.TestCase):
         result = run_review_lifecycle(
             packet, initial=True, session_runner=failing_runner
         )
-        self.assertEqual(result["transition"]["status"], "human-handoff")
-        self.assertEqual(result["human_handoff"]["finding_dispositions"], [])
+        self.assertEqual(result["status"], "human-handoff")
         self.assertNotIn("raw-provider-instruction", json.dumps(result))
-        self.assertEqual(result["human_handoff"]["session_failure"]["role"], "reviewer")
+        self.assertEqual(result["session_failure"]["role"], "reviewer")
         self.assertEqual(
-            result["human_handoff"]["session_failure"]["failure_class"],
+            result["session_failure"]["failure_class"],
             "startup",
         )
-        self.assertIsNone(result["human_handoff"]["session_failure"]["exit_status"])
-        self.assertFalse(result["human_handoff"]["session_failure"]["output_exists"])
+        self.assertIsNone(result["session_failure"]["exit_status"])
+        self.assertFalse(result["session_failure"]["output_exists"])
 
     def test_provider_startup_failure_is_classified_without_raw_error_text(self):
         packet = semantic_packet()
@@ -569,7 +570,7 @@ class SessionFailureTests(unittest.TestCase):
             result = run_review_lifecycle(
                 packet, initial=True, codex_executable="/fake/codex"
             )
-        diagnostic = result["human_handoff"]["session_failure"]
+        diagnostic = result["session_failure"]
         self.assertEqual(diagnostic["role"], "reviewer")
         self.assertEqual(diagnostic["failure_class"], "startup")
         self.assertFalse(diagnostic["output_exists"])
@@ -580,13 +581,13 @@ class SessionFailureTests(unittest.TestCase):
 
         def failing_runner(role, payload, output_schema):
             if role == "reviewer":
-                return review_result(payload, [])
+                return review_result(payload, [semantic_findings()[0]])
             raise ReviewSessionError("raw-adjudicator-detail")
 
         result = run_review_lifecycle(
             packet, initial=True, session_runner=failing_runner
         )
-        diagnostic = result["human_handoff"]["session_failure"]
+        diagnostic = result["session_failure"]
         self.assertEqual(diagnostic["role"], "adjudicator")
         self.assertEqual(diagnostic["failure_class"], "startup")
         self.assertNotIn("raw-adjudicator-detail", json.dumps(result))
@@ -618,9 +619,9 @@ class ProviderOutputBoundaryTests(unittest.TestCase):
             result = run_review_lifecycle(
                 packet, initial=True, codex_executable="/fake/codex"
             )
-        self.assertEqual(result["transition"]["status"], "human-handoff")
-        self.assertEqual(result["human_handoff"]["candidate_identity"], candidate_identity(packet["candidate"]))
-        diagnostic = result["human_handoff"]["session_failure"]
+        self.assertEqual(result["status"], "human-handoff")
+        self.assertEqual(result["candidate_identity"], candidate_identity(packet["candidate"]))
+        diagnostic = result["session_failure"]
         self.assertEqual(diagnostic["failure_class"], "invalid-output")
         self.assertEqual(diagnostic["validation_stage"], "parse")
         self.assertEqual(diagnostic["diagnostic_code"], "output_event_stream_encoding")

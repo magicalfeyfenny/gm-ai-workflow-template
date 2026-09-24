@@ -22,12 +22,10 @@ from tools.ci.adversarial_review import (
     validate_review_packet,
     validate_review_result,
 )
-from tools.ci.adversarial_review_state import (
-    MAX_CORRECTION_CYCLES,
-    review_loop_decision,
-    stage2_evidence_current,
+from tools.ci.adversarial_review_session import (
+    run_adversarial_review,
+    run_review_lifecycle,
 )
-from tools.ci.adversarial_review_session import run_adversarial_review
 
 
 REVISION = "568b72bd89a4cdbbc5be6f86e9cce4d976422b599d7e19b69c1ed0dd4c655daa"
@@ -119,7 +117,7 @@ def finding(
         "finding_id": finding_id,
         "severity": severity,
         "defect_or_invariant": claim,
-        "supporting_evidence": ["issue_contract.body"],
+        "supporting_evidence": ["issue_contract"],
         "contract_or_governance": "Issue #116 acceptance criterion: preserve invariant A",
     }
     if location is not None:
@@ -130,6 +128,7 @@ def finding(
 def review_result(review_packet: dict, findings: list[dict]) -> dict:
     return {
         "schema": REVIEW_RESULT_SCHEMA,
+        "issue_contract_revision": review_packet["issue_contract"]["revision"],
         "candidate_identity": candidate_identity(review_packet["candidate"]),
         "findings": findings,
     }
@@ -148,6 +147,7 @@ def adjudication_result(
 ) -> dict:
     return {
         "schema": ADJUDICATION_RESULT_SCHEMA,
+        "issue_contract_revision": adjudication_packet["issue_contract_revision"],
         "candidate_identity": adjudication_packet["candidate_identity"],
         "dispositions": decisions,
         "human_handoff": {"required": handoff, "reason": reason},
@@ -175,9 +175,20 @@ class ReviewPacketTests(unittest.TestCase):
             candidate_identity(value["candidate"]),
         )
         self.assertEqual(value["scope"]["exclusions"], ["readiness", "merge", "release"])
-        evidence = {item["evidence_id"]: item for item in value["evidence_catalog"]}
-        self.assertEqual(evidence["candidate.diff"]["text"], DIFF)
-        self.assertEqual(evidence["issue_contract.body"]["text"], issue_contract()["body"])
+        self.assertEqual(value["issue_contract"]["evidence_id"], "issue_contract")
+        self.assertEqual(value["candidate"]["evidence_id"], "candidate")
+        self.assertEqual(
+            value["applicable_governance"]["sources"][0]["evidence_id"],
+            "governance.0",
+        )
+        self.assertEqual(
+            value["applicable_governance"]["review_doctrine_evidence_id"],
+            "governance.doctrine",
+        )
+        self.assertNotIn("evidence_catalog", value)
+        encoded = json.dumps(value)
+        self.assertEqual(encoded.count(json.dumps(DIFF)), 1)
+        self.assertEqual(encoded.count(json.dumps(issue_contract()["body"])), 1)
 
     def test_packet_rejects_stale_or_hidden_context(self):
         stale = packet()
@@ -190,10 +201,10 @@ class ReviewPacketTests(unittest.TestCase):
         with self.assertRaises(ReviewContractError):
             validate_review_packet(hidden)
 
-        tampered_evidence = packet()
-        tampered_evidence["evidence_catalog"][0]["text"] = "reviewer paraphrase"
-        with self.assertRaisesRegex(ReviewContractError, "not derived"):
-            validate_review_packet(tampered_evidence)
+        tampered_source = packet()
+        tampered_source["candidate"]["evidence_id"] = "reviewer.paraphrase"
+        with self.assertRaisesRegex(ReviewContractError, "evidence ID"):
+            validate_review_packet(tampered_source)
 
     def test_packet_rejects_candidate_diff_mismatch_and_non_open_contract(self):
         broken_candidate = packet()
@@ -334,17 +345,17 @@ class EvidenceTransportTests(unittest.TestCase):
             "No accepted issue requirement or Governance rule is identified"
         )
         cases[0]["supporting_evidence"] = [
-            "candidate.diff",
-            "issue_contract.body",
+            "candidate",
+            "issue_contract",
         ]
         cases[1]["supporting_evidence"] = [
             "governance.0",
         ]
         cases[2]["supporting_evidence"] = [
-            "scope.boundary",
+            "scope",
         ]
         cases[3]["supporting_evidence"] = [
-            "issue_contract.body",
+            "issue_contract",
         ]
         cases[4]["supporting_evidence"] = [
             "governance.doctrine",
@@ -359,19 +370,23 @@ class EvidenceTransportTests(unittest.TestCase):
                 set(payload),
                 {
                     "schema",
-                    "issue_contract",
+                    "issue_contract_revision",
                     "candidate_identity",
-                    "applicable_governance",
                     "evidence",
                     "findings",
-                    "scope",
                 },
             )
-            self.assertNotIn("candidate", payload)
-            self.assertNotIn("diff", payload)
             source_items = payload["evidence"]["source_items"]
             self.assertTrue(source_items)
             self.assertTrue(all(item["text"].strip() for item in source_items))
+            self.assertEqual(
+                {item["evidence_id"] for item in source_items},
+                {
+                    evidence_id
+                    for finding_item in cases
+                    for evidence_id in finding_item["supporting_evidence"]
+                },
+            )
             self.assertNotIn(
                 "accepted invariant is absent from the candidate",
                 [item["text"] for item in source_items],
@@ -379,13 +394,13 @@ class EvidenceTransportTests(unittest.TestCase):
             decisions = []
             for item in payload["findings"]:
                 evidence_ids = set(item["supporting_evidence"])
-                if "candidate.diff" in evidence_ids:
+                if "candidate" in evidence_ids:
                     disposition = "blocker"
                     value = correction()
                 elif "governance.0" in evidence_ids:
                     disposition = "follow-up"
                     value = None
-                elif "scope.boundary" in evidence_ids:
+                elif "scope" in evidence_ids:
                     disposition = "follow-up"
                     value = None
                 else:
@@ -403,205 +418,51 @@ class EvidenceTransportTests(unittest.TestCase):
         self.assertNotIn("findings", result)
 
 
-class ReviewLoopTests(unittest.TestCase):
-    def _adjudication(self, disposition: str = "patch-now") -> tuple[dict, dict]:
-        review_packet = packet()
-        findings = [finding("F1", "supported current-pass correction")]
-        adjudication_packet = build_adjudication_packet(review_packet, findings)
-        return (
-            adjudication_result(
-                adjudication_packet,
-                [decision("F1", disposition, correction() if disposition == "patch-now" else None)],
-            ),
-            adjudication_packet,
-        )
-
-    def test_unchanged_candidate_preserves_stage2_and_no_correction_completes(self):
-        review_packet = packet()
-        self.assertTrue(stage2_evidence_current(review_packet, review_packet["candidate"]))
-        no_findings = build_adjudication_packet(review_packet, [])
-        result = adjudication_result(no_findings, [])
-        self.assertEqual(
-            review_loop_decision(
-                result, no_findings, cycle=0, candidate_changed=False,
-            )["status"],
-            "complete",
-        )
-
-    def test_accepted_correction_stales_old_stage2_and_requires_fresh_review(self):
-        result, adjudication_packet = self._adjudication()
-        commit_only = candidate(head_sha="g" * 40)
-        self.assertTrue(stage2_evidence_current(packet(), commit_only))
-        changed = candidate(
-            head_sha="g" * 40,
-            diff=DIFF + "changed\n",
-            tree_sha="u" * 40,
-        )
-        self.assertFalse(stage2_evidence_current(packet(), changed))
-        transition = review_loop_decision(
-            result,
-            adjudication_packet,
-            cycle=0,
-            candidate_changed=True,
-            next_candidate=changed,
-        )
-        self.assertEqual(transition["status"], "revalidate-and-rereview")
-        self.assertEqual(transition["cycle"], 1)
-        self.assertEqual(transition["corrections"][0], correction())
-
-    def test_changed_candidate_without_correction_cannot_complete(self):
-        review_packet = packet()
-        adjudication_packet = build_adjudication_packet(review_packet, [])
-        result = adjudication_result(adjudication_packet, [])
-        changed = candidate(head_sha="g" * 40, diff=DIFF + "changed\n")
-        transition = review_loop_decision(
-            result,
-            adjudication_packet,
-            cycle=0,
-            candidate_changed=True,
-            next_candidate=changed,
-        )
-        self.assertEqual(transition["status"], "human-handoff")
-        self.assertIn("changed", transition["reason"])
-
-    def test_content_oscillation_with_new_commit_identity_hands_off(self):
-        original = candidate()
-        middle = candidate(
-            head_sha="g" * 40,
-            diff=DIFF + "middle\n",
-            tree_sha="u" * 40,
-        )
-        middle_stage2 = {
-            "issue_contract_revision": REVISION,
-            "candidate_identity": candidate_identity(middle),
-            "checks": [
-                {"name": "middle", "result": "passed", "evidence": ["middle"]}
-            ],
-        }
-        middle_packet = build_review_packet(
-            issue_contract(),
-            middle,
-            governance(),
-            middle_stage2,
-            {"included": INCLUDED, "exclusions": ["readiness"]},
-        )
-        adjudication_packet = build_adjudication_packet(
-            middle_packet, [finding("F1", "supported correction")]
-        )
-        result = adjudication_result(
-            adjudication_packet,
-            [decision("F1", "patch-now", correction())],
-        )
-        revisited = candidate(head_sha="j" * 40)
-        transition = review_loop_decision(
-            result,
-            adjudication_packet,
-            cycle=1,
-            candidate_changed=True,
-            next_candidate=revisited,
-            previous_candidates=[original],
-        )
-        self.assertEqual(transition["status"], "human-handoff")
-        self.assertIn("oscillat", transition["reason"])
-
-    def test_blocker_correction_runs_fresh_stage2_and_fresh_review(self):
-        original_packet = packet()
-        adjudication_packet = build_adjudication_packet(
-            original_packet, [finding("F-blocker", "supported blocker")]
-        )
-        result = adjudication_result(
-            adjudication_packet,
-            [decision("F-blocker", "blocker", correction())],
-        )
-        corrected = candidate(head_sha="g" * 40, diff=DIFF + "corrected\n")
-        transition = review_loop_decision(
-            result,
-            adjudication_packet,
-            cycle=0,
-            candidate_changed=True,
-            next_candidate=corrected,
-        )
-        self.assertEqual(transition["status"], "revalidate-and-rereview")
-        corrected_stage2 = {
-            "issue_contract_revision": REVISION,
-            "candidate_identity": candidate_identity(corrected),
-            "checks": [
-                {"name": "fresh Stage 2", "result": "passed", "evidence": ["fresh"]}
-            ],
-        }
-        corrected_packet = build_review_packet(
-            issue_contract(),
-            corrected,
-            governance(),
-            corrected_stage2,
-            {"included": INCLUDED, "exclusions": ["readiness", "merge", "release"]},
-        )
-        self.assertTrue(stage2_evidence_current(corrected_packet, corrected))
+class ZeroFindingLifecycleTests(unittest.TestCase):
+    def test_zero_findings_finish_without_an_adjudicator_session(self):
         calls = []
 
-        def fake_runner(role, payload, output_schema):
-            calls.append((role, payload, output_schema))
-            if role == "reviewer":
-                return review_result(payload, [])
-            return adjudication_result(payload, [])
+        def runner(role, payload, output_schema):
+            calls.append(role)
+            return review_result(payload, [])
 
-        final = run_adversarial_review(corrected_packet, session_runner=fake_runner)
-        self.assertEqual([call[0] for call in calls], ["reviewer", "adjudicator"])
-        self.assertIs(calls[0][2], REVIEW_RESULT_OUTPUT_SCHEMA)
-        self.assertIs(calls[1][2], ADJUDICATION_RESULT_OUTPUT_SCHEMA)
-        self.assertEqual(final["dispositions"], [])
-        self.assertNotEqual(
-            original_packet["candidate"]["head_sha"],
-            corrected_packet["candidate"]["head_sha"],
-        )
-
-    def test_cycle_cap_and_oscillation_surface_human_handoff(self):
-        result, adjudication_packet = self._adjudication()
-        changed = candidate(
-            head_sha="g" * 40,
-            diff=DIFF + "changed\n",
-            tree_sha="u" * 40,
-        )
-        capped = review_loop_decision(
-            result,
-            adjudication_packet,
-            cycle=MAX_CORRECTION_CYCLES,
-            candidate_changed=True,
-            next_candidate=changed,
-        )
-        self.assertEqual(capped["status"], "human-handoff")
-        self.assertIn("cap", capped["reason"])
-
-        oscillating = review_loop_decision(
-            result,
-            adjudication_packet,
-            cycle=0,
-            candidate_changed=True,
-            next_candidate=changed,
-            previous_candidates=[changed],
-        )
-        self.assertEqual(oscillating["status"], "human-handoff")
-        self.assertIn("oscillat", oscillating["reason"])
+        result = run_review_lifecycle(packet(), initial=True, session_runner=runner)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(calls, ["reviewer"])
 
 
 class IsolatedSessionTests(unittest.TestCase):
-    def test_orchestration_returns_only_adjudication_and_separates_packets(self):
+    def test_orchestration_adjudicates_findings_in_a_separate_packet(self):
         review_packet = packet()
         calls = []
 
         def fake_runner(role, payload, output_schema):
             calls.append((role, payload, output_schema))
             if role == "reviewer":
-                return review_result(payload, [])
+                return review_result(
+                    payload, [finding("F-session", "supported by the issue source")]
+                )
             adjudication_packet = payload
-            return adjudication_result(adjudication_packet, [])
+            return adjudication_result(
+                adjudication_packet, [decision("F-session", "reject")]
+            )
 
         result = run_adversarial_review(review_packet, session_runner=fake_runner)
         self.assertEqual([call[0] for call in calls], ["reviewer", "adjudicator"])
+        self.assertEqual(result["dispositions"][0]["finding_id"], "F-session")
         self.assertIn("diff", calls[0][1]["candidate"])
         self.assertNotIn("candidate", calls[1][1])
+        self.assertEqual(
+            set(calls[1][1]),
+            {
+                "schema",
+                "issue_contract_revision",
+                "candidate_identity",
+                "evidence",
+                "findings",
+            },
+        )
         self.assertNotIn("findings", result)
-        self.assertEqual(result["dispositions"], [])
 
     def test_default_runner_uses_two_fresh_read_only_packet_only_processes(self):
         review_packet = packet()
@@ -614,9 +475,13 @@ class IsolatedSessionTests(unittest.TestCase):
             payload = json.loads(encoded)
             output_path = Path(command[command.index("--output-last-message") + 1])
             if "candidate" in payload:
-                output = review_result(payload, [])
+                output = review_result(
+                    payload, [finding("F-isolated", "supported by the issue source")]
+                )
             else:
-                output = adjudication_result(payload, [])
+                output = adjudication_result(
+                    payload, [decision("F-isolated", "reject")]
+                )
             output_path.write_text(json.dumps(output), encoding="utf-8")
             return 0
 
@@ -701,7 +566,7 @@ case "$prompt" in
     *) role=adjudicator ;;
 esac
 if [ "$role" = reviewer ]; then
-    case "$prompt" in *'"evidence_catalog"'*) ;; *) exit 93 ;; esac
+    case "$prompt" in *'"evidence_id"'*) ;; *) exit 93 ;; esac
 else
     case "$prompt" in *'"candidate":'*) exit 94 ;; esac
     case "$prompt" in *'"source_items"'*) ;; *) exit 95 ;; esac
@@ -720,7 +585,7 @@ printf '%s\n' '{"type":"turn.started"}'
 cwd="$PWD"
 record="role=$role;pid=$$;cwd=$cwd;sentinel=blocked;env=clean"
 if [ "$role" = reviewer ]; then
-    printf '%s\n' '{"schema":"adversarial-review-result:v2","candidate_identity":IDENTITY_JSON,"findings":[{"finding_id":"isolation-observation","severity":"low","defect_or_invariant":"isolation fixture observed no ambient access","supporting_evidence":["candidate.diff"],"contract_or_governance":"packet boundary","affected_location":null,"confidence":1,"uncertainty":"'"$record"'"}]}' > "$output"
+    printf '%s\n' '{"schema":"adversarial-review-result:v3","issue_contract_revision":ISSUE_REVISION_JSON,"candidate_identity":IDENTITY_JSON,"findings":[{"finding_id":"isolation-observation","severity":"low","defect_or_invariant":"isolation fixture observed no ambient access","supporting_evidence":["candidate"],"contract_or_governance":"packet boundary","affected_location":null,"confidence":1,"uncertainty":"'"$record"'"}]}' > "$output"
 else
     reviewer_record=""
     uncertainty_pattern='"uncertainty"[[:space:]]*:[[:space:]]*"([^"]*)"'
@@ -728,7 +593,7 @@ else
         reviewer_record="${BASH_REMATCH[1]}"
     fi
     record="$record;reviewer=$reviewer_record"
-    printf '%s\n' '{"schema":"adversarial-adjudication-result:v3","candidate_identity":IDENTITY_JSON,"dispositions":[{"finding_id":"isolation-observation","disposition":"reject","basis":"fixture observation is not an implementation finding","correction":null,"correction_accepted":false}],"human_handoff":{"required":true,"reason":"'"$record"'"}}' > "$output"
+    printf '%s\n' '{"schema":"adversarial-adjudication-result:v4","issue_contract_revision":ISSUE_REVISION_JSON,"candidate_identity":IDENTITY_JSON,"dispositions":[{"finding_id":"isolation-observation","disposition":"reject","basis":"fixture observation is not an implementation finding","correction":null,"correction_accepted":false}],"human_handoff":{"required":true,"reason":"'"$record"'"}}' > "$output"
 fi
 """
             script = script.replace("EXTERNAL_SENTINEL", str(external_sentinel))
@@ -737,6 +602,7 @@ fi
             script = script.replace("REPOSITORY_SENTINEL", str(repository_sentinel))
             script = script.replace("IMPLEMENTATION_SENTINEL", str(implementation_sentinel))
             script = script.replace("IDENTITY_JSON", identity_json)
+            script = script.replace("ISSUE_REVISION_JSON", json.dumps(REVISION))
             executable.write_text(script, encoding="utf-8")
             executable.chmod(0o755)
             with patch.dict(os.environ, {"PARENT_SECRET": "must-not-inherit"}):
