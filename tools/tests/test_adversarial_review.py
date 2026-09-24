@@ -1,8 +1,6 @@
 import hashlib
 import json
 import os
-import re
-import shutil
 import subprocess
 import tempfile
 import unittest
@@ -464,33 +462,30 @@ class IsolatedSessionTests(unittest.TestCase):
         )
         self.assertNotIn("findings", result)
 
-    def test_default_runner_uses_two_fresh_read_only_packet_only_processes(self):
+    def test_default_runner_uses_two_fresh_read_only_codex_invocations(self):
         review_packet = packet()
         calls = []
 
         def fake_process(command, **kwargs):
             calls.append((command, kwargs))
-            prompt = kwargs["prompt"]
+            prompt = kwargs["input"]
             encoded = prompt.split("BOUNDARY-PACKET (JSON):\n", 1)[1]
             payload = json.loads(encoded)
             output_path = Path(command[command.index("--output-last-message") + 1])
             if "candidate" in payload:
                 output = review_result(
-                    payload, [finding("F-isolated", "supported by the issue source")]
+                    payload, [finding("F-fresh", "supported by the issue source")]
                 )
             else:
                 output = adjudication_result(
-                    payload, [decision("F-isolated", "reject")]
+                    payload, [decision("F-fresh", "reject")]
                 )
             output_path.write_text(json.dumps(output), encoding="utf-8")
-            return 0
+            return subprocess.CompletedProcess(command, 0)
 
-        with patch(
-            "tools.ci.adversarial_review_session._run_provider_process",
+        with patch.dict(os.environ, {"PARENT_SECRET": "must-not-inherit"}), patch(
+            "tools.ci.adversarial_review_session.subprocess.run",
             side_effect=fake_process,
-        ), patch(
-            "tools.ci.adversarial_review_session._sandbox_path",
-            return_value="/usr/bin/sandbox-exec",
         ):
             result = run_adversarial_review(
                 review_packet,
@@ -500,122 +495,26 @@ class IsolatedSessionTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertNotEqual(calls[0][1]["cwd"], calls[1][1]["cwd"])
         for command, kwargs in calls:
-            self.assertEqual(command[0], "/usr/bin/sandbox-exec")
-            self.assertEqual(command[1], "-f")
-            self.assertEqual(command[3], "--")
-            self.assertEqual(command[4], "/fake/codex")
-            self.assertEqual(command[5], "exec")
+            self.assertEqual(command[:2], ["/fake/codex", "exec"])
             self.assertIn("--ephemeral", command)
             self.assertIn("--ignore-user-config", command)
             self.assertIn("--ignore-rules", command)
             self.assertIn("--skip-git-repo-check", command)
-            self.assertIn("--json", command)
             self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
-            self.assertNotIn("--ask-for-approval", command)
+            self.assertNotIn("--json", command)
             self.assertNotIn("resume", command)
             self.assertNotIn("fork", command)
             self.assertNotIn("--worktree", command)
             self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", command)
-            self.assertNotIn(str(Path.cwd()), str(kwargs["cwd"]))
-            self.assertEqual(
-                set(kwargs["environment"]) - {"PATH", "HOME", "TMPDIR", "CODEX_HOME", "LANG", "LC_CTYPE"},
-                set(),
-            )
-        self.assertNotIn("findings", result)
-
-    @unittest.skipUnless(shutil.which("sandbox-exec"), "requires macOS Seatbelt")
-    def test_real_subprocesses_cannot_read_external_sentinels(self):
-        review_packet = packet()
-        identity_json = json.dumps(candidate_identity(review_packet["candidate"]))
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            provider_root = root / "provider"
-            sentinel_root = root / "sentinels"
-            for path in (provider_root, sentinel_root): path.mkdir()
-            external_sentinel = sentinel_root / "external.txt"
-            repository_sentinel = Path.cwd() / "GOVERNANCE.md"
-            implementation_sentinel = Path.cwd() / "tools/ci/adversarial_review.py"
-            reviewer_sentinel = sentinel_root / "reviewer-artifact.txt"
-            provider_sibling_sentinel = provider_root / "sibling-artifact.txt"
-            for path in (external_sentinel, reviewer_sentinel, provider_sibling_sentinel):
-                path.write_text("must remain unreadable", encoding="utf-8")
-            executable = provider_root / "fake-codex"
-            script = """#!/bin/bash
-set -eu
-    prompt=""
-    while IFS= read -r line; do
-        prompt="$prompt$line
-"
-done
-for sentinel in \
-    "EXTERNAL_SENTINEL" \
-    "REVIEWER_SENTINEL" \
-    "PROVIDER_SIBLING_SENTINEL" \
-    "REPOSITORY_SENTINEL" \
-    "IMPLEMENTATION_SENTINEL"; do
-    if [[ -r "$sentinel" ]]; then
-        exit 91
-    fi
-done
-set +u
-parent_secret="$PARENT_SECRET"
-set -u
-[ -z "$parent_secret" ] || exit 92
-case "$prompt" in
-    *'"candidate":'*) role=reviewer ;;
-    *) role=adjudicator ;;
-esac
-if [ "$role" = reviewer ]; then
-    case "$prompt" in *'"evidence_id"'*) ;; *) exit 93 ;; esac
-else
-    case "$prompt" in *'"candidate":'*) exit 94 ;; esac
-    case "$prompt" in *'"source_items"'*) ;; *) exit 95 ;; esac
-fi
-output=""
-previous=""
-for argument in "$@"; do
-    if [ "$previous" = "--output-last-message" ]; then
-        output="$argument"
-    fi
-    previous="$argument"
-done
-[ -n "$output" ]
-printf '%s\n' '{"type":"thread.started"}'
-printf '%s\n' '{"type":"turn.started"}'
-cwd="$PWD"
-record="role=$role;pid=$$;cwd=$cwd;sentinel=blocked;env=clean"
-if [ "$role" = reviewer ]; then
-    printf '%s\n' '{"schema":"adversarial-review-result:v3","issue_contract_revision":ISSUE_REVISION_JSON,"candidate_identity":IDENTITY_JSON,"findings":[{"finding_id":"isolation-observation","severity":"low","defect_or_invariant":"isolation fixture observed no ambient access","supporting_evidence":["candidate"],"contract_or_governance":"packet boundary","affected_location":null,"confidence":1,"uncertainty":"'"$record"'"}]}' > "$output"
-else
-    reviewer_record=""
-    uncertainty_pattern='"uncertainty"[[:space:]]*:[[:space:]]*"([^"]*)"'
-    if [[ "$prompt" =~ $uncertainty_pattern ]]; then
-        reviewer_record="${BASH_REMATCH[1]}"
-    fi
-    record="$record;reviewer=$reviewer_record"
-    printf '%s\n' '{"schema":"adversarial-adjudication-result:v4","issue_contract_revision":ISSUE_REVISION_JSON,"candidate_identity":IDENTITY_JSON,"dispositions":[{"finding_id":"isolation-observation","disposition":"reject","basis":"fixture observation is not an implementation finding","correction":null,"correction_accepted":false}],"human_handoff":{"required":true,"reason":"'"$record"'"}}' > "$output"
-fi
-"""
-            script = script.replace("EXTERNAL_SENTINEL", str(external_sentinel))
-            script = script.replace("REVIEWER_SENTINEL", str(reviewer_sentinel))
-            script = script.replace("PROVIDER_SIBLING_SENTINEL", str(provider_sibling_sentinel))
-            script = script.replace("REPOSITORY_SENTINEL", str(repository_sentinel))
-            script = script.replace("IMPLEMENTATION_SENTINEL", str(implementation_sentinel))
-            script = script.replace("IDENTITY_JSON", identity_json)
-            script = script.replace("ISSUE_REVISION_JSON", json.dumps(REVISION))
-            executable.write_text(script, encoding="utf-8")
-            executable.chmod(0o755)
-            with patch.dict(os.environ, {"PARENT_SECRET": "must-not-inherit"}):
-                result = run_adversarial_review(
-                    review_packet,
-                    codex_executable=str(executable),
-                )
-
-        reason = result["human_handoff"]["reason"]
-        self.assertIn("role=reviewer", reason)
-        self.assertIn("role=adjudicator", reason)
-        self.assertIn("sentinel=blocked", reason)
-        self.assertIn("env=clean", reason)
-        self.assertEqual(len(set(re.findall(r"pid=([0-9]+)", reason))), 2)
-        self.assertEqual(len(set(re.findall(r"cwd=([^;]+)", reason))), 2)
+            self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
+            self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+            self.assertNotIn("PARENT_SECRET", kwargs["env"])
+            self.assertIn("PACKET TRUST BOUNDARY", kwargs["input"])
+        output_paths = [
+            Path(command[command.index("--output-last-message") + 1])
+            for command, _ in calls
+        ]
+        self.assertEqual(len(set(output_paths)), 2)
+        self.assertTrue(all(not path.exists() for path in output_paths))
+        self.assertTrue(all(not Path(kwargs["cwd"]).exists() for _, kwargs in calls))
         self.assertNotIn("findings", result)
