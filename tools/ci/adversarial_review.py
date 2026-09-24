@@ -28,10 +28,10 @@ try:
         ADJUDICATION_RESULT_OUTPUT_SCHEMA,
         ADJUDICATION_RESULT_SCHEMA,
         DISPOSITIONS,
-        MAX_CORRECTION_CYCLES,
         REVIEW_PACKET_SCHEMA,
         REVIEW_RESULT_OUTPUT_SCHEMA,
         REVIEW_RESULT_SCHEMA,
+        RISK_TIERS,
         SESSION_FAILURE_CLASSES,
         SESSION_FAILURE_OUTPUT_SCHEMA,
         SESSION_FAILURE_SCHEMA,
@@ -52,10 +52,10 @@ except ImportError:  # pragma: no cover - direct script compatibility
         ADJUDICATION_RESULT_OUTPUT_SCHEMA,
         ADJUDICATION_RESULT_SCHEMA,
         DISPOSITIONS,
-        MAX_CORRECTION_CYCLES,
         REVIEW_PACKET_SCHEMA,
         REVIEW_RESULT_OUTPUT_SCHEMA,
         REVIEW_RESULT_SCHEMA,
+        RISK_TIERS,
         SESSION_FAILURE_CLASSES,
         SESSION_FAILURE_OUTPUT_SCHEMA,
         SESSION_FAILURE_SCHEMA,
@@ -176,6 +176,14 @@ def _string(value: object, subject: str, *, allow_empty: bool = False) -> str:
         raise ReviewContractError(f"{subject} must be a string")
     if not allow_empty and not value.strip():
         raise ReviewContractError(f"{subject} must not be empty")
+    return value
+
+
+def _risk(value: object) -> str:
+    if value not in RISK_TIERS:
+        raise ReviewContractError(
+            "review risk must be one of: " + ", ".join(RISK_TIERS)
+        )
     return value
 
 
@@ -401,6 +409,8 @@ def build_review_packet(
     applicable_governance: Mapping[str, object],
     stage2_evidence: Mapping[str, object],
     scope: Mapping[str, object],
+    *,
+    risk: str,
 ) -> dict:
     """Build the bounded packet supplied to the fresh reviewer session."""
     contract = _contract(issue_contract)
@@ -414,6 +424,7 @@ def build_review_packet(
     review_scope = _scope(scope)
     packet = {
         "schema": REVIEW_PACKET_SCHEMA,
+        "risk": _risk(risk),
         "issue_contract": {**contract, "evidence_id": "issue_contract"},
         "candidate": {**full_candidate, "evidence_id": "candidate"},
         "applicable_governance": {
@@ -439,6 +450,7 @@ def validate_review_packet(packet: Mapping[str, object]) -> dict:
         raw,
         (
             "schema",
+            "risk",
             "issue_contract",
             "candidate",
             "applicable_governance",
@@ -447,6 +459,7 @@ def validate_review_packet(packet: Mapping[str, object]) -> dict:
         ),
         (
             "schema",
+            "risk",
             "issue_contract",
             "candidate",
             "applicable_governance",
@@ -457,6 +470,7 @@ def validate_review_packet(packet: Mapping[str, object]) -> dict:
     )
     if raw["schema"] != REVIEW_PACKET_SCHEMA:
         raise ReviewContractError("review packet has an unsupported schema")
+    risk = _risk(raw["risk"])
     contract_value = _mapping(raw["issue_contract"], "issue contract source")
     if contract_value.pop("evidence_id", None) != "issue_contract":
         raise ReviewContractError("issue contract has an unsupported evidence ID")
@@ -495,6 +509,7 @@ def validate_review_packet(packet: Mapping[str, object]) -> dict:
     scope = _scope(scope_value)
     normalized = {
         "schema": REVIEW_PACKET_SCHEMA,
+        "risk": risk,
         "issue_contract": {**contract, "evidence_id": "issue_contract"},
         "candidate": {**candidate, "evidence_id": "candidate"},
         "applicable_governance": {

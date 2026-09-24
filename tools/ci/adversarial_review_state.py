@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 try:
     from .adversarial_review import _digest, candidate_identity
     from .adversarial_review_contracts import (
-        MAX_CORRECTION_CYCLES,
+        RISK_TIERS,
         SESSION_FAILURE_CLASSES,
         SESSION_FAILURE_DIAGNOSTIC_CODES,
         SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES,
@@ -15,10 +15,11 @@ try:
         SESSION_FAILURE_VALIDATION_STAGES,
         ReviewContractError,
     )
+    from .pr_policy import correction_retry_budget
 except ImportError:  # pragma: no cover - direct script compatibility
     from adversarial_review import _digest, candidate_identity  # type: ignore[no-redef]
     from adversarial_review_contracts import (  # type: ignore[no-redef]
-        MAX_CORRECTION_CYCLES,
+        RISK_TIERS,
         SESSION_FAILURE_CLASSES,
         SESSION_FAILURE_DIAGNOSTIC_CODES,
         SESSION_FAILURE_DIAGNOSTIC_DETAIL_CODES,
@@ -26,13 +27,15 @@ except ImportError:  # pragma: no cover - direct script compatibility
         SESSION_FAILURE_VALIDATION_STAGES,
         ReviewContractError,
     )
+    from pr_policy import correction_retry_budget  # type: ignore[no-redef]
 
 
-LIFECYCLE_ARTIFACT_SCHEMA = "adversarial-review-lifecycle:v1"
+LIFECYCLE_ARTIFACT_SCHEMA = "adversarial-review-lifecycle:v2"
 MAX_HANDOFF_REASON_LENGTH = 320
 _ARTIFACT_FIELDS = {
     "schema",
     "status",
+    "risk",
     "issue_contract_revision",
     "cycle",
     "candidate_identity",
@@ -65,6 +68,14 @@ _STATUSES = {"complete", "revalidate-and-rereview", "human-handoff"}
 def _text(value: object, subject: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ReviewContractError(f"{subject} must be a non-empty string")
+    return value
+
+
+def _risk(value: object) -> str:
+    if value not in RISK_TIERS:
+        raise ReviewContractError(
+            "lifecycle risk must be one of: " + ", ".join(RISK_TIERS)
+        )
     return value
 
 
@@ -162,14 +173,22 @@ def validate_lifecycle_artifact(value: object) -> dict[str, object]:
     if status not in _STATUSES:
         raise ReviewContractError("lifecycle artifact status is unsupported")
     revision = _digest(value["issue_contract_revision"], "issue contract revision")
+    risk = _risk(value["risk"])
+    try:
+        retry_budget = correction_retry_budget(risk)
+    except ValueError as exc:
+        raise ReviewContractError(str(exc)) from exc
     cycle = value["cycle"]
     if (
         not isinstance(cycle, int)
         or isinstance(cycle, bool)
         or cycle < 0
-        or cycle > MAX_CORRECTION_CYCLES
+        or cycle > retry_budget
     ):
-        raise ReviewContractError("lifecycle artifact cycle is outside the correction cap")
+        raise ReviewContractError(
+            "lifecycle artifact cycle is outside the configured correction "
+            f"retry budget for risk:{risk} ({retry_budget})"
+        )
     identity = _identity(value["candidate_identity"], "lifecycle candidate identity")
     history_value = value["prior_candidate_identities"]
     if not isinstance(history_value, list):
@@ -213,6 +232,7 @@ def validate_lifecycle_artifact(value: object) -> dict[str, object]:
     return {
         "schema": LIFECYCLE_ARTIFACT_SCHEMA,
         "status": status,
+        "risk": risk,
         "issue_contract_revision": revision,
         "cycle": cycle,
         "candidate_identity": identity,
@@ -226,6 +246,7 @@ def validate_lifecycle_artifact(value: object) -> dict[str, object]:
 def lifecycle_artifact(
     *,
     status: str,
+    risk: str,
     issue_contract_revision: str,
     cycle: int,
     candidate_identity: Mapping[str, object],
@@ -239,6 +260,7 @@ def lifecycle_artifact(
         {
             "schema": LIFECYCLE_ARTIFACT_SCHEMA,
             "status": status,
+            "risk": risk,
             "issue_contract_revision": issue_contract_revision,
             "cycle": cycle,
             "candidate_identity": dict(candidate_identity),
@@ -264,11 +286,18 @@ def continuation_reason(
     *,
     issue_contract_revision: str,
     candidate: Mapping[str, object],
+    risk: str,
 ) -> str | None:
     """Reject stale, unchanged, repeated, or non-continuation candidates."""
     continuation = validate_lifecycle_artifact(artifact)
     if continuation["status"] != "revalidate-and-rereview":
         return "saved lifecycle does not require another correction cycle"
+    current_risk = _risk(risk)
+    if continuation["risk"] != current_risk:
+        return (
+            "continuation artifact uses a different risk tier; a fresh "
+            "human-authorized lifecycle is required"
+        )
     if continuation["issue_contract_revision"] != _digest(
         issue_contract_revision, "issue contract revision"
     ):

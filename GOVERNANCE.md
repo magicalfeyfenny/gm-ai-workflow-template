@@ -373,11 +373,11 @@ or hosted checks obtained before completion metadata are not terminal states.
 Once the implementation scope is complete, an actionable continuation includes
 whole-issue Stage 2 evidence, the issue-contract revision and immediate
 pre-transition re-fetch, the applicable completion transition, and fresh Stage
-3 hosted evidence. An eligible low-risk continuation may reach `work:complete`
-and then stops at the existing low-risk readiness and squash auto-merge
-automation; high-risk and manual-path continuations use `work:review-ready`
-and stop for human review, readiness, and merge. These authority boundaries do
-not add manual or experiential validation requirements.
+3 hosted evidence. An eligible low- or medium-risk continuation may reach
+`work:complete` and then stops at the existing automatic readiness and squash
+auto-merge automation; high-risk and manual-path continuations use
+`work:review-ready` and stop for human review, readiness, and merge. These
+authority boundaries do not add manual or experiential validation requirements.
 
 A continuation does not make an asset-primary issue eligible when its remaining
 primary deliverable still needs an unavailable capability. When the required
@@ -749,6 +749,14 @@ establish fresh applicable evidence under the same accepted issue and standing
 Governance, then obtain fresh review against those obligations. Do not carry a
 prior correction forward as a new requirement.
 
+The actual PR risk tier is bound into the review packet and lifecycle artifact.
+The executable correction retry budgets are low: one retry, medium: two
+retries, and high: two retries. The initial review pass is not a retry. An
+exhausted budget produces human handoff; high risk does not receive a larger
+budget merely because the work is more consequential. A human-authorized new
+candidate after handoff starts a fresh lifecycle and fresh tier budget, while a
+handoff artifact cannot be used as an autonomous continuation.
+
 Use a supported disposition whenever possible. Human handoff is for unresolved
 issue or authority ambiguity, or when required review or adjudication evidence
 is unavailable or unusable. A lifecycle stop also requires handoff rather than
@@ -766,7 +774,7 @@ has received Stage 1 milestone evidence. Do not leave a completed milestone
 only in the working tree while waiting for the entire issue to finish.
 
 Push the first meaningful milestone commit and open its draft PR immediately.
-This permission applies to low- and high-risk work. Continue committing and
+This permission applies to low-, medium-, and high-risk work. Continue committing and
 pushing later coherent milestones to the same draft PR.
 
 A commit, push, or draft PR does not grant readiness or merge authority.
@@ -841,12 +849,29 @@ publication.
 Every agent-governed PR has exactly one label:
 
 - `risk:low`
+- `risk:medium`
 - `risk:high`
+
+Risk represents operational or structural consequence, not implementation size,
+feature importance, difficulty, or the amount of ordinary product behavior
+changed. `risk:low` is routine, localized, and straightforward. `risk:medium`
+is substantial or non-trivial bounded work with a larger behavioral surface or
+integration footprint but no concrete structural or operational danger. This
+includes substantial ordinary gameplay or feature slices when their scope is
+bounded and deterministically validated. `risk:high` is reserved for concrete
+structural or operational danger.
 
 Each atomic implementation issue states its own expected risk. Its PR is
 classified from that issue's scope and the PR's actual changes and
 circumstances. A coordinating parent's risk does not determine a sub-issue's
 risk, and risk does not propagate between sub-issues.
+
+When an agent authors or revises an issue, `Expected risk: High` requires a
+named concrete structural or operational danger. Use the configured structured
+bases in the issue's risk-basis field when applicable; ordinary size,
+importance, difficulty, broad product scope, or implementation complexity
+belongs at Medium unless a separate automatic-high condition applies. Expected
+risk is planning evidence, not a command to the PR classifier.
 
 A PR is automatically high risk if:
 
@@ -855,19 +880,47 @@ A PR is automatically high risk if:
 - it exceeds the configured changed-file limit;
 - it exceeds the configured changed-line limit.
 
-Automatic high risk is exceptional. Configured path rules cover
+Automatic high risk is exceptional and authoritative. Configured path rules cover
 authority-bearing governance, repository setup, CI and merge enforcement, and
 asset-pipeline tooling. Ordinary production code, project metadata, structured
 content, and source or runtime assets are not high risk merely because of their
 domain. The size limits are backstops for genuinely massive structural changes,
 not ordinary production scope.
 
-Any change may be voluntarily classified high risk when its concrete behavior
-or circumstances warrant human review. Consider blast radius, irreversibility,
-security or compatibility risk, cross-system coupling, and unusual uncertainty
-instead of using the file's domain as a proxy.
+Any change may be voluntarily classified high risk only when its concrete
+behavior or circumstances show structural or operational danger. Without an
+automatic-high trigger, the PR must record one or more exact `High-risk basis:`
+entries from the configured values:
 
-Automatically high-risk changes may not be downgraded.
+- `governance-authority`
+- `ci-merge-release`
+- `security-credentials`
+- `destructive-operation`
+- `compatibility-migration`
+- `persistence-data-loss`
+- `cross-system-blast-radius`
+- `exceptional-uncertainty`
+
+An optional `High-risk rationale:` line may explain the selected bases but is
+not itself machine-readable classification evidence. A large, important,
+difficult, finale-related, or multi-file ordinary feature is not high risk by
+itself.
+
+Automatically high-risk changes may not be downgraded. Neither issue metadata,
+an agent, adjudication, nor a human-authored Expected risk: Medium value can
+override a forced-high condition. Final classification follows the actual PR
+and current circumstances rather than blindly copying issue metadata.
+
+When a completed PR carries `risk:medium`, its body must include at least one
+focused, change-specific machine-verifiable validation item in this form:
+
+`Focused validation: \`<test command or deterministic contract check>\``
+
+Repository-policy, formatting, and other generic checks alone do not satisfy
+the medium evidence requirement. Missing or generic-only medium evidence
+blocks completion and automatic readiness; it does not promote the change to
+high risk. Intermediate medium milestones may omit the focused item until the
+whole issue is ready for completion.
 
 ## Completion transition
 
@@ -921,20 +974,27 @@ tree still requires the full Stage 2 suite. A changed issue alone grants no
 broader implementation, cleanup, or merge authority.
 
 Before a manual completion handoff or merge, compare the hosted artifact with
-fresh PR and issue reads. Low-risk automation performs this comparison in each
-existing eligibility window and again after marking a draft ready. These are
+fresh PR and issue reads. Automatic low/medium automation performs this
+comparison in each existing eligibility window and again after marking a draft
+ready. These are
 point-in-time checks: GitHub's final merge call cannot atomically bind an issue
 revision. This procedure adds no continuous issue monitor or version registry.
 
-## Low-risk changes
+## Low-risk and medium-risk changes
 
-The low-risk completion label is `work:complete`.
+Low- and medium-risk changes use the completion label `work:complete`.
 
-After Stage 3 passes, a low-risk PR targeting `dev` with `work:complete` and
-without `manual-merge` is automatically:
+After Stage 3 passes, a low- or medium-risk PR targeting `dev` with
+`work:complete`, valid applicable evidence, and without `manual-merge` is
+automatically:
 
 1. marked ready;
 2. configured for squash auto-merge.
+
+Medium does not receive a human readiness or merge gate merely because the
+change is large, important, player-visible, difficult, or touches many ordinary
+production behaviors. `manual-merge` still selects the manual path regardless
+of risk tier.
 
 The `manual-merge` label disables both automatic readiness and auto-merge.
 

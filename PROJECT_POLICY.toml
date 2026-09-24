@@ -100,6 +100,19 @@ source_extensions = [".blend", ".obj", ".mtl"]
 runtime_extensions = [".vbuff"]
 
 [risk]
+risk_labels = ["risk:low", "risk:medium", "risk:high"]
+automatic_risk_labels = ["risk:low", "risk:medium"]
+correction_retries = { low = 1, medium = 2, high = 2 }
+high_risk_bases = [
+    "governance-authority",
+    "ci-merge-release",
+    "security-credentials",
+    "destructive-operation",
+    "compatibility-migration",
+    "persistence-data-loss",
+    "cross-system-blast-radius",
+    "exceptional-uncertainty",
+]
 max_changed_files = 100
 max_changed_lines = 10000
 

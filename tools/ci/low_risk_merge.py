@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Reconcile low-risk auto-merge with one owned pull-request snapshot.
+"""Reconcile automatic low/medium merge with one owned pull-request snapshot.
 
 Normal reads, readiness, and revocation use the built-in workflow token. The
 repository App token is passed only to the final exact-head native merge call.
@@ -100,7 +100,7 @@ class CiRun:
 
 
 class GitHubClient:
-    """Perform the GitHub operations used by the low-risk state machine."""
+    """Perform operations used by the automatic completion state machine."""
 
     def __init__(
         self,
@@ -512,7 +512,7 @@ def run_low_risk_merge(
     context: CiRun,
     github: GitHubClient,
 ) -> MergeResult:
-    """Reconcile one completed CI run with the PR auto-merge state."""
+    """Reconcile one completed CI run with automatic merge state."""
     try:
         attestation, attestation_attempt = github.download_attestation(
             context.run_id,
@@ -660,7 +660,7 @@ def _required_environment(name: str) -> str:
 
 
 def main() -> int:
-    """Run the trusted low-risk merge boundary for GitHub Actions."""
+    """Run the trusted automatic merge boundary for GitHub Actions."""
     args = parse_args()
 
     with tempfile.TemporaryDirectory() as temporary:

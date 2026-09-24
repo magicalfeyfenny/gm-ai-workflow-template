@@ -3,6 +3,12 @@
 [Governance](../GOVERNANCE.md#ci) owns the CI requirements. This document owns
 the project extension procedure for [the CI workflow](../.github/workflows/ci.yml).
 
+The post-Stage-2 adversarial review lifecycle is separate from hosted CI. Its
+packet binds the actual PR risk tier and uses the configured correction retry
+budget: one retry for low risk and two for medium or high risk. An exhausted
+budget or unavailable review evidence produces human handoff; a handoff result
+does not authorize an automatic reset.
+
 The `template-tests` job runs the template's Python unittest suite. The `tests`
 job publishes the stable required check name `Tests` and evaluates its required
 constituent jobs with [aggregate_tests.py](../tools/ci/aggregate_tests.py).
@@ -208,7 +214,7 @@ Comparison re-fetches the governing issue. Exit 0 means the live PR and issue
 match; exit 3 means stale evidence; invalid, missing, or unavailable evidence
 fails closed. Optional `capture --issue-path` and `compare
 --current-issue-path` inputs support synthetic fixtures; a saved fixture is not
-a live completion check. Low-risk automation uses its read token to re-fetch
+a live completion check. Automatic low/medium automation uses its read token to re-fetch
 the issue in both existing PR/file windows, including after readiness. These
 reads reject issue drift and revoke a pending merge request when the PR still
 matches the attested metadata. Older runs leave newer PR metadata alone. These

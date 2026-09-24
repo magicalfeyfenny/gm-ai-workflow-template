@@ -175,7 +175,12 @@ class PrPolicyTests(unittest.TestCase):
             head="work/12-save-schema",
             head_repository="owner/game",
             repository="owner/game",
-            body="Closes #12\n",
+            body=(
+                "Closes #12\n"
+                "High-risk basis: compatibility-migration\n"
+                "High-risk rationale: authority-bearing compatibility "
+                "boundary with durable migration consequences.\n"
+            ),
             labels={"risk:high", "work:review-ready"},
             additions=10,
             deletions=2,
@@ -252,15 +257,14 @@ class PrPolicyTests(unittest.TestCase):
                     self.assertTrue(rendered)
                     self.assertNotEqual(rendered, "true")
 
-    def test_auto_merge_requires_completed_low_risk_work(self):
-        complete = {
-            "risk:low",
-            "work:complete",
-        }
+    def test_auto_merge_requires_completed_low_or_medium_work(self):
+        for risk in ("risk:low", "risk:medium"):
+            with self.subTest(risk=risk):
+                complete = {risk, "work:complete"}
+                self.assertTrue(
+                    auto_merge_eligible("dev", False, complete)
+                )
 
-        self.assertTrue(
-            auto_merge_eligible("dev", False, complete)
-        )
         self.assertFalse(
             auto_merge_eligible("dev", False, {"risk:low"})
         )

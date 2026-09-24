@@ -58,12 +58,31 @@ body:
     id: expected-risk
     attributes:
       label: Expected risk
-      description: Classify this issue's own scope; do not inherit risk from a parent issue.
+      description: >-
+        Classify this issue's own scope; Low is routine, Medium is substantial
+        but operationally safe, and High requires concrete structural or
+        operational danger. Do not inherit risk from a parent issue.
       options:
         - Low
+        - Medium
         - High
     validations:
       required: true
+
+  - type: textarea
+    id: expected-risk-basis
+    attributes:
+      label: Expected risk basis
+      description: >-
+        Required for Expected risk High: name the concrete structural or
+        operational danger using one or more configured bases
+        (governance-authority, ci-merge-release, security-credentials,
+        destructive-operation, compatibility-migration, persistence-data-loss,
+        cross-system-blast-radius, exceptional-uncertainty). Do not use High
+        for ordinary size, importance, difficulty, or broad product scope.
+      placeholder: "High-risk basis: governance-authority"
+    validations:
+      required: false
 
   - type: textarea
     id: references

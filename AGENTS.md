@@ -46,9 +46,9 @@ open or update its draft PR under
 That permission does not grant readiness, merge, release, or publication
 authority. Completion metadata remains an evidence-backed transition under
 the [Completion transition](GOVERNANCE.md#completion-transition). A scheduled
-worker may carry eligible low-risk work through whole-issue Stage 2 evidence,
+worker may carry eligible low- or medium-risk work through whole-issue Stage 2 evidence,
 the immediate pre-transition issue re-fetch, completion metadata, and fresh
-Stage 3 evidence; existing low-risk automation owns readiness and squash
+Stage 3 evidence; existing automatic low/medium automation owns readiness and squash
 auto-merge, while high-risk and manual-path work waits for human review,
 readiness, and merge.
 
@@ -64,6 +64,8 @@ they must be visible before mutation:
   bypass.
 - Do not work a PR labeled `work:blocked` until its blockers are resolved.
 - Keep the change bounded to its issue and do not perform unrelated cleanup.
+- Treat complexity, importance, and ordinary scope as medium-risk signals, not
+  high-risk bases; voluntary high risk requires a configured structured basis.
 - Do not force-push, automatically delete branches, or rewrite history merely
   to simplify it.
 - Add completion metadata only after the entire issue scope has valid
@@ -73,7 +75,8 @@ they must be visible before mutation:
 - Before completion metadata, complete the bounded
   [adversarial review and adjudication](GOVERNANCE.md#adversarial-review-and-adjudication)
   stage. Use its validated lifecycle outcome as the implementation and handoff
-  input.
+  input; the actual risk tier provides one correction retry for low and two for
+  medium or high, with no autonomous reset after handoff.
 - High-risk and `manual-merge` work waits for human review, readiness, and
   merge after valid [Stage 3 evidence](GOVERNANCE.md#stage-3-hosted-pr-evidence).
 - Do not merge into `main` or create release builds, tags, releases, or

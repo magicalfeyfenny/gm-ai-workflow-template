@@ -84,22 +84,26 @@ same work item through the ordinary completion lifecycle:
    For a continuation, provide its state with `--state STATE`.
 4. Follow the review policy and lifecycle decisions in
    [Governance](../../GOVERNANCE.md#adversarial-review-and-adjudication) for
-   each candidate and result.
+   each candidate and result. The packet's actual risk tier selects the
+   configured retry budget: low gets one correction retry, while medium and
+   high get two. A handoff artifact never authorizes an autonomous reset; a
+   human-authorized new candidate starts a fresh lifecycle.
 5. Re-fetch and reconcile the governing issue immediately before the completion
    transition. If the contract changed, establish fresh Stage 2 evidence and a
    fresh review for the revised contract before proceeding.
 6. Only after that sequence, add exactly one physical-line `Closes #<issue>`
    line and the applicable completion label: `work:complete` for eligible
-   low-risk work, or `work:review-ready` for high-risk or manual-path work.
+   low- or medium-risk work, or `work:review-ready` for high-risk or
+   manual-path work.
    Never add completion metadata to an intermediate milestone.
 7. After completion metadata is present, obtain fresh Stage 3 exact-head hosted
    evidence for the final PR head, body, labels, and accepted issue contract.
    Stage 3 is not a prerequisite for adding completion metadata, but missing,
    failed, stale, or mismatched Stage 3 evidence blocks readiness and
    auto-merge or the manual handoff.
-8. For eligible low-risk work targeting `dev`, leave the existing low-risk
-   automation to mark the PR ready and configure squash auto-merge. Do not
-   directly mark ready, merge, bypass rulesets, push protected branches,
+8. For eligible low- or medium-risk work targeting `dev`, leave the existing
+   automatic workflow to mark the PR ready and configure squash auto-merge.
+   Do not directly mark ready, merge, bypass rulesets, push protected branches,
    release, or publish. High-risk and manual-path work stops for human review,
    readiness, and merge; those are authority actions, not validation blockers.
 

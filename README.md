@@ -51,6 +51,8 @@ candidate. See [AGENTS.md](AGENTS.md#authority-and-task-routing) for task
 routing and [GOVERNANCE.md](GOVERNANCE.md#authority) for the authoritative
 rules.
 
-`dev` is the integration branch. `main` is release-only. High-risk and
-human-created work stays at the human review, readiness, and merge gates;
-release and publication actions always require explicit human authority.
+`dev` is the integration branch. `main` is release-only. Low-risk and
+medium-risk work can use the automatic completion path when its evidence is
+current; high-risk and human-created work stays at the human review, readiness,
+and merge gates. Release and publication actions always require explicit human
+authority.

@@ -18,7 +18,36 @@ POLICY = tomllib.loads(
     (ROOT / "PROJECT_POLICY.toml").read_text(encoding="utf-8")
 )
 
+RISK_LABELS = frozenset(
+    str(label)
+    for label in POLICY["risk"]["risk_labels"]
+)
+AUTOMATIC_RISK_LABELS = frozenset(
+    str(label)
+    for label in POLICY["risk"]["automatic_risk_labels"]
+)
+HIGH_RISK_BASES = frozenset(
+    str(value)
+    for value in POLICY["risk"]["high_risk_bases"]
+)
+CORRECTION_RETRY_BUDGETS = {
+    str(risk): int(retries)
+    for risk, retries in POLICY["risk"]["correction_retries"].items()
+}
 
+FOCUSED_VALIDATION_RE = re.compile(
+    r"(?mi)^[ \t]*Focused validation:[ \t]*`([^`\n]+)`[ \t]*$"
+)
+HIGH_RISK_BASIS_RE = re.compile(
+    r"(?mi)^[ \t]*High-risk basis:[ \t]*(.*?)[ \t]*$"
+)
+GENERIC_VALIDATION_COMMANDS = frozenset(
+    {
+        "git diff --check",
+        "format",
+        "repository policy",
+    }
+)
 @dataclass(frozen=True)
 class PolicyEvaluation:
     """Report policy validity, risk, and automatic-merge eligibility."""
@@ -159,12 +188,12 @@ def forced_high_risk(
 
     if file_count > int(rules["max_changed_files"]):
         reasons.append(
-            "changed file count exceeds low-risk limit"
+            "changed file count exceeds automatic-high threshold"
         )
 
     if additions + deletions > int(rules["max_changed_lines"]):
         reasons.append(
-            "changed line count exceeds low-risk limit"
+            "changed line count exceeds automatic-high threshold"
         )
 
     for path in paths:
@@ -188,12 +217,96 @@ def auto_merge_eligible(
     return (
         base == "dev"
         and not effective_high
-        and "risk:low" in labels
+        and len(labels.intersection(AUTOMATIC_RISK_LABELS)) == 1
         and "work:complete" in labels
         and "work:review-ready" not in labels
         and "work:blocked" not in labels
         and "manual-merge" not in labels
     )
+
+
+def focused_validation_items(body: str) -> list[str]:
+    """Return declared change-specific validation commands from one PR body."""
+    return [
+        match.group(1).strip()
+        for match in FOCUSED_VALIDATION_RE.finditer(body)
+        if match.group(1).strip()
+    ]
+
+
+def medium_validation_errors(
+    body: str,
+    completion_labels: set[str],
+) -> list[str]:
+    """Require focused evidence only when medium work claims completion."""
+    if not completion_labels:
+        return []
+
+    items = focused_validation_items(body)
+
+    if not items:
+        return [
+            "risk:medium completion requires focused machine-verifiable "
+            "validation evidence"
+        ]
+
+    meaningful = []
+    for item in items:
+        normalized = " ".join(item.casefold().split())
+        generic = (
+            normalized in GENERIC_VALIDATION_COMMANDS
+            or "run_repository_checks.py all" in normalized
+            or "run_repository_checks.py repository-policy" in normalized
+            or "run_repository_checks.py tests" in normalized
+        )
+        if not generic:
+            meaningful.append(item)
+
+    if not meaningful:
+        return [
+            "risk:medium focused validation must establish a "
+            "change-specific claim"
+        ]
+
+    return []
+
+
+def voluntary_high_risk_errors(
+    body: str,
+    forced_high: bool,
+    labels: set[str],
+) -> list[str]:
+    """Require structured danger bases when high risk is voluntary."""
+    if "risk:high" not in labels or forced_high:
+        return []
+
+    matches = [match.group(1).strip() for match in HIGH_RISK_BASIS_RE.finditer(body)]
+
+    if not matches:
+        return [
+            "voluntary risk:high classification requires at least one "
+            "recognized High-risk basis entry"
+        ]
+
+    errors: list[str] = []
+    unknown = sorted(set(matches) - HIGH_RISK_BASES)
+    if unknown:
+        errors.append(
+            "unrecognized High-risk basis value(s): "
+            + ", ".join(unknown)
+            + "; use a configured structured basis"
+        )
+    if len(matches) != len(set(matches)):
+        errors.append("High-risk basis entries must not be duplicated")
+
+    return errors
+
+
+def correction_retry_budget(risk: str) -> int:
+    """Return the repository-configured accepted-correction retry budget."""
+    if risk not in CORRECTION_RETRY_BUDGETS:
+        raise ValueError(f"unsupported risk tier: {risk}")
+    return CORRECTION_RETRY_BUDGETS[risk]
 
 
 def completion_policy_errors(
@@ -293,12 +406,7 @@ def evaluate_pull_request(
         r"(?mi)^Closes #([1-9][0-9]*)\s*$",
         body,
     )
-    risk_labels = labels.intersection(
-        {
-            "risk:low",
-            "risk:high",
-        }
-    )
+    risk_labels = labels.intersection(RISK_LABELS)
 
     if len(risk_labels) != 1:
         errors.append("PR must have exactly one risk label")
@@ -311,7 +419,7 @@ def evaluate_pull_request(
         changed_file_count,
     )
 
-    if "risk:low" in labels and forced_high:
+    if labels.intersection(AUTOMATIC_RISK_LABELS) and forced_high:
         errors.append("policy requires risk:high")
 
     if base == "main":
@@ -323,12 +431,32 @@ def evaluate_pull_request(
 
     effective_high = forced_high or "risk:high" in labels
     errors.extend(
+        voluntary_high_risk_errors(
+            body,
+            forced_high,
+            labels,
+        )
+    )
+    errors.extend(
         completion_policy_errors(
             issue,
             labels,
             closure_matches,
             effective_high or "manual-merge" in labels,
         )
+    )
+    errors.extend(
+        medium_validation_errors(
+            body,
+            labels.intersection(
+                {
+                    "work:complete",
+                    "work:review-ready",
+                }
+            ),
+        )
+        if "risk:medium" in labels
+        else []
     )
 
     return PolicyEvaluation(
@@ -425,14 +553,14 @@ def validate(
             else "false"
         )
     else:
-        print(
-            "PR policy passed; risk: "
-            + (
-                "high"
-                if evaluation.effective_high
+        risk = "high"
+        if not evaluation.effective_high:
+            risk = (
+                "medium"
+                if "risk:medium" in labels
                 else "low"
             )
-        )
+        print(f"PR policy passed; risk: {risk}")
 
     return 0
 

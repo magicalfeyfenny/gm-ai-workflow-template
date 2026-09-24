@@ -8,6 +8,10 @@ description: Audit repository issues and pull requests and create bounded issues
 This is an audit and evidence-backed tracking procedure, not an implementation
 workflow. Use [Issue authority](../../../GOVERNANCE.md#issue-authority) for
 shared issue fields and assignment. When authoring or auditing feature-specific
+expected risk, follow [Risk](../../../GOVERNANCE.md#risk): High requires a
+named concrete danger and does not mean large, important, difficult, or broad.
+When a high-risk PR is voluntary, use the configured structured `High-risk basis:`
+values rather than freeform keywords. When authoring or auditing feature-specific
 validation, use
 [Validation coverage allocation](../../../GOVERNANCE.md#validation-coverage-allocation)
 and [Interactive runtime validation](../../../GOVERNANCE.md#interactive-runtime-validation).
