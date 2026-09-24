@@ -757,6 +757,11 @@ budget merely because the work is more consequential. A human-authorized new
 candidate after handoff starts a fresh lifecycle and fresh tier budget, while a
 handoff artifact cannot be used as an autonomous continuation.
 
+If a continuation packet's PR risk tier differs from its saved lifecycle
+state, stop before launching review roles and emit a schema-valid human handoff
+bound to the saved tier and correction cycle. A tier change cannot reset the
+saved retry budget.
+
 Use a supported disposition whenever possible. Human handoff is for unresolved
 issue or authority ambiguity, or when required review or adjudication evidence
 is unavailable or unusable. A lifecycle stop also requires handoff rather than

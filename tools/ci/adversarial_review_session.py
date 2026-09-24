@@ -596,7 +596,7 @@ def run_review_lifecycle(
             ]
             return lifecycle_artifact(
                 status="human-handoff",
-                risk=review_packet["risk"],
+                risk=continuation["risk"],
                 issue_contract_revision=revision,
                 cycle=continuation["cycle"],
                 candidate_identity=current_candidate,

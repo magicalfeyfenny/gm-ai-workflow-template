@@ -2,6 +2,7 @@ import unittest
 
 from tools.ci.adversarial_review import REVIEW_RESULT_SCHEMA, candidate_identity
 from tools.ci.adversarial_review_session import ReviewSessionError, run_review_lifecycle
+from tools.ci.adversarial_review_state import load_lifecycle_artifact
 from tools.tests.test_adversarial_review_lifecycle import (
     DIFF,
     REVISION,
@@ -250,6 +251,46 @@ class LifecycleContinuationTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "human-handoff")
         self.assertIn("different risk tier", result["reason"])
+        self.assertEqual(calls, [])
+
+    def test_risk_mismatch_handoff_preserves_a_valid_saved_retry_budget(self):
+        first = run_review_lifecycle(
+            make_packet(risk="medium"),
+            initial=True,
+            session_runner=self.runner(
+                [finding()], [decision("F-correction", "patch-now", correction())]
+            ),
+        )
+        second_candidate = candidate(
+            head_sha="g" * 40,
+            tree_sha="u" * 40,
+            diff=DIFF + "medium second correction\n",
+        )
+        second = run_review_lifecycle(
+            make_packet(second_candidate, risk="medium"),
+            state=first,
+            session_runner=self.runner(
+                [finding("F-second")],
+                [decision("F-second", "patch-now", correction())],
+            ),
+        )
+        downgraded_candidate = candidate(
+            head_sha="j" * 40,
+            tree_sha="v" * 40,
+            diff=DIFF + "risk tier changed\n",
+        )
+        calls = []
+        result = run_review_lifecycle(
+            make_packet(downgraded_candidate, risk="low"),
+            state=second,
+            session_runner=self.runner(calls=calls),
+        )
+
+        saved = load_lifecycle_artifact(result)
+        self.assertEqual(saved["status"], "human-handoff")
+        self.assertEqual(saved["risk"], "medium")
+        self.assertEqual(saved["cycle"], 2)
+        self.assertIn("different risk tier", saved["reason"])
         self.assertEqual(calls, [])
 
     def test_oscillation_is_rejected_by_content_identity(self):
