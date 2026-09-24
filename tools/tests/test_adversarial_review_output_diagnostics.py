@@ -1,6 +1,5 @@
 import json
-import os
-import tempfile
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,8 +8,7 @@ from tools.ci.adversarial_review_contracts import (
     ADJUDICATION_RESULT_SCHEMA,
     SESSION_FAILURE_SCHEMA,
 )
-from tools.ci.adversarial_review_process import ProviderHangError
-from tools.ci.adversarial_review_session import ReviewSessionError, run_review_lifecycle
+from tools.ci.adversarial_review_session import run_review_lifecycle
 from tools.tests.test_adversarial_review_followup import (
     adjudication_result,
     correction,
@@ -29,111 +27,75 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             Path(command[command.index("--output-last-message") + 1]).write_text(
                 output, encoding="utf-8"
             )
-            return 0
+            return subprocess.CompletedProcess(command, 0)
 
         with patch(
-            "tools.ci.adversarial_review_session._sandbox_path",
-            return_value="/usr/bin/sandbox-exec",
-        ), patch(
-            "tools.ci.adversarial_review_session._run_provider_process",
+            "tools.ci.adversarial_review_session.subprocess.run",
             side_effect=fake_process,
         ):
             return run_review_lifecycle(
                 packet, initial=True, codex_executable="/fake/codex"
             )
 
-    def test_provider_failure_classes_are_bounded_and_do_not_infer_auth(self):
+    def test_nonzero_provider_exit_is_bounded_without_raw_output(self):
         packet = semantic_packet()
-
-        def run_case(
-            *,
-            returncode=None,
-            output=None,
-            timeout=False,
-            auth=True,
-            sandbox_unavailable=False,
-        ):
-            sandbox_path_patch = (
-                {"side_effect": ReviewSessionError("RAW_SANDBOX_FAILURE")}
-                if sandbox_unavailable
-                else {"return_value": "/usr/bin/sandbox-exec"}
-            )
-
-            def fake_process(command, **kwargs):
-                if output is not None:
-                    Path(command[command.index("--output-last-message") + 1]).write_text(
-                        output, encoding="utf-8"
-                    )
-                if timeout:
-                    raise ProviderHangError("pre-turn startup")
-                return returncode
-
-            with tempfile.TemporaryDirectory() as directory:
-                source_home = Path(directory) / "source-codex-home"
-                source_home.mkdir()
-                if auth:
-                    (source_home / "auth.json").write_text(
-                        '{"access_token":"sentinel"}', encoding="utf-8"
-                    )
-                with patch.dict(os.environ, {"CODEX_HOME": str(source_home)}), patch(
-                    "tools.ci.adversarial_review_session._sandbox_path",
-                    **sandbox_path_patch,
-                ), patch(
-                    "tools.ci.adversarial_review_session._run_provider_process",
-                    side_effect=fake_process,
-                ):
-                    return run_review_lifecycle(
-                        packet, initial=True, codex_executable="/fake/codex"
-                    )
-
-        raw_provider_error = json.dumps(
+        raw_provider_output = json.dumps(
             {"error": "authentication rejected; RAW_PROVIDER_SECRET"}
         )
-        cases = [
-            (
-                "provider-unclassified-auth-present",
-                "provider-unclassified",
-                run_case(returncode=23, output=raw_provider_error, auth=True),
-            ),
-            (
-                "provider-unclassified-auth-absent",
-                "provider-unclassified",
-                run_case(returncode=23, output=raw_provider_error, auth=False),
-            ),
-            (
-                "positive-sandbox-setup-failure",
-                "sandbox",
-                run_case(auth=True, sandbox_unavailable=True),
-            ),
-            ("timeout", "timeout", run_case(timeout=True)),
-            (
-                "invalid-output",
-                "invalid-output",
-                run_case(returncode=0, output="not-json"),
-            ),
-        ]
-        for case_name, failure_class, result in cases:
-            with self.subTest(case=case_name):
-                diagnostic = result["session_failure"]
-                self.assertEqual(diagnostic["schema"], SESSION_FAILURE_SCHEMA)
-                self.assertEqual(diagnostic["role"], "reviewer")
-                self.assertEqual(diagnostic["failure_class"], failure_class)
-                self.assertNotIn("RAW_PROVIDER_SECRET", json.dumps(result))
-                self.assertNotIn("RAW_SANDBOX_FAILURE", json.dumps(result))
-                self.assertNotIn("sentinel", json.dumps(result))
-                self.assertNotIn("BOUNDARY-PACKET", json.dumps(result))
-                self.assertNotIn("pre-turn startup", json.dumps(result))
-                if failure_class == "provider-unclassified":
-                    self.assertEqual(diagnostic["exit_status"], 23)
-                    self.assertTrue(diagnostic["output_exists"])
-                if failure_class == "invalid-output":
-                    self.assertEqual(diagnostic["validation_stage"], "parse")
-                    self.assertEqual(diagnostic["diagnostic_code"], "output_json_parse")
-                    self.assertIsNone(diagnostic["diagnostic_detail_code"])
-                else:
-                    self.assertIsNone(diagnostic["validation_stage"])
-                    self.assertIsNone(diagnostic["diagnostic_code"])
-                    self.assertIsNone(diagnostic["diagnostic_detail_code"])
+
+        def fake_process(command, **kwargs):
+            Path(command[command.index("--output-last-message") + 1]).write_text(
+                raw_provider_output, encoding="utf-8"
+            )
+            self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
+            self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+            return subprocess.CompletedProcess(command, 23)
+
+        with patch(
+            "tools.ci.adversarial_review_session.subprocess.run",
+            side_effect=fake_process,
+        ):
+            result = run_review_lifecycle(
+                packet, initial=True, codex_executable="/fake/codex"
+            )
+
+        diagnostic = result["session_failure"]
+        self.assertEqual(diagnostic["schema"], SESSION_FAILURE_SCHEMA)
+        self.assertEqual(diagnostic["role"], "reviewer")
+        self.assertEqual(diagnostic["failure_class"], "provider-unclassified")
+        self.assertEqual(diagnostic["exit_status"], 23)
+        self.assertTrue(diagnostic["output_exists"])
+        self.assertIsNone(diagnostic["validation_stage"])
+        self.assertNotIn("RAW_PROVIDER_SECRET", json.dumps(result))
+
+    def test_process_startup_failure_is_sanitized(self):
+        packet = semantic_packet()
+        with patch(
+            "tools.ci.adversarial_review_session.subprocess.run",
+            side_effect=OSError("RAW_STARTUP_SECRET"),
+        ):
+            result = run_review_lifecycle(
+                packet, initial=True, codex_executable="/fake/codex"
+            )
+        diagnostic = result["session_failure"]
+        self.assertEqual(diagnostic["failure_class"], "startup")
+        self.assertEqual(diagnostic["role"], "reviewer")
+        self.assertNotIn("RAW_STARTUP_SECRET", json.dumps(result))
+
+    def test_successful_process_without_result_file_fails_closed(self):
+        packet = semantic_packet()
+        with patch(
+            "tools.ci.adversarial_review_session.subprocess.run",
+            return_value=subprocess.CompletedProcess(["codex", "exec"], 0),
+        ):
+            result = run_review_lifecycle(
+                packet, initial=True, codex_executable="/fake/codex"
+            )
+        diagnostic = result["session_failure"]
+        self.assertEqual(diagnostic["failure_class"], "invalid-output")
+        self.assertEqual(diagnostic["validation_stage"], "shape")
+        self.assertEqual(diagnostic["diagnostic_code"], "output_missing_file")
+        self.assertFalse(diagnostic["output_exists"])
 
     def test_malformed_json_is_distinct_from_top_level_shape_failure(self):
         malformed = self.provider_output_handoff(
@@ -161,7 +123,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             Path(command[command.index("--output-last-message") + 1]).write_text(
                 valid_output, encoding="utf-8"
             )
-            return 0
+            return subprocess.CompletedProcess(command, 0)
 
         original_read_text = Path.read_text
 
@@ -171,10 +133,7 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             return original_read_text(path, *args, **kwargs)
 
         with patch(
-            "tools.ci.adversarial_review_session._sandbox_path",
-            return_value="/usr/bin/sandbox-exec",
-        ), patch(
-            "tools.ci.adversarial_review_session._run_provider_process",
+            "tools.ci.adversarial_review_session.subprocess.run",
             side_effect=fake_process,
         ), patch.object(Path, "read_text", fail_result_read):
             result = run_review_lifecycle(
@@ -225,13 +184,10 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
                 json.dumps(output), encoding="utf-8"
             )
             calls += 1
-            return 0
+            return subprocess.CompletedProcess(command, 0)
 
         with patch(
-            "tools.ci.adversarial_review_session._sandbox_path",
-            return_value="/usr/bin/sandbox-exec",
-        ), patch(
-            "tools.ci.adversarial_review_session._run_provider_process",
+            "tools.ci.adversarial_review_session.subprocess.run",
             side_effect=fake_process,
         ):
             result = run_review_lifecycle(
