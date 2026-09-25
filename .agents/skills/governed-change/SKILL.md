@@ -41,7 +41,9 @@ with the narrower selection and authority in its automation template.
   [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations).
 - Updating previously adopted upstream policy:
   [Policy updates](../../../GOVERNANCE.md#policy-updates) and the
-  [bounded update procedure](../../../docs/POLICY_UPDATE.md).
+  [bounded update procedure](../../../docs/POLICY_UPDATE.md). The selected
+  immutable upstream revision defines shared semantics; inherited defects do
+  not authorize downstream correction or cross-repository mutation.
 
 For production code or GameMaker data, also use the
 [GameMaker production skill](../gamemaker-production/SKILL.md). For authored or

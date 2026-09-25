@@ -8,11 +8,12 @@ State the completed outcome and what now works or is possible.
 
 What checks were run, if any?
 
-For `risk:medium`, include at least one change-specific machine-verifiable
-item using this exact form. Do not list only repository-policy, formatting, or
-other generic checks:
-
-`Focused validation: \`<test command or deterministic contract check>\``
+For `risk:medium`, the authoritative focused evidence belongs in Stage 2:
+at least one passed check must include a nonempty `establishes` list naming an
+issue behavior or integration claim supported by its machine-verifiable
+evidence. Generic baselines do not qualify through relabeling or a generic
+claim. You may summarize focused validation below for human readability; that
+summary does not satisfy the Stage 2 requirement.
 
 For voluntary `risk:high` without an automatic-high trigger, include one or
 more recognized structured bases using this exact form:

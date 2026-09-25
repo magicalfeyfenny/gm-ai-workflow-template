@@ -77,7 +77,14 @@ def make_packet(value: dict | None = None, *, risk: str = "high") -> dict:
         {
             "issue_contract_revision": REVISION,
             "candidate_identity": candidate_identity(current),
-            "checks": [{"name": "fresh", "result": "passed", "evidence": ["tests"]}],
+            "checks": [
+                {
+                    "name": "fresh",
+                    "result": "passed",
+                    "evidence": ["tests"],
+                    "establishes": ["the accepted issue behavior"],
+                }
+            ],
         },
         {"included": INCLUDED, "exclusions": ["readiness", "merge", "release"]},
         risk=risk,

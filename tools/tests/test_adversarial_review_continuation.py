@@ -2,6 +2,7 @@ import unittest
 
 from tools.ci.adversarial_review import REVIEW_RESULT_SCHEMA, candidate_identity
 from tools.ci.adversarial_review_session import ReviewSessionError, run_review_lifecycle
+from tools.ci.adversarial_review_state import validate_lifecycle_artifact
 from tools.tests.test_adversarial_review_lifecycle import (
     DIFF,
     REVISION,
@@ -149,6 +150,19 @@ class LifecycleContinuationTests(unittest.TestCase):
             tree_sha="v" * 40,
             diff=DIFF + "medium third correction\n",
         )
+        calls = []
+        mismatched = run_review_lifecycle(
+            make_packet(third_candidate, risk="low"),
+            state=second,
+            session_runner=self.runner(calls=calls),
+        )
+        self.assertEqual(mismatched["status"], "human-handoff")
+        self.assertEqual(mismatched["risk"], "medium")
+        self.assertEqual(mismatched["cycle"], 2)
+        self.assertIn("fresh human-authorized lifecycle", mismatched["reason"])
+        self.assertEqual(calls, [])
+        self.assertEqual(validate_lifecycle_artifact(mismatched), mismatched)
+
         capped = run_review_lifecycle(
             make_packet(third_candidate, risk="medium"),
             state=second,
@@ -249,6 +263,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             session_runner=self.runner(calls=calls),
         )
         self.assertEqual(result["status"], "human-handoff")
+        self.assertEqual(result["risk"], first["risk"])
         self.assertIn("different risk tier", result["reason"])
         self.assertEqual(calls, [])
 

@@ -20,9 +20,9 @@ class ReviewContractError(ValueError):
         self.diagnostic_detail_code = diagnostic_detail_code
 
 
-REVIEW_PACKET_SCHEMA = "adversarial-review-packet:v4"
+REVIEW_PACKET_SCHEMA = "adversarial-review-packet:v5"
 REVIEW_RESULT_SCHEMA = "adversarial-review-result:v3"
-ADJUDICATION_PACKET_SCHEMA = "adversarial-adjudication-packet:v2"
+ADJUDICATION_PACKET_SCHEMA = "adversarial-adjudication-packet:v3"
 ADJUDICATION_RESULT_SCHEMA = "adversarial-adjudication-result:v4"
 SESSION_FAILURE_SCHEMA = "adversarial-review-session-failure:v3"
 SESSION_FAILURE_CLASSES = (

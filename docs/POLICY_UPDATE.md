@@ -52,6 +52,28 @@ does not explain the conclusion. No consumer means no manufactured file edit,
 migration, or follow-up obligation. The PR evidence can record the assessed
 policy revision without claiming that the project copied every upstream file.
 
+## Shared semantics and inherited concerns
+
+For an update of an earlier evidence-backed adoption, the newly selected
+immutable upstream commit defines the shared semantics to reconcile. Review
+whether the local candidate adopts that behavior faithfully and whether each
+difference has independent project-specific authority. Do not redesign or
+strengthen the selected upstream policy as part of a downstream update.
+
+A defect already present unchanged in the selected upstream revision is an
+upstream concern, not an actionable downstream correction by itself. Report it
+for upstream disposition when useful. Treat a downstream adaptation defect or
+a violation of an independent local requirement as actionable. Do not require
+byte-for-byte identity where an authorized adaptation or another justified
+local consumer differs.
+
+Finding an upstream concern does not authorize any mutation in the upstream
+repository. Do not create or modify upstream issues, branches, pull requests,
+or files unless explicit human direction or an accepted issue in that
+repository authorizes that work. The update PR should identify intentional
+local differences and their authority, and can note inherited upstream
+concerns without turning them into downstream remediation scope.
+
 ## Reuse adoption evidence only where relevant
 
 The brownfield planner's [existing evidence](ADOPTION.md#read-the-evidence) can

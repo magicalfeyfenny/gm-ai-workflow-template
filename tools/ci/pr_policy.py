@@ -35,19 +35,11 @@ CORRECTION_RETRY_BUDGETS = {
     for risk, retries in POLICY["risk"]["correction_retries"].items()
 }
 
-FOCUSED_VALIDATION_RE = re.compile(
-    r"(?mi)^[ \t]*Focused validation:[ \t]*`([^`\n]+)`[ \t]*$"
-)
 HIGH_RISK_BASIS_RE = re.compile(
     r"(?mi)^[ \t]*High-risk basis:[ \t]*(.*?)[ \t]*$"
 )
-GENERIC_VALIDATION_COMMANDS = frozenset(
-    {
-        "git diff --check",
-        "format",
-        "repository policy",
-    }
-)
+
+
 @dataclass(frozen=True)
 class PolicyEvaluation:
     """Report policy validity, risk, and automatic-merge eligibility."""
@@ -225,52 +217,6 @@ def auto_merge_eligible(
     )
 
 
-def focused_validation_items(body: str) -> list[str]:
-    """Return declared change-specific validation commands from one PR body."""
-    return [
-        match.group(1).strip()
-        for match in FOCUSED_VALIDATION_RE.finditer(body)
-        if match.group(1).strip()
-    ]
-
-
-def medium_validation_errors(
-    body: str,
-    completion_labels: set[str],
-) -> list[str]:
-    """Require focused evidence only when medium work claims completion."""
-    if not completion_labels:
-        return []
-
-    items = focused_validation_items(body)
-
-    if not items:
-        return [
-            "risk:medium completion requires focused machine-verifiable "
-            "validation evidence"
-        ]
-
-    meaningful = []
-    for item in items:
-        normalized = " ".join(item.casefold().split())
-        generic = (
-            normalized in GENERIC_VALIDATION_COMMANDS
-            or "run_repository_checks.py all" in normalized
-            or "run_repository_checks.py repository-policy" in normalized
-            or "run_repository_checks.py tests" in normalized
-        )
-        if not generic:
-            meaningful.append(item)
-
-    if not meaningful:
-        return [
-            "risk:medium focused validation must establish a "
-            "change-specific claim"
-        ]
-
-    return []
-
-
 def voluntary_high_risk_errors(
     body: str,
     forced_high: bool,
@@ -445,20 +391,6 @@ def evaluate_pull_request(
             effective_high or "manual-merge" in labels,
         )
     )
-    errors.extend(
-        medium_validation_errors(
-            body,
-            labels.intersection(
-                {
-                    "work:complete",
-                    "work:review-ready",
-                }
-            ),
-        )
-        if "risk:medium" in labels
-        else []
-    )
-
     return PolicyEvaluation(
         human_created=False,
         errors=tuple(errors),
