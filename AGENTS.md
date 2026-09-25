@@ -64,6 +64,11 @@ they must be visible before mutation:
   bypass.
 - Do not work a PR labeled `work:blocked` until its blockers are resolved.
 - Keep the change bounded to its issue and do not perform unrelated cleanup.
+- Issue authority is repository-local. A related issue elsewhere grants no
+  authority; any cross-repository work requires separate explicit human
+  direction naming the target repository and work to perform. As part of this
+  issue, do not create, modify, claim, or execute issues, branches, PRs, files,
+  or other work in another repository.
 - Treat complexity, importance, and ordinary scope as medium-risk signals, not
   high-risk bases; voluntary high risk requires a configured structured basis.
 - Do not force-push, automatically delete branches, or rewrite history merely

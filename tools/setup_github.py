@@ -38,7 +38,7 @@ REQUIRED_LABELS: tuple[dict[str, str], ...] = (
         "name": "risk:medium",
         "color": "fbca04",
         "description": (
-            "Substantial safe work; automatic path with focused evidence."
+            "Substantial safe work; requires focused Stage 2 evidence."
         ),
     },
     {

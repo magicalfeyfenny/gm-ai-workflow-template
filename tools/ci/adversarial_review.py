@@ -344,7 +344,7 @@ def _governance(value: object) -> dict:
     }
 
 
-def _stage2(value: object, identity: dict, revision: str) -> dict:
+def _stage2(value: object, identity: dict, revision: str, risk: str) -> dict:
     raw = _mapping(value, "Stage 2 evidence")
     _keys(
         raw,
@@ -365,7 +365,7 @@ def _stage2(value: object, identity: dict, revision: str) -> dict:
         _keys(
             check,
             ("name", "result", "evidence"),
-            ("name", "result", "evidence"),
+            ("name", "result", "evidence", "establishes"),
             f"Stage 2 evidence.checks[{index}]",
         )
         if check["result"] != "passed":
@@ -375,14 +375,25 @@ def _stage2(value: object, identity: dict, revision: str) -> dict:
         evidence = check["evidence"]
         if isinstance(evidence, str):
             evidence = [evidence]
-        normalized_checks.append(
-            {
-                "name": _string(check["name"], f"Stage 2 check {index}.name"),
-                "result": "passed",
-                "evidence": _string_list(
-                    evidence, f"Stage 2 check {index}.evidence"
-                ),
-            }
+        normalized = {
+            "name": _string(check["name"], f"Stage 2 check {index}.name"),
+            "result": "passed",
+            "evidence": _string_list(
+                evidence, f"Stage 2 check {index}.evidence"
+            ),
+        }
+        if "establishes" in check:
+            normalized["establishes"] = _string_list(
+                check["establishes"],
+                f"Stage 2 check {index}.establishes",
+            )
+        normalized_checks.append(normalized)
+    if risk == "medium" and not any(
+        check.get("establishes") for check in normalized_checks
+    ):
+        raise ReviewContractError(
+            "risk:medium Stage 2 evidence requires a passed check with "
+            "focused issue claims in establishes"
         )
     return {
         "issue_contract_revision": revision,
@@ -416,15 +427,17 @@ def build_review_packet(
     contract = _contract(issue_contract)
     full_candidate = _candidate(candidate)
     governance = _governance(applicable_governance)
+    review_risk = _risk(risk)
     stage2 = _stage2(
         stage2_evidence,
         {field: full_candidate[field] for field in _IDENTITY_FIELDS},
         contract["revision"],
+        review_risk,
     )
     review_scope = _scope(scope)
     packet = {
         "schema": REVIEW_PACKET_SCHEMA,
-        "risk": _risk(risk),
+        "risk": review_risk,
         "issue_contract": {**contract, "evidence_id": "issue_contract"},
         "candidate": {**full_candidate, "evidence_id": "candidate"},
         "applicable_governance": {
@@ -483,7 +496,7 @@ def validate_review_packet(packet: Mapping[str, object]) -> dict:
     stage2_value = _mapping(raw["stage2_evidence"], "Stage 2 source")
     if stage2_value.pop("evidence_id", None) != "stage2_evidence":
         raise ReviewContractError("Stage 2 evidence has an unsupported evidence ID")
-    stage2 = _stage2(stage2_value, identity, contract["revision"])
+    stage2 = _stage2(stage2_value, identity, contract["revision"], risk)
     governance_value = _mapping(
         raw["applicable_governance"], "governance source"
     )
@@ -622,6 +635,7 @@ def build_adjudication_packet(
             )
     adjudication_packet = {
         "schema": ADJUDICATION_PACKET_SCHEMA,
+        "risk": review_packet["risk"],
         "issue_contract_revision": review_packet["issue_contract"]["revision"],
         "candidate_identity": candidate_identity(review_packet["candidate"]),
         "evidence": {
@@ -643,6 +657,7 @@ def validate_adjudication_packet(packet: Mapping[str, object]) -> dict:
         raw,
         (
             "schema",
+            "risk",
             "issue_contract_revision",
             "candidate_identity",
             "evidence",
@@ -650,6 +665,7 @@ def validate_adjudication_packet(packet: Mapping[str, object]) -> dict:
         ),
         (
             "schema",
+            "risk",
             "issue_contract_revision",
             "candidate_identity",
             "evidence",
@@ -659,6 +675,7 @@ def validate_adjudication_packet(packet: Mapping[str, object]) -> dict:
     )
     if raw["schema"] != ADJUDICATION_PACKET_SCHEMA:
         raise ReviewContractError("adjudication packet has an unsupported schema")
+    risk = _risk(raw["risk"])
     revision = _digest(raw["issue_contract_revision"], "adjudication issue revision")
     identity = _identity(raw["candidate_identity"])
     findings = validate_findings(raw["findings"])
@@ -685,6 +702,7 @@ def validate_adjudication_packet(packet: Mapping[str, object]) -> dict:
         )
     return {
         "schema": ADJUDICATION_PACKET_SCHEMA,
+        "risk": risk,
         "issue_contract_revision": revision,
         "candidate_identity": identity,
         "evidence": {"source_items": source_items},

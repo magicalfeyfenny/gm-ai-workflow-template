@@ -72,8 +72,8 @@ class RiskTierPolicyTests(unittest.TestCase):
         self.assertFalse(evaluation.effective_high)
         self.assertTrue(evaluation.auto_merge_allowed)
 
-    def test_medium_milestone_can_defer_focused_evidence(self) -> None:
-        """Require medium evidence at completion, not at every milestone."""
+    def test_medium_milestone_does_not_interpret_validation_text(self) -> None:
+        """Leave structured Medium evidence to the review packet contract."""
         evaluation = evaluate_pull_request(
             base="dev",
             head="work/12-titan-finale",
@@ -89,54 +89,43 @@ class RiskTierPolicyTests(unittest.TestCase):
 
         self.assertEqual(evaluation.errors, ())
 
-    def test_medium_completion_requires_focused_evidence(self) -> None:
-        """Do not let generic completion metadata satisfy medium validation."""
-        evaluation = evaluate_pull_request(
-            base="dev",
-            head="work/12-titan-finale",
-            head_repository="owner/game",
-            repository="owner/game",
-            body="Closes #12\n",
-            labels={"risk:medium", "work:complete"},
-            additions=100,
-            deletions=10,
-            changed_paths=["project/scripts/titan/state.gml"],
-            changed_file_count=1,
+    def test_medium_completion_policy_does_not_parse_body_text(self) -> None:
+        """PR prose cannot establish or classify the structured evidence."""
+        tick = chr(96)
+        bodies = (
+            "Closes #12\n",
+            "Closes #12\nFocused validation: "
+            + tick
+            + "python3 tools/ci/run_repository_checks.py all --baseline-ref origin/dev"
+            + tick
+            + "\n",
+            "Closes #12\nFocused validation: "
+            + tick
+            + "python3 -m unittest tools.tests.some_test"
+            + tick
+            + "\n",
+            "Closes #12\nFocused validation: arbitrary words, shell syntax "
+            + tick
+            + "&& touch /tmp/marker"
+            + tick
+            + "\n",
         )
-
-        self.assertTrue(
-            any(
-                "risk:medium completion requires focused" in error
-                for error in evaluation.errors
-            )
-        )
-        self.assertFalse(evaluation.auto_merge_allowed)
-
-    def test_medium_generic_evidence_does_not_satisfy_focus(self) -> None:
-        """Repository-wide and formatting checks are not focused evidence."""
-        evaluation = evaluate_pull_request(
-            base="dev",
-            head="work/12-titan-finale",
-            head_repository="owner/game",
-            repository="owner/game",
-            body=(
-                "Closes #12\n"
-                "Focused validation: `python3 tools/ci/run_repository_checks.py "
-                "all --baseline-ref origin/dev`\n"
-            ),
-            labels={"risk:medium", "work:complete"},
-            additions=100,
-            deletions=10,
-            changed_paths=["project/scripts/titan/state.gml"],
-            changed_file_count=1,
-        )
-
-        self.assertTrue(
-            any(
-                "risk:medium focused validation must establish" in error
-                for error in evaluation.errors
-            )
-        )
+        for body in bodies:
+            with self.subTest(body=body):
+                evaluation = evaluate_pull_request(
+                    base="dev",
+                    head="work/12-titan-finale",
+                    head_repository="owner/game",
+                    repository="owner/game",
+                    body=body,
+                    labels={"risk:medium", "work:complete"},
+                    additions=100,
+                    deletions=10,
+                    changed_paths=["project/scripts/titan/state.gml"],
+                    changed_file_count=1,
+                )
+                self.assertEqual(evaluation.errors, ())
+                self.assertTrue(evaluation.auto_merge_allowed)
 
     def test_medium_cannot_override_forced_high(self) -> None:
         """Keep governance and CI paths monotonically high risk."""

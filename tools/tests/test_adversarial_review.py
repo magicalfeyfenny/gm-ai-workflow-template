@@ -16,11 +16,13 @@ from tools.ci.adversarial_review import (
     build_adjudication_packet,
     build_review_packet,
     candidate_identity,
+    validate_adjudication_packet,
     validate_adjudication_result,
     validate_review_packet,
     validate_review_result,
 )
 from tools.ci.adversarial_review_session import (
+    _session_prompt,
     run_adversarial_review,
     run_review_lifecycle,
 )
@@ -190,11 +192,107 @@ class ReviewPacketTests(unittest.TestCase):
         self.assertEqual(encoded.count(json.dumps(DIFF)), 1)
         self.assertEqual(encoded.count(json.dumps(issue_contract()["body"])), 1)
 
+    def test_medium_packet_carries_focused_claims_with_existing_evidence(self):
+        current = candidate()
+        existing_check = {
+            "name": "existing focused behavior test",
+            "result": "passed",
+            "evidence": ["existing behavior test passed"],
+            "establishes": ["resuming preserves the selected action"],
+        }
+        value = build_review_packet(
+            issue_contract(),
+            current,
+            governance(),
+            {
+                "issue_contract_revision": REVISION,
+                "candidate_identity": candidate_identity(current),
+                "checks": [existing_check],
+            },
+            {"included": INCLUDED, "exclusions": []},
+            risk="medium",
+        )
+
+        check = value["stage2_evidence"]["checks"][0]
+        self.assertEqual(check["establishes"], existing_check["establishes"])
+        self.assertEqual(
+            value["stage2_evidence"]["candidate_identity"],
+            candidate_identity(value["candidate"]),
+        )
+        self.assertEqual(value["stage2_evidence"]["issue_contract_revision"], REVISION)
+
+    def test_low_and_high_packets_do_not_require_focused_claims(self):
+        for risk in ("low", "high"):
+            with self.subTest(risk=risk):
+                value = build_review_packet(
+                    issue_contract(),
+                    candidate(),
+                    governance(),
+                    stage2(),
+                    {"included": INCLUDED, "exclusions": []},
+                    risk=risk,
+                )
+                self.assertTrue(value["stage2_evidence"]["checks"])
+                self.assertTrue(
+                    all(
+                        "establishes" not in check
+                        for check in value["stage2_evidence"]["checks"]
+                    )
+                )
+
+    def test_medium_without_claim_bearing_check_fails_before_review_sessions(self):
+        value = packet()
+        value["risk"] = "medium"
+        calls = []
+
+        with self.assertRaisesRegex(
+            ReviewContractError, "risk:medium Stage 2 evidence"
+        ):
+            run_review_lifecycle(
+                value,
+                initial=True,
+                session_runner=lambda *args: calls.append(args),
+            )
+
+        self.assertEqual(calls, [])
+
+    def test_medium_reviewer_checks_evidence_support_not_command_names(self):
+        current = candidate()
+        value = build_review_packet(
+            issue_contract(),
+            current,
+            governance(),
+            {
+                "issue_contract_revision": REVISION,
+                "candidate_identity": candidate_identity(current),
+                "checks": [
+                    {
+                        "name": "full repository test suite",
+                        "result": "passed",
+                        "evidence": ["full suite passed"],
+                        "establishes": ["a specific issue behavior"],
+                    }
+                ],
+            },
+            {"included": INCLUDED, "exclusions": []},
+            risk="medium",
+        )
+
+        prompt = _session_prompt("reviewer", value)
+        self.assertIn("actually supports a specific accepted issue behavior", prompt)
+        self.assertIn("does not make generic repository policy", prompt)
+        self.assertIn("Do not parse shell commands", prompt)
+
     def test_packet_rejects_stale_or_hidden_context(self):
         stale = packet()
         stale["stage2_evidence"]["issue_contract_revision"] = "b" * 64
         with self.assertRaises(ReviewContractError):
             validate_review_packet(stale)
+
+        old_schema = packet()
+        old_schema["schema"] = "adversarial-review-packet:v4"
+        with self.assertRaisesRegex(ReviewContractError, "unsupported schema"):
+            validate_review_packet(old_schema)
 
         hidden = packet()
         hidden["implementation_context"] = "implementation scratchpad"
@@ -225,6 +323,61 @@ class ReviewPacketTests(unittest.TestCase):
                 {"included": INCLUDED, "exclusions": []},
                 risk="high",
             )
+
+    def test_policy_update_review_prompts_preserve_authority_boundaries(self):
+        review_packet = packet()
+        reviewer_prompt = _session_prompt("reviewer", review_packet)
+        adjudication_packet = build_adjudication_packet(
+            review_packet,
+            [finding("F-upstream-concern", "inherited upstream concern")],
+        )
+        self.assertEqual(adjudication_packet["risk"], review_packet["risk"])
+        adjudicator_prompt = _session_prompt(
+            "adjudicator", adjudication_packet
+        )
+
+        self.assertIn("newly selected immutable upstream revision", reviewer_prompt)
+        self.assertIn("unexplained divergence is a downstream reconciliation defect", reviewer_prompt)
+        self.assertIn("concern inherited unchanged", reviewer_prompt)
+        self.assertIn("independent local obligation", reviewer_prompt)
+        self.assertIn("Issue authority is repository-local", reviewer_prompt)
+        self.assertIn(
+            "does not authorize creating, modifying, claiming, or executing issues, branches, PRs, files, or other work in the upstream repository",
+            reviewer_prompt,
+        )
+        self.assertIn(
+            "existence of a related upstream issue does not grant authority",
+            reviewer_prompt,
+        )
+        self.assertIn(
+            "separate explicit human direction naming the target repository and the work to perform",
+            reviewer_prompt,
+        )
+        self.assertIn(
+            "not an actionable downstream correction by itself; disposition it as follow-up or reject",
+            adjudicator_prompt,
+        )
+        self.assertIn("reconciliation defect", adjudicator_prompt)
+        self.assertIn(
+            "violations of independently established local obligations may be actionable",
+            adjudicator_prompt,
+        )
+        self.assertIn("repository-local issue authority", adjudicator_prompt)
+        self.assertIn(
+            "Do not create, modify, claim, or execute issues, branches, PRs, files, or other work in the upstream repository as part of this issue",
+            adjudicator_prompt,
+        )
+        self.assertIn(
+            "separate explicit human direction naming the target repository and the work to perform",
+            adjudicator_prompt,
+        )
+
+        old_adjudication_packet = dict(adjudication_packet)
+        old_adjudication_packet["schema"] = "adversarial-adjudication-packet:v2"
+        with self.assertRaisesRegex(
+            ReviewContractError, "unsupported schema"
+        ):
+            validate_adjudication_packet(old_adjudication_packet)
 
 
 class FindingAndDispositionTests(unittest.TestCase):
@@ -376,6 +529,7 @@ class EvidenceTransportTests(unittest.TestCase):
                 set(payload),
                 {
                     "schema",
+                    "risk",
                     "issue_contract_revision",
                     "candidate_identity",
                     "evidence",
@@ -462,6 +616,7 @@ class IsolatedSessionTests(unittest.TestCase):
             set(calls[1][1]),
             {
                 "schema",
+                "risk",
                 "issue_contract_revision",
                 "candidate_identity",
                 "evidence",

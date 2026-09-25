@@ -105,7 +105,33 @@ separate migration registry, policy snapshot, synchronization service, or
 standing cleanup backlog. This route uses the existing issue, validation, and
 risk lifecycle and grants no additional mutation or merge authority.
 
+For an update of an evidence-backed earlier adoption, the newly selected
+immutable upstream revision defines the shared semantics being adopted.
+Downstream differences are permitted only when an independently established
+project-specific requirement requires an adaptation; identify that requirement
+and its authority in the update record. An unexplained divergence is a
+reconciliation defect. A defect already present unchanged in the selected
+upstream revision is an upstream concern, not an actionable downstream
+correction by itself. Reviewers may report it for upstream disposition, but
+must not direct `blocker` or `patch-now` remediation in the downstream update
+unless the downstream adaptation creates the defect or it violates independent
+local authority. Follow [Issue authority](#issue-authority): the downstream
+issue does not authorize work in the upstream repository, and the presence of
+a related upstream issue grants no authority to act on it. Any cross-repository
+work requires separate explicit human direction naming the target repository
+and the work to perform. Semantic adoption is the contract; byte-for-byte
+identity is not required where an authorized local adaptation or other
+justified local consumer differs.
+
 ## Issue authority
+
+Issue authority is repository-local. An issue authorizes mutation only within
+the repository that owns it. A downstream issue may report an upstream concern
+for human disposition, but as part of that issue an agent must not create,
+modify, claim, or execute issues, branches, PRs, files, or other work in the
+upstream repository. A related issue in another repository does not grant
+cross-repository authority. Cross-repository work requires separate explicit
+human direction naming the target repository and the work to perform.
 
 Every issue created by an agent contains a summary, acceptance criteria,
 bounded scope, and expected risk, and is assigned to the current user.
@@ -717,6 +743,18 @@ meaningful separately actionable concern; it is not an inventory of possible
 edge cases. Hypothetical hardening and unrelated diagnostic or robustness
 concerns do not drive current work unless an accepted obligation requires them.
 
+For a bounded downstream policy update, review faithful adoption of the selected
+immutable upstream revision and any independently authorized local adaptation.
+A concern inherited unchanged from that upstream revision is not a downstream
+violation by itself and cannot direct a downstream correction; record it as an
+upstream follow-up or reject it as non-actionable. A defect in the downstream
+reconciliation or a violation of independent local authority remains
+actionable. Review findings may report inherited concerns for human
+disposition, but do not extend repository-local issue authority: a related
+upstream issue is not permission to act there. Cross-repository work requires
+separate explicit human direction naming the target repository and work to
+perform.
+
 Corrections are remedies, not contracts. Each candidate is assessed against the
 same accepted issue and standing Governance, never against prior corrections.
 The implementer chooses the simplest sufficient remedy. Directly entangled
@@ -911,16 +949,26 @@ an agent, adjudication, nor a human-authored Expected risk: Medium value can
 override a forced-high condition. Final classification follows the actual PR
 and current circumstances rather than blindly copying issue metadata.
 
-When a completed PR carries `risk:medium`, its body must include at least one
-focused, change-specific machine-verifiable validation item in this form:
+Before adversarial review can complete for `risk:medium`, its structured
+Stage 2 evidence must contain at least one passed check with a nonempty
+`establishes` list naming a specific issue behavior or integration claim that
+the check establishes. The check evidence remains bound to the same candidate
+identity and accepted issue-contract revision as the rest of Stage 2.
 
-`Focused validation: \`<test command or deterministic contract check>\``
+The reviewer and adjudicator assess whether the cited machine-verifiable
+evidence supports the stated claim. Repository policy, formatting,
+`git diff --check`, an undifferentiated full-suite pass, or another generic
+baseline does not become focused evidence merely by being relabeled or
+accompanied by a generic claim. Do not classify evidence by parsing shell
+commands or by maintaining command, runner, path, or keyword heuristics.
+Missing focused evidence, or evidence that does not support its stated claim,
+prevents successful review and completion; it does not promote the change to
+high risk. Low- and high-risk work may carry `establishes` claims but have no
+focused-evidence requirement from this rule.
 
-Repository-policy, formatting, and other generic checks alone do not satisfy
-the medium evidence requirement. Missing or generic-only medium evidence
-blocks completion and automatic readiness; it does not promote the change to
-high risk. Intermediate medium milestones may omit the focused item until the
-whole issue is ready for completion.
+The PR body may summarize focused validation for human readability, but that
+free-form text is not authoritative evidence. Intermediate medium milestones
+may omit focused Stage 2 evidence until the whole issue is ready for review.
 
 ## Completion transition
 

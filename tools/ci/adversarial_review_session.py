@@ -195,10 +195,30 @@ def _session_prompt(role: str, packet: Mapping[str, object]) -> str:
             "and standing Governance in the packet are the only authorities. For "
             "each proposed violation, use contract_or_governance to identify the "
             "existing issue requirement or Governance rule and cite supporting "
-            "evidence. Apply the packet's review-obligation rules. Return JSON "
+            "evidence. For risk:medium, inspect each Stage 2 check's optional "
+            "establishes claims and determine whether the cited machine-verifiable "
+            "evidence actually supports a specific accepted issue behavior or "
+            "integration claim. A nonempty claim or a focused-looking check name "
+            "does not make generic repository policy, formatting, git diff --check, "
+            "or an undifferentiated full-suite result focused evidence. Do not parse "
+            "shell commands or classify evidence from command names, paths, or "
+            "keywords. Apply the packet's review-obligation rules. Return JSON "
             "matching the output schema. Do not provide fixes, commands, "
             "implementation advice, or conversational reasoning. supporting_evidence "
-            "must contain only stable evidence IDs attached directly to packet sources."
+            "must contain only stable evidence IDs attached directly to packet sources. "
+            "For a bounded downstream policy update, assess reconciliation against "
+            "the newly selected immutable upstream revision. Treat only independently "
+            "authorized project-specific adaptations as permitted differences; an "
+            "unexplained divergence is a downstream reconciliation defect. A "
+            "concern inherited unchanged from that revision is an upstream report, "
+            "not a downstream blocker or patch-now finding by itself. A downstream "
+            "adaptation defect or violation of an independent local obligation can "
+            "still be actionable. Issue authority is repository-local. A downstream issue may report an "
+            "upstream concern for human disposition, but it does not authorize creating, "
+            "modifying, claiming, or executing issues, branches, PRs, files, or other "
+            "work in the upstream repository. The existence of a related upstream issue "
+            "does not grant authority. Cross-repository work requires separate explicit "
+            "human direction naming the target repository and the work to perform."
         )
     elif role == "adjudicator":
         instructions = (
@@ -208,7 +228,23 @@ def _session_prompt(role: str, packet: Mapping[str, object]) -> str:
             "reviewer claim against the actual source item text; a reviewer paraphrase "
             "is not evidence. A blocker or patch-now requires a supported violation "
             "of a named accepted issue requirement or standing Governance rule; put "
-            "that authority in basis. Return JSON matching the output schema. Make a "
+            "that authority in basis. For risk:medium, verify that a Stage 2 "
+            "establishes claim is supported by its cited machine-verifiable evidence; "
+            "a generic baseline does not become focused evidence through a label or "
+            "claim. For a bounded downstream policy update, a defect inherited "
+            "unchanged from the selected upstream revision is not an actionable "
+            "downstream correction by itself; disposition it as follow-up or reject. "
+            "An unexplained divergence is a reconciliation defect when the accepted "
+            "update contract requires faithful adoption. "
+            "Downstream adaptation defects and violations of independently "
+            "established local obligations may be actionable. A discovered upstream "
+            "concern may be reported for human disposition, but repository-local issue "
+            "authority prohibits treating this downstream issue or a related upstream "
+            "issue as permission for work there. Do not create, modify, claim, or execute "
+            "issues, branches, PRs, files, or other work in the upstream repository as "
+            "part of this issue. Cross-repository work requires separate explicit human "
+            "direction naming the target repository and the work to perform. Return "
+            "JSON matching the output schema. Make a "
             "supported disposition whenever reasonably possible. Do not infer "
             "lifecycle hard stops or state absent from the packet; the repository-owned "
             "state machine enforces those mechanically. Do not return raw findings "
@@ -596,7 +632,7 @@ def run_review_lifecycle(
             ]
             return lifecycle_artifact(
                 status="human-handoff",
-                risk=review_packet["risk"],
+                risk=continuation["risk"],
                 issue_contract_revision=revision,
                 cycle=continuation["cycle"],
                 candidate_identity=current_candidate,

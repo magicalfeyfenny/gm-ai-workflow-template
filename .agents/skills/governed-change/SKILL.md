@@ -41,7 +41,12 @@ with the narrower selection and authority in its automation template.
   [Compatibility obligations](../../../GOVERNANCE.md#compatibility-obligations).
 - Updating previously adopted upstream policy:
   [Policy updates](../../../GOVERNANCE.md#policy-updates) and the
-  [bounded update procedure](../../../docs/POLICY_UPDATE.md).
+  [bounded update procedure](../../../docs/POLICY_UPDATE.md). The selected
+  immutable upstream revision defines shared semantics; inherited defects do
+  not authorize downstream correction or cross-repository mutation. Issue
+  authority is repository-local; a related upstream issue grants no authority
+  to act there. Cross-repository work requires separate explicit human
+  direction naming the target repository and the work to perform.
 
 For production code or GameMaker data, also use the
 [GameMaker production skill](../gamemaker-production/SKILL.md). For authored or
@@ -109,6 +114,9 @@ These stops repeat Governance because a mutation procedure must expose them:
 - Never branch from local `dev`, use a `human/*` branch, or work a
   `human-created` or `work:blocked` PR.
 - Do not force-push, invoke a ruleset bypass, or perform unrelated cleanup.
+- Do not act across repositories under the current issue. A related issue in
+  another repository grants no authority; separate explicit human direction
+  must name the target repository and work before cross-repository work.
 - Do not create, preserve, or treat as required a manual playtesting,
   human-observation, experiential-review, subjective-acceptance, or generic
   gameplay-smoke requirement unless explicit human direction requires it.
