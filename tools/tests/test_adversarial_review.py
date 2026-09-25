@@ -340,8 +340,17 @@ class ReviewPacketTests(unittest.TestCase):
         self.assertIn("unexplained divergence is a downstream reconciliation defect", reviewer_prompt)
         self.assertIn("concern inherited unchanged", reviewer_prompt)
         self.assertIn("independent local obligation", reviewer_prompt)
+        self.assertIn("Issue authority is repository-local", reviewer_prompt)
         self.assertIn(
-            "no authority to create or modify upstream issues, branches, pull requests, or files",
+            "does not authorize creating, modifying, claiming, or executing issues, branches, PRs, files, or other work in the upstream repository",
+            reviewer_prompt,
+        )
+        self.assertIn(
+            "existence of a related upstream issue does not grant authority",
+            reviewer_prompt,
+        )
+        self.assertIn(
+            "separate explicit human direction naming the target repository and the work to perform",
             reviewer_prompt,
         )
         self.assertIn(
@@ -353,7 +362,15 @@ class ReviewPacketTests(unittest.TestCase):
             "violations of independently established local obligations may be actionable",
             adjudicator_prompt,
         )
-        self.assertIn("no authority to mutate the upstream repository", adjudicator_prompt)
+        self.assertIn("repository-local issue authority", adjudicator_prompt)
+        self.assertIn(
+            "Do not create, modify, claim, or execute issues, branches, PRs, files, or other work in the upstream repository as part of this issue",
+            adjudicator_prompt,
+        )
+        self.assertIn(
+            "separate explicit human direction naming the target repository and the work to perform",
+            adjudicator_prompt,
+        )
 
         old_adjudication_packet = dict(adjudication_packet)
         old_adjudication_packet["schema"] = "adversarial-adjudication-packet:v2"

@@ -67,12 +67,16 @@ a violation of an independent local requirement as actionable. Do not require
 byte-for-byte identity where an authorized adaptation or another justified
 local consumer differs.
 
-Finding an upstream concern does not authorize any mutation in the upstream
-repository. Do not create or modify upstream issues, branches, pull requests,
-or files unless explicit human direction or an accepted issue in that
-repository authorizes that work. The update PR should identify intentional
-local differences and their authority, and can note inherited upstream
-concerns without turning them into downstream remediation scope.
+Issue authority is repository-local: this downstream issue authorizes
+mutations only in the repository that owns it. A downstream reconciliation
+may report an inherited upstream concern for human disposition, but as part of
+that issue do not create, modify, claim, or execute upstream issues, branches,
+pull requests, files, or other work. The existence of a related upstream issue
+does not grant cross-repository authority. Cross-repository work requires
+separate explicit human direction naming the target repository and the work to
+perform. The update PR should identify intentional local differences and
+their authority, and can note inherited upstream concerns without turning
+them into downstream remediation scope.
 
 ## Reuse adoption evidence only where relevant
 

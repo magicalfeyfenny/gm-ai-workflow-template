@@ -115,14 +115,23 @@ upstream revision is an upstream concern, not an actionable downstream
 correction by itself. Reviewers may report it for upstream disposition, but
 must not direct `blocker` or `patch-now` remediation in the downstream update
 unless the downstream adaptation creates the defect or it violates independent
-local authority. Discovering an upstream concern grants no authority to create
-or modify issues, branches, pull requests, or files in the upstream repository.
-Cross-repository work requires explicit human direction or an accepted issue in
-that repository. Semantic adoption is the contract; byte-for-byte identity is
-not required where an authorized local adaptation or other justified local
-consumer differs.
+local authority. Follow [Issue authority](#issue-authority): the downstream
+issue does not authorize work in the upstream repository, and the presence of
+a related upstream issue grants no authority to act on it. Any cross-repository
+work requires separate explicit human direction naming the target repository
+and the work to perform. Semantic adoption is the contract; byte-for-byte
+identity is not required where an authorized local adaptation or other
+justified local consumer differs.
 
 ## Issue authority
+
+Issue authority is repository-local. An issue authorizes mutation only within
+the repository that owns it. A downstream issue may report an upstream concern
+for human disposition, but as part of that issue an agent must not create,
+modify, claim, or execute issues, branches, PRs, files, or other work in the
+upstream repository. A related issue in another repository does not grant
+cross-repository authority. Cross-repository work requires separate explicit
+human direction naming the target repository and the work to perform.
 
 Every issue created by an agent contains a summary, acceptance criteria,
 bounded scope, and expected risk, and is assigned to the current user.
@@ -740,8 +749,11 @@ A concern inherited unchanged from that upstream revision is not a downstream
 violation by itself and cannot direct a downstream correction; record it as an
 upstream follow-up or reject it as non-actionable. A defect in the downstream
 reconciliation or a violation of independent local authority remains
-actionable. Review findings do not authorize mutation of the upstream
-repository.
+actionable. Review findings may report inherited concerns for human
+disposition, but do not extend repository-local issue authority: a related
+upstream issue is not permission to act there. Cross-repository work requires
+separate explicit human direction naming the target repository and work to
+perform.
 
 Corrections are remedies, not contracts. Each candidate is assessed against the
 same accepted issue and standing Governance, never against prior corrections.

@@ -213,8 +213,12 @@ def _session_prompt(role: str, packet: Mapping[str, object]) -> str:
             "concern inherited unchanged from that revision is an upstream report, "
             "not a downstream blocker or patch-now finding by itself. A downstream "
             "adaptation defect or violation of an independent local obligation can "
-            "still be actionable. Discovering an upstream concern grants no authority "
-            "to create or modify upstream issues, branches, pull requests, or files."
+            "still be actionable. Issue authority is repository-local. A downstream issue may report an "
+            "upstream concern for human disposition, but it does not authorize creating, "
+            "modifying, claiming, or executing issues, branches, PRs, files, or other "
+            "work in the upstream repository. The existence of a related upstream issue "
+            "does not grant authority. Cross-repository work requires separate explicit "
+            "human direction naming the target repository and the work to perform."
         )
     elif role == "adjudicator":
         instructions = (
@@ -234,7 +238,12 @@ def _session_prompt(role: str, packet: Mapping[str, object]) -> str:
             "update contract requires faithful adoption. "
             "Downstream adaptation defects and violations of independently "
             "established local obligations may be actionable. A discovered upstream "
-            "concern grants no authority to mutate the upstream repository. Return "
+            "concern may be reported for human disposition, but repository-local issue "
+            "authority prohibits treating this downstream issue or a related upstream "
+            "issue as permission for work there. Do not create, modify, claim, or execute "
+            "issues, branches, PRs, files, or other work in the upstream repository as "
+            "part of this issue. Cross-repository work requires separate explicit human "
+            "direction naming the target repository and the work to perform. Return "
             "JSON matching the output schema. Make a "
             "supported disposition whenever reasonably possible. Do not infer "
             "lifecycle hard stops or state absent from the packet; the repository-owned "
