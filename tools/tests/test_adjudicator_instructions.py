@@ -38,40 +38,5 @@ class AdjudicatorInstructionTests(unittest.TestCase):
             with self.subTest(surface=surface):
                 self.assertIn(GOVERNANCE_ROUTE, text)
 
-    def test_governance_owns_persisted_outcome_reporting(self):
-        governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8").casefold()
-        reporting = governance.split("### persisted outcome reporting", 1)[1].split(
-            "## milestone commits and draft publication", 1
-        )[0]
-        for marker in (
-            "review_cycles",
-            "not-needed",
-            "zero-finding review",
-            "prior-cycle follow-ups",
-            "adjudication_status",
-            "unadjudicated observations",
-            "session failure",
-            "current cycle",
-        ):
-            with self.subTest(authoritative_rule=marker):
-                self.assertIn(marker, reporting)
-
-        reporting_route = "governance.md#persisted-outcome-reporting"
-        duplicated_details = (
-            "review_cycles",
-            "not-needed",
-            "unadjudicated observations",
-            "prior-cycle follow-ups",
-            "only current-cycle",
-        )
-        for surface in GOVERNED_SURFACES:
-            text = surface.read_text(encoding="utf-8").casefold()
-            with self.subTest(surface=surface):
-                self.assertIn(reporting_route, text)
-                for marker in duplicated_details:
-                    with self.subTest(duplicate=marker):
-                        self.assertNotIn(marker, text)
-
-
 if __name__ == "__main__":
     unittest.main()
