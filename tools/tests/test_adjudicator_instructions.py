@@ -27,6 +27,8 @@ class AdjudicatorInstructionTests(unittest.TestCase):
         )
         self.assertIn("put that authority in basis", adjudicator)
         self.assertIn("repository-owned state machine", adjudicator)
+        self.assertIn("do not prescribe the implementation remedy", adjudicator)
+        self.assertIn("blocker or patch-now means the current candidate requires correction", adjudicator)
 
     def test_secondary_surfaces_route_review_policy_to_governance(self):
         governance = (ROOT / "GOVERNANCE.md").read_text(encoding="utf-8").casefold()
@@ -35,7 +37,6 @@ class AdjudicatorInstructionTests(unittest.TestCase):
             text = surface.read_text(encoding="utf-8").casefold()
             with self.subTest(surface=surface):
                 self.assertIn(GOVERNANCE_ROUTE, text)
-
 
 if __name__ == "__main__":
     unittest.main()

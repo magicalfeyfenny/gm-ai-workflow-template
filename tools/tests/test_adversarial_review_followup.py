@@ -144,19 +144,11 @@ def review_result(packet: dict, findings: list[dict]) -> dict:
     }
 
 
-def correction() -> dict:
-    return {
-        "summary": "Apply the bounded source-backed correction.",
-    }
-
-
-def decision(finding_id: str, disposition: str, value: dict | None = None) -> dict:
+def decision(finding_id: str, disposition: str) -> dict:
     return {
         "finding_id": finding_id,
         "disposition": disposition,
         "basis": "source text supports this deterministic fixture disposition",
-        "correction": value,
-        "correction_accepted": value is not None,
     }
 
 

@@ -82,12 +82,10 @@ same work item through the ordinary completion lifecycle:
    [adversarial review and adjudication route](../../GOVERNANCE.md#adversarial-review-and-adjudication):
    `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT --initial`.
    For a continuation, provide its state with `--state STATE`.
-4. Follow the review policy and lifecycle decisions in
-   [Governance](../../GOVERNANCE.md#adversarial-review-and-adjudication) for
-   each candidate and result. The packet's actual risk tier selects the
-   configured retry budget: low gets one correction retry, while medium and
-   high get two. A handoff artifact never authorizes an autonomous reset; a
-   human-authorized new candidate starts a fresh lifecycle.
+4. Follow the [Governance review route](../../GOVERNANCE.md#adversarial-review-and-adjudication)
+   and its [persisted outcome reporting rule](../../GOVERNANCE.md#persisted-outcome-reporting)
+   for lifecycle decisions and the human handoff. Continue only according to the
+   validated saved lifecycle state.
 5. Re-fetch and reconcile the governing issue immediately before the completion
    transition. If the contract changed, establish fresh Stage 2 evidence and a
    fresh review for the revised contract before proceeding.
@@ -106,6 +104,8 @@ same work item through the ordinary completion lifecycle:
    Do not directly mark ready, merge, bypass rulesets, push protected branches,
    release, or publish. High-risk and manual-path work stops for human review,
    readiness, and merge; those are authority actions, not validation blockers.
+   Prepare the handoff under the
+   [manual/high-risk completion path](../../GOVERNANCE.md#manual-and-high-risk-changes).
 
 Allocate evidence under
 [Validation coverage allocation](../../GOVERNANCE.md#validation-coverage-allocation).

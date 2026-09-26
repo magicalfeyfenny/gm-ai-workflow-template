@@ -91,28 +91,25 @@ def make_packet(value: dict | None = None, *, risk: str = "high") -> dict:
     )
 
 
-def finding(finding_id: str = "F-correction") -> dict:
+def finding(
+    finding_id: str = "F-correction",
+    description: str = "supported current-pass invariant",
+) -> dict:
     return {
         "finding_id": finding_id,
         "severity": "medium",
-        "defect_or_invariant": "supported current-pass correction",
+        "defect_or_invariant": description,
         "supporting_evidence": ["issue_contract"],
         "contract_or_governance": "accepted contract",
         "affected_location": INCLUDED[0],
     }
 
 
-def correction() -> dict:
-    return {"summary": "Apply the supported correction."}
-
-
-def decision(finding_id: str, disposition: str, value: dict | None = None) -> dict:
+def decision(finding_id: str, disposition: str) -> dict:
     return {
         "finding_id": finding_id,
         "disposition": disposition,
         "basis": "independent source evidence supports the bounded decision",
-        "correction": value,
-        "correction_accepted": value is not None,
     }
 
 
@@ -150,7 +147,7 @@ class LifecycleArtifactTests(unittest.TestCase):
             make_packet(),
             initial=True,
             session_runner=self.runner(
-                [finding()], [decision("F-correction", "patch-now", correction())]
+                [finding("F-actionable")], [decision("F-actionable", "patch-now")]
             ),
         )
 
@@ -169,13 +166,21 @@ class LifecycleArtifactTests(unittest.TestCase):
                 "cycle",
                 "candidate_identity",
                 "prior_candidate_identities",
-                "corrections",
+                "review_cycles",
                 "reason",
                 "session_failure",
             },
         )
-        self.assertEqual(result["corrections"][0]["finding_id"], "F-correction")
-        self.assertEqual(result["corrections"][0]["correction"], correction())
+        self.assertEqual(result["review_cycles"][0]["cycle"], 0)
+        self.assertEqual(
+            result["review_cycles"][0]["findings"][0]["finding_id"],
+            "F-actionable",
+        )
+        self.assertEqual(
+            result["review_cycles"][0]["findings"][0]["disposition"],
+            "patch-now",
+        )
+        self.assertNotIn("correction", json.dumps(result))
         for obsolete in (
             "state_digest",
             "transition",
@@ -196,7 +201,7 @@ class LifecycleArtifactTests(unittest.TestCase):
         )
         first_adjudication = adjudication_result(
             first_adjudication_packet,
-            [decision("F-persisted", "patch-now", correction())],
+            [decision("F-persisted", "patch-now")],
         )
         corrected = candidate(
             head_sha="g" * 40,
@@ -204,11 +209,6 @@ class LifecycleArtifactTests(unittest.TestCase):
             diff=DIFF + "corrected\n",
         )
         corrected_packet = make_packet(corrected)
-        corrected_adjudication_packet = build_adjudication_packet(
-            corrected_packet, []
-        )
-        completed = adjudication_result(corrected_adjudication_packet, [])
-
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             packet_path = root / "packet.json"
@@ -237,7 +237,7 @@ class LifecycleArtifactTests(unittest.TestCase):
             packet_path.write_text(json.dumps(corrected_packet), encoding="utf-8")
             with patch(
                 "tools.ci.adversarial_review_session._run_adversarial_review_sessions",
-                return_value=(completed, corrected_adjudication_packet),
+                return_value=(None, None),
             ):
                 self.assertEqual(
                     main(
@@ -257,6 +257,132 @@ class LifecycleArtifactTests(unittest.TestCase):
         self.assertEqual(final["status"], "complete")
         self.assertEqual(final["cycle"], 1)
         self.assertEqual(final["prior_candidate_identities"][0], first["candidate_identity"])
+        self.assertEqual(len(final["review_cycles"]), 2)
+        self.assertEqual(final["review_cycles"][0]["findings"][0]["disposition"], "patch-now")
+        self.assertEqual(final["review_cycles"][1]["adjudication_status"], "not-needed")
+
+    def test_zero_findings_are_explicitly_persisted(self):
+        result = run_review_lifecycle(
+            make_packet(), initial=True, session_runner=self.runner()
+        )
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(
+            result["review_cycles"],
+            [
+                {
+                    "cycle": 0,
+                    "candidate_identity": candidate_identity(candidate()),
+                    "adjudication_status": "not-needed",
+                    "findings": [],
+                }
+            ],
+        )
+
+    def test_all_dispositions_persist_and_only_actionable_ones_rereview(self):
+        for disposition, expected_status in (
+            ("blocker", "revalidate-and-rereview"),
+            ("patch-now", "revalidate-and-rereview"),
+            ("follow-up", "complete"),
+            ("reject", "complete"),
+        ):
+            with self.subTest(disposition=disposition):
+                result = run_review_lifecycle(
+                    make_packet(),
+                    initial=True,
+                    session_runner=self.runner(
+                        [finding("F-outcome")],
+                        [decision("F-outcome", disposition)],
+                    ),
+                )
+                outcome = result["review_cycles"][0]["findings"][0]
+                self.assertEqual(result["status"], expected_status)
+                self.assertEqual(outcome["disposition"], disposition)
+                self.assertEqual(
+                    outcome["basis"],
+                    "independent source evidence supports the bounded decision",
+                )
+                self.assertNotIn("correction", json.dumps(result))
+
+    def test_follow_up_survives_fixed_actionable_finding_in_later_cycle(self):
+        original = candidate()
+        first = run_review_lifecycle(
+            make_packet(original),
+            initial=True,
+            session_runner=self.runner(
+                [
+                    finding("F-blocker", "accepted invariant is missing"),
+                    finding("F-follow-up", "separate concern for human awareness"),
+                ],
+                [
+                    decision("F-blocker", "blocker"),
+                    decision("F-follow-up", "follow-up"),
+                ],
+            ),
+        )
+        corrected = candidate(
+            head_sha="g" * 40,
+            tree_sha="u" * 40,
+            diff=DIFF + "corrected\n",
+        )
+        complete = run_review_lifecycle(
+            make_packet(corrected),
+            state=first,
+            session_runner=self.runner(),
+        )
+        self.assertEqual(complete["status"], "complete")
+        self.assertEqual(len(complete["review_cycles"]), 2)
+        self.assertEqual(
+            complete["review_cycles"][0]["findings"][1]["disposition"],
+            "follow-up",
+        )
+        self.assertEqual(complete["review_cycles"][1]["findings"], [])
+        self.assertEqual(complete["prior_candidate_identities"][0], first["candidate_identity"])
+
+    def test_adjudicator_failure_preserves_validated_findings_without_disposition(self):
+        finding_value = finding("F-unadjudicated", "validated concern stays reportable")
+
+        def invalid_adjudicator(role, payload, output_schema):
+            if role == "reviewer":
+                return {
+                    "schema": REVIEW_RESULT_SCHEMA,
+                    "issue_contract_revision": payload["issue_contract"]["revision"],
+                    "candidate_identity": candidate_identity(payload["candidate"]),
+                    "findings": [finding_value],
+                }
+            return {
+                **adjudication_result(payload, [decision("F-unadjudicated", "reject")]),
+                "schema": "adversarial-adjudication-result:v4",
+            }
+
+        result = run_review_lifecycle(
+            make_packet(), initial=True, session_runner=invalid_adjudicator
+        )
+        self.assertEqual(result["status"], "human-handoff")
+        self.assertEqual(result["session_failure"]["role"], "adjudicator")
+        cycle = result["review_cycles"][0]
+        self.assertEqual(cycle["adjudication_status"], "unavailable")
+        self.assertEqual(
+            cycle["findings"],
+            [
+                {
+                    "finding_id": "F-unadjudicated",
+                    "summary": "validated concern stays reportable",
+                    "disposition": None,
+                    "basis": None,
+                }
+            ],
+        )
+        encoded = json.dumps(result)
+        self.assertNotIn("supporting_evidence", encoded)
+        self.assertNotIn("contract_or_governance", encoded)
+
+    def test_prechange_lifecycle_artifact_schema_is_rejected(self):
+        current = run_review_lifecycle(
+            make_packet(), initial=True, session_runner=self.runner()
+        )
+        legacy = {**current, "schema": "adversarial-review-lifecycle:v2"}
+        with self.assertRaises(ReviewContractError):
+            load_lifecycle_artifact(legacy)
 
     def test_invalid_revision_and_repeated_candidates_stop_before_sessions(self):
         first = self.accepted_first_pass()

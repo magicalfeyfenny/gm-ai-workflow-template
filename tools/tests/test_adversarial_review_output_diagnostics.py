@@ -11,7 +11,6 @@ from tools.ci.adversarial_review_contracts import (
 from tools.ci.adversarial_review_session import run_review_lifecycle
 from tools.tests.test_adversarial_review_followup import (
     adjudication_result,
-    correction,
     decision,
     review_result,
     semantic_findings,
@@ -265,29 +264,32 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             "adjudication_disposition_contract",
         )
 
-        def correction_runner(role, payload, output_schema):
+        def legacy_adjudicator_fields(role, payload, output_schema):
             if role == "reviewer":
                 return review_result(payload, [finding_value])
-            return adjudication_result(
-                payload, [decision(finding_value["finding_id"], "reject", correction())]
+            result = adjudication_result(
+                payload, [decision(finding_value["finding_id"], "reject")]
             )
+            result["dispositions"][0]["correction"] = {
+                "summary": "RAW_ADJUDICATOR_CORRECTION",
+                "validation": ["RAW_CORRECTION_VALIDATION"],
+            }
+            result["dispositions"][0]["correction_accepted"] = True
+            return result
 
-        correction_failure = run_review_lifecycle(
-            packet, initial=True, session_runner=correction_runner
+        legacy_failure = run_review_lifecycle(
+            packet, initial=True, session_runner=legacy_adjudicator_fields
         )
-        correction_diagnostic = correction_failure["session_failure"]
-        self.assertEqual(correction_diagnostic["role"], "adjudicator")
-        self.assertEqual(correction_diagnostic["validation_stage"], "semantic")
+        diagnostic = legacy_failure["session_failure"]
+        self.assertEqual(diagnostic["role"], "adjudicator")
+        self.assertEqual(diagnostic["validation_stage"], "shape")
         self.assertEqual(
-            correction_diagnostic["diagnostic_code"],
-            "adjudication_correction_contract",
+            diagnostic["diagnostic_code"],
+            "output_unsupported_field",
         )
-        self.assertEqual(
-            correction_diagnostic["diagnostic_detail_code"],
-            "adjudication_correction_on_non_mutating_disposition",
-        )
-        encoded = json.dumps(correction_failure)
-        self.assertNotIn("source-backed correction", encoded)
+        encoded = json.dumps(legacy_failure)
+        self.assertNotIn("RAW_ADJUDICATOR_CORRECTION", encoded)
+        self.assertNotIn("RAW_CORRECTION_VALIDATION", encoded)
         self.assertNotIn("BOUNDARY-PACKET", encoded)
         self.assertNotIn("access_token", encoded)
 
@@ -336,73 +338,6 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
             "semantic",
         )
 
-    def test_correction_contract_rules_have_distinct_sanitized_detail_codes(self):
-        packet = semantic_packet()
-        finding_value = semantic_findings()[0]
-        finding_id = finding_value["finding_id"]
-        acceptance_mismatch = decision(finding_id, "blocker", correction())
-        acceptance_mismatch["correction_accepted"] = False
-        acceptance_mismatch["correction"]["summary"] = "RAW_ADJUDICATOR_CORRECTION"
-        cases = {
-            "adjudication_correction_on_non_mutating_disposition": decision(
-                finding_id, "reject", correction()
-            ),
-            "adjudication_correction_required_missing": decision(
-                finding_id, "blocker"
-            ),
-            "adjudication_correction_acceptance_mismatch": acceptance_mismatch,
-        }
-
-        def run_case(adjudication_decision):
-            def runner(role, payload, output_schema):
-                if role == "reviewer":
-                    return review_result(payload, [finding_value])
-                return adjudication_result(payload, [adjudication_decision])
-
-            return run_review_lifecycle(
-                packet, initial=True, session_runner=runner
-            )
-
-        for expected_code, adjudication_decision in cases.items():
-            with self.subTest(expected_code=expected_code):
-                result = run_case(adjudication_decision)
-                diagnostic = result["session_failure"]
-                self.assertEqual(diagnostic["role"], "adjudicator")
-                self.assertEqual(diagnostic["validation_stage"], "semantic")
-                self.assertEqual(
-                    diagnostic["diagnostic_code"],
-                    "adjudication_correction_contract",
-                )
-                self.assertEqual(diagnostic["diagnostic_detail_code"], expected_code)
-                encoded = json.dumps(result)
-                self.assertNotIn("RAW_ADJUDICATOR_CORRECTION", encoded)
-
-    def test_correction_cannot_supply_validation_instructions(self):
-        packet = semantic_packet()
-        finding_value = semantic_findings()[0]
-        unsupported_correction = {
-            **correction(),
-            "validation": ["RAW_CORRECTION_VALIDATION"],
-        }
-
-        def runner(role, payload, output_schema):
-            if role == "reviewer":
-                return review_result(payload, [finding_value])
-            return adjudication_result(
-                payload,
-                [decision(finding_value["finding_id"], "patch-now", unsupported_correction)],
-            )
-
-        result = run_review_lifecycle(
-            packet, initial=True, session_runner=runner
-        )
-        diagnostic = result["session_failure"]
-        self.assertEqual(diagnostic["role"], "adjudicator")
-        self.assertEqual(diagnostic["validation_stage"], "shape")
-        self.assertEqual(diagnostic["diagnostic_code"], "output_unsupported_field")
-        self.assertIsNone(diagnostic["diagnostic_detail_code"])
-        self.assertNotIn("RAW_CORRECTION_VALIDATION", json.dumps(result))
-
     def test_valid_zero_finding_reviewer_output_skips_adjudication(self):
         packet = semantic_packet()
         calls = []
@@ -418,6 +353,10 @@ class StructuredOutputDiagnosticTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "complete")
         self.assertEqual(calls, ["reviewer"])
+        self.assertEqual(
+            result["review_cycles"][0]["adjudication_status"], "not-needed"
+        )
+        self.assertEqual(result["review_cycles"][0]["findings"], [])
         self.assertIsNone(result["session_failure"])
 
 

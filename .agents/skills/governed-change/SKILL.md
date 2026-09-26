@@ -90,22 +90,18 @@ before Stage 2.
    [adversarial review and adjudication](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
    stage. Run the lifecycle for the frozen candidate and save its result:
    `python3 tools/ci/adversarial_review_session.py run --packet PACKET --output RESULT --initial`.
-   For a continuation, supply the saved lifecycle artifact with `--state STATE`. Follow
-   [Governance](../../../GOVERNANCE.md#adversarial-review-and-adjudication)
-   for review policy and lifecycle decisions. The packet's actual risk tier
-   selects the configured retry budget: low gets one correction retry, while
-   medium and high get two; a handoff artifact never authorizes an autonomous
-   reset.
+   For a continuation, supply the saved lifecycle artifact with `--state STATE`.
+   Follow [Governance's persisted outcome reporting rule](../../../GOVERNANCE.md#persisted-outcome-reporting)
+   for interpreting the result and preparing the human report.
 6. When the review lifecycle reports completion, re-fetch and reconcile the
    issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the
    [attestation procedure](../../../docs/CI.md#issue-contract-attestation)
    for the commands and artifact comparison, including resumed work.
 7. Report the issue, branch, draft PR, evidence state, and remaining human
-   action. For a high-risk/manual-path handoff, describe human review,
-   readiness, and merge as authority actions only; mention manual, visual,
-   live, or experiential validation only when the accepted issue contract
-   explicitly requires it. Leave readiness and merge to a human.
+   action under the [completion transition](../../../GOVERNANCE.md#completion-transition)
+   and applicable [risk path](../../../GOVERNANCE.md#risk). Leave readiness and
+   merge to a human for high-risk/manual-path work.
 
 ## Critical stops
 
