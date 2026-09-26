@@ -19,7 +19,6 @@ try:
         process_failure_class,
         session_error,
         session_error_with_role,
-        session_failure_diagnostic,
         structured_output_diagnostic,
     )
 except ImportError:  # pragma: no cover - direct script compatibility
@@ -28,7 +27,6 @@ except ImportError:  # pragma: no cover - direct script compatibility
         process_failure_class,
         session_error,
         session_error_with_role,
-        session_failure_diagnostic,
         structured_output_diagnostic,
     )
 
@@ -64,21 +62,11 @@ except ImportError:  # pragma: no cover - direct script compatibility
     )
 
 try:
-    from .adversarial_review_state import (
-        accepted_corrections,
-        continuation_reason,
-        lifecycle_artifact,
-        load_lifecycle_artifact,
-    )
-    from .pr_policy import correction_retry_budget
+    from .adversarial_review_lifecycle import run_review_lifecycle as _run_review_lifecycle
 except ImportError:  # pragma: no cover - direct script compatibility
-    from adversarial_review_state import (  # type: ignore[no-redef]
-        accepted_corrections,
-        continuation_reason,
-        lifecycle_artifact,
-        load_lifecycle_artifact,
+    from adversarial_review_lifecycle import (  # type: ignore[no-redef]
+        run_review_lifecycle as _run_review_lifecycle,
     )
-    from pr_policy import correction_retry_budget  # type: ignore[no-redef]
 
 
 CODEX_MODEL_CONFIG_FILENAME = "CODEX_MODEL_CONFIG.toml"
@@ -247,8 +235,11 @@ def _session_prompt(role: str, packet: Mapping[str, object]) -> str:
             "JSON matching the output schema. Make a "
             "supported disposition whenever reasonably possible. Do not infer "
             "lifecycle hard stops or state absent from the packet; the repository-owned "
-            "state machine enforces those mechanically. Do not return raw findings "
-            "as implementation instructions."
+            "state machine enforces those mechanically. A blocker or patch-now "
+            "means the current candidate requires correction and another review; "
+            "do not prescribe the implementation remedy. The implementer chooses "
+            "the simplest sufficient remedy under the accepted issue and Governance. "
+            "Do not return raw findings as implementation instructions."
         )
     else:
         raise ReviewSessionError(f"unsupported isolated session role: {role}")
@@ -487,33 +478,41 @@ def _run_adversarial_review_sessions(
         ) from None
     if not reviewer_result["findings"]:
         return None, None
-    adjudication_packet = build_adjudication_packet(
-        review_packet, reviewer_result["findings"]
-    )
     try:
+        adjudication_packet = build_adjudication_packet(
+            review_packet, reviewer_result["findings"]
+        )
         adjudicator_raw = session_runner(
             "adjudicator", adjudication_packet, ADJUDICATION_RESULT_OUTPUT_SCHEMA
         )
-    except ReviewSessionError as exc:
-        raise session_error_with_role(exc, "adjudicator") from exc
-    try:
         adjudication = validate_adjudication_result(
             adjudicator_raw, adjudication_packet
         )
+    except ReviewSessionError as exc:
+        error = session_error_with_role(exc, "adjudicator")
+        error.validated_review_findings = reviewer_result["findings"]
+        raise error from exc
     except ReviewContractError as exc:
-        validation_stage, diagnostic_code, diagnostic_detail_code = (
-            structured_output_diagnostic(exc)
-        )
-        raise session_error(
-            "adjudicator session returned an invalid structured result",
+        if exc.validation_stage is None:
+            validation_stage, diagnostic_code, diagnostic_detail_code = (
+                "semantic", "output_contract_validation", None
+            )
+        else:
+            validation_stage, diagnostic_code, diagnostic_detail_code = (
+                structured_output_diagnostic(exc)
+            )
+        error = session_error(
+            "adjudication could not produce a validated result",
             role="adjudicator",
-            exit_status=getattr(adjudicator_raw, "provider_exit_status", None),
-            output_exists=True,
+            exit_status=getattr(locals().get("adjudicator_raw"), "provider_exit_status", None),
+            output_exists="adjudicator_raw" in locals(),
             failure_class="invalid-output",
             validation_stage=validation_stage,
             diagnostic_code=diagnostic_code,
             diagnostic_detail_code=diagnostic_detail_code,
-        ) from None
+        )
+        error.validated_review_findings = reviewer_result["findings"]
+        raise error from exc
     return adjudication, adjudication_packet
 
 
@@ -532,54 +531,6 @@ def run_adversarial_review(
     return adjudication
 
 
-def _session_failure_outcome(
-    review_packet: Mapping[str, object],
-    issue_contract_revision: str,
-    cycle: int,
-    prior_candidate_identities: list[dict[str, str]],
-    error: BaseException | None = None,
-) -> dict:
-    """Return a bounded handoff without exposing unvalidated provider output."""
-    if isinstance(error, ReviewSessionError):
-        session_failure = session_failure_diagnostic(error)
-    else:
-        session_failure = session_failure_diagnostic(
-            session_error(
-                "isolated session returned an invalid result",
-                failure_class="invalid-output",
-            )
-        )
-    reason = (
-        f"{session_failure['role']} session failed with "
-        f"{session_failure['failure_class']}; human disposition is required before rerun"
-    )
-    return lifecycle_artifact(
-        status="human-handoff",
-        risk=review_packet["risk"],
-        issue_contract_revision=issue_contract_revision,
-        cycle=cycle,
-        candidate_identity=candidate_identity(review_packet["candidate"]),
-        prior_candidate_identities=prior_candidate_identities,
-        reason=reason,
-        session_failure=session_failure,
-    )
-
-
-def _state_failure_outcome(
-    review_packet: Mapping[str, object], reason: str
-) -> dict:
-    """Fail closed when the caller omits or supplies an invalid artifact."""
-    return lifecycle_artifact(
-        status="human-handoff",
-        risk=review_packet["risk"],
-        issue_contract_revision=review_packet["issue_contract"]["revision"],
-        cycle=0,
-        candidate_identity=candidate_identity(review_packet["candidate"]),
-        prior_candidate_identities=[],
-        reason=reason,
-    )
-
-
 def run_review_lifecycle(
     packet: Mapping[str, object],
     *,
@@ -588,130 +539,14 @@ def run_review_lifecycle(
     session_runner: SessionRunner | None = None,
     codex_executable: str = "codex",
 ) -> dict:
-    """Run a bounded review and return its only persisted outcome artifact."""
-    review_packet = validate_review_packet(packet)
-    revision = review_packet["issue_contract"]["revision"]
-    current_candidate = candidate_identity(review_packet["candidate"])
-    if initial and state is not None:
-        return _state_failure_outcome(
-            review_packet,
-            "an initial run cannot consume a saved lifecycle artifact",
-        )
-    if state is None:
-        if not initial:
-            return _state_failure_outcome(
-                review_packet,
-                "a saved lifecycle artifact is required to continue review",
-            )
-        continuation = None
-        cycle = 0
-        prior_candidate_identities: list[dict[str, str]] = []
-    else:
-        try:
-            continuation = load_lifecycle_artifact(state)
-        except ReviewContractError:
-            return _state_failure_outcome(
-                review_packet,
-                "saved lifecycle artifact is invalid; human disposition is required before rerun",
-            )
-        if continuation["status"] != "revalidate-and-rereview":
-            return _state_failure_outcome(
-                review_packet,
-                "saved lifecycle artifact does not authorize another correction cycle",
-            )
-        reason = continuation_reason(
-            continuation,
-            issue_contract_revision=revision,
-            candidate=review_packet["candidate"],
-            risk=review_packet["risk"],
-        )
-        if reason is not None:
-            prior = [
-                *continuation["prior_candidate_identities"],
-                continuation["candidate_identity"],
-            ]
-            return lifecycle_artifact(
-                status="human-handoff",
-                risk=continuation["risk"],
-                issue_contract_revision=revision,
-                cycle=continuation["cycle"],
-                candidate_identity=current_candidate,
-                prior_candidate_identities=prior,
-                reason=reason,
-            )
-        cycle = continuation["cycle"]
-        prior_candidate_identities = [
-            *continuation["prior_candidate_identities"],
-            continuation["candidate_identity"],
-        ]
-
-    try:
-        adjudication, _ = _run_adversarial_review_sessions(
-            review_packet,
-            session_runner=session_runner,
-            codex_executable=codex_executable,
-        )
-    except (ReviewContractError, ReviewSessionError) as exc:
-        return _session_failure_outcome(
-            review_packet,
-            revision,
-            cycle,
-            prior_candidate_identities,
-            exc,
-        )
-
-    if adjudication is None:
-        return lifecycle_artifact(
-            status="complete",
-            risk=review_packet["risk"],
-            issue_contract_revision=revision,
-            cycle=cycle,
-            candidate_identity=current_candidate,
-            prior_candidate_identities=prior_candidate_identities,
-        )
-    if adjudication["human_handoff"]["required"]:
-        return lifecycle_artifact(
-            status="human-handoff",
-            risk=review_packet["risk"],
-            issue_contract_revision=revision,
-            cycle=cycle,
-            candidate_identity=current_candidate,
-            prior_candidate_identities=prior_candidate_identities,
-            reason=adjudication["human_handoff"]["reason"],
-        )
-
-    corrections = accepted_corrections(adjudication)
-    if not corrections:
-        return lifecycle_artifact(
-            status="complete",
-            risk=review_packet["risk"],
-            issue_contract_revision=revision,
-            cycle=cycle,
-            candidate_identity=current_candidate,
-            prior_candidate_identities=prior_candidate_identities,
-        )
-    retry_budget = correction_retry_budget(review_packet["risk"])
-    if cycle >= retry_budget:
-        return lifecycle_artifact(
-            status="human-handoff",
-            risk=review_packet["risk"],
-            issue_contract_revision=revision,
-            cycle=cycle,
-            candidate_identity=current_candidate,
-            prior_candidate_identities=prior_candidate_identities,
-            reason=(
-                f"correction retry budget {retry_budget} for "
-                f"risk:{review_packet['risk']} exhausted"
-            ),
-        )
-    return lifecycle_artifact(
-        status="revalidate-and-rereview",
-        risk=review_packet["risk"],
-        issue_contract_revision=revision,
-        cycle=cycle + 1,
-        candidate_identity=current_candidate,
-        prior_candidate_identities=prior_candidate_identities,
-        corrections=corrections,
+    """Run the bounded lifecycle using the isolated review-session runner."""
+    return _run_review_lifecycle(
+        packet,
+        state=state,
+        initial=initial,
+        review_sessions=_run_adversarial_review_sessions,
+        session_runner=session_runner,
+        codex_executable=codex_executable,
     )
 
 

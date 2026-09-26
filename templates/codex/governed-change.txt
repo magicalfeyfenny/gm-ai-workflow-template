@@ -87,7 +87,14 @@ same work item through the ordinary completion lifecycle:
    each candidate and result. The packet's actual risk tier selects the
    configured retry budget: low gets one correction retry, while medium and
    high get two. A handoff artifact never authorizes an autonomous reset; a
-   human-authorized new candidate starts a fresh lifecycle.
+   human-authorized new candidate starts a fresh lifecycle. Read the saved
+   result's `review_cycles`: report each finding's ID, summary, disposition,
+   and basis, and explicitly report `not-needed` as a successful zero-finding
+   review. Preserve prior-cycle follow-ups in the final report. If adjudication
+   is `unavailable`, surface validated findings as unadjudicated observations
+   with the session failure; do not present them as implementation instructions.
+   Only current-cycle `blocker` and `patch-now` dispositions require a corrected
+   candidate.
 5. Re-fetch and reconcile the governing issue immediately before the completion
    transition. If the contract changed, establish fresh Stage 2 evidence and a
    fresh review for the revised contract before proceeding.
@@ -106,6 +113,7 @@ same work item through the ordinary completion lifecycle:
    Do not directly mark ready, merge, bypass rulesets, push protected branches,
    release, or publish. High-risk and manual-path work stops for human review,
    readiness, and merge; those are authority actions, not validation blockers.
+   Include the persisted review outcomes in the human handoff.
 
 Allocate evidence under
 [Validation coverage allocation](../../GOVERNANCE.md#validation-coverage-allocation).

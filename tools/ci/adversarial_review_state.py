@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 try:
     from .adversarial_review import _digest, candidate_identity
     from .adversarial_review_contracts import (
+        DISPOSITIONS,
         RISK_TIERS,
         SESSION_FAILURE_CLASSES,
         SESSION_FAILURE_DIAGNOSTIC_CODES,
@@ -19,6 +20,7 @@ try:
 except ImportError:  # pragma: no cover - direct script compatibility
     from adversarial_review import _digest, candidate_identity  # type: ignore[no-redef]
     from adversarial_review_contracts import (  # type: ignore[no-redef]
+        DISPOSITIONS,
         RISK_TIERS,
         SESSION_FAILURE_CLASSES,
         SESSION_FAILURE_DIAGNOSTIC_CODES,
@@ -30,8 +32,10 @@ except ImportError:  # pragma: no cover - direct script compatibility
     from pr_policy import correction_retry_budget  # type: ignore[no-redef]
 
 
-LIFECYCLE_ARTIFACT_SCHEMA = "adversarial-review-lifecycle:v2"
+LIFECYCLE_ARTIFACT_SCHEMA = "adversarial-review-lifecycle:v3"
 MAX_HANDOFF_REASON_LENGTH = 320
+MAX_REVIEW_SUMMARY_LENGTH = 640
+MAX_ADJUDICATION_BASIS_LENGTH = 1000
 _ARTIFACT_FIELDS = {
     "schema",
     "status",
@@ -40,18 +44,19 @@ _ARTIFACT_FIELDS = {
     "cycle",
     "candidate_identity",
     "prior_candidate_identities",
-    "corrections",
+    "review_cycles",
     "reason",
     "session_failure",
 }
 _IDENTITY_FIELDS = ("base_ref", "head_ref", "head_sha", "tree_sha", "diff_sha256")
 _CONTENT_FIELDS = ("tree_sha", "diff_sha256")
-_CORRECTION_FIELDS = {
-    "finding_id",
-    "disposition",
-    "basis",
-    "correction",
+_REVIEW_CYCLE_FIELDS = {
+    "cycle",
+    "candidate_identity",
+    "adjudication_status",
+    "findings",
 }
+_REVIEW_FINDING_FIELDS = {"finding_id", "summary", "disposition", "basis"}
 _SESSION_FAILURE_FIELDS = {
     "schema",
     "role",
@@ -100,37 +105,108 @@ def _reason(value: object) -> str:
     return normalized[:MAX_HANDOFF_REASON_LENGTH]
 
 
-def _corrections(value: object) -> list[dict[str, object]]:
+def _compact_text(value: object, subject: str, limit: int) -> str:
+    text = _text(value, subject)
+    normalized = " ".join(
+        "".join(char if char.isprintable() else " " for char in text).split()
+    )
+    if not normalized:
+        raise ReviewContractError(f"{subject} is empty after sanitizing")
+    if len(normalized) > limit:
+        normalized = normalized[:limit].rstrip()
+    return normalized
+
+
+def _review_cycles(value: object, retry_budget: int) -> list[dict[str, object]]:
     if not isinstance(value, list):
-        raise ReviewContractError("lifecycle corrections must be a list")
-    corrections = []
-    seen: set[str] = set()
+        raise ReviewContractError("lifecycle review_cycles must be a list")
+    if len(value) > retry_budget + 1:
+        raise ReviewContractError("lifecycle review cycles exceed the retry budget")
+    cycles: list[dict[str, object]] = []
     for index, raw in enumerate(value):
-        subject = f"lifecycle corrections[{index}]"
-        if not isinstance(raw, Mapping) or set(raw) != _CORRECTION_FIELDS:
+        subject = f"lifecycle review_cycles[{index}]"
+        if not isinstance(raw, Mapping) or set(raw) != _REVIEW_CYCLE_FIELDS:
             raise ReviewContractError(f"{subject} has unsupported or missing fields")
-        finding_id = _text(raw["finding_id"], f"{subject}.finding_id")
-        if finding_id in seen:
-            raise ReviewContractError("lifecycle corrections contain a duplicate finding")
-        seen.add(finding_id)
-        disposition = raw["disposition"]
-        if disposition not in {"blocker", "patch-now"}:
-            raise ReviewContractError(f"{subject}.disposition cannot direct remediation")
-        basis = _text(raw["basis"], f"{subject}.basis")
-        correction = raw["correction"]
-        if not isinstance(correction, Mapping) or set(correction) != {"summary"}:
-            raise ReviewContractError(f"{subject}.correction is malformed")
-        corrections.append(
+        cycle = raw["cycle"]
+        if not isinstance(cycle, int) or isinstance(cycle, bool) or cycle != index:
+            raise ReviewContractError(f"{subject}.cycle is not contiguous")
+        identity = _identity(raw["candidate_identity"], f"{subject}.candidate_identity")
+        adjudication_status = raw["adjudication_status"]
+        if adjudication_status not in {"not-needed", "complete", "unavailable"}:
+            raise ReviewContractError(f"{subject}.adjudication_status is unsupported")
+        raw_findings = raw["findings"]
+        if not isinstance(raw_findings, list):
+            raise ReviewContractError(f"{subject}.findings must be a list")
+        findings: list[dict[str, object]] = []
+        seen: set[str] = set()
+        for finding_index, raw_finding in enumerate(raw_findings):
+            finding_subject = f"{subject}.findings[{finding_index}]"
+            if (
+                not isinstance(raw_finding, Mapping)
+                or set(raw_finding) != _REVIEW_FINDING_FIELDS
+            ):
+                raise ReviewContractError(
+                    f"{finding_subject} has unsupported or missing fields"
+                )
+            finding_id = _text(raw_finding["finding_id"], f"{finding_subject}.finding_id")
+            if finding_id in seen:
+                raise ReviewContractError(f"{subject} contains a duplicate finding")
+            seen.add(finding_id)
+            disposition = raw_finding["disposition"]
+            basis = raw_finding["basis"]
+            if disposition is None:
+                if basis is not None:
+                    raise ReviewContractError(
+                        f"{finding_subject}.basis requires an adjudicated disposition"
+                    )
+                normalized_basis = None
+            else:
+                if disposition not in DISPOSITIONS:
+                    raise ReviewContractError(
+                        f"{finding_subject}.disposition is unsupported"
+                    )
+                normalized_basis = _compact_text(
+                    basis, f"{finding_subject}.basis", MAX_ADJUDICATION_BASIS_LENGTH
+                )
+            findings.append(
+                {
+                    "finding_id": finding_id,
+                    "summary": _compact_text(
+                        raw_finding["summary"],
+                        f"{finding_subject}.summary",
+                        MAX_REVIEW_SUMMARY_LENGTH,
+                    ),
+                    "disposition": disposition,
+                    "basis": normalized_basis,
+                }
+            )
+        if adjudication_status == "not-needed" and findings:
+            raise ReviewContractError(
+                f"{subject} cannot have findings when adjudication was not needed"
+            )
+        if adjudication_status in {"complete", "unavailable"} and not findings:
+            raise ReviewContractError(
+                f"{subject} requires reviewer findings for its adjudication status"
+            )
+        if adjudication_status == "complete" and any(
+            finding["disposition"] is None for finding in findings
+        ):
+            raise ReviewContractError(f"{subject} has an incomplete adjudication")
+        if adjudication_status == "unavailable" and any(
+            finding["disposition"] is not None for finding in findings
+        ):
+            raise ReviewContractError(
+                f"{subject} cannot assign dispositions when adjudication is unavailable"
+            )
+        cycles.append(
             {
-                "finding_id": finding_id,
-                "disposition": disposition,
-                "basis": basis,
-                "correction": {
-                    "summary": _text(correction["summary"], f"{subject}.correction.summary")
-                },
+                "cycle": index,
+                "candidate_identity": identity,
+                "adjudication_status": adjudication_status,
+                "findings": findings,
             }
         )
-    return corrections
+    return cycles
 
 
 def _session_failure(value: object) -> dict[str, object] | None:
@@ -201,34 +277,80 @@ def validate_lifecycle_artifact(value: object) -> dict[str, object]:
     if len(keys) != len(set(keys)):
         raise ReviewContractError("lifecycle prior candidates contain a repeated candidate")
     current_key = _content_key(identity)
-    corrections = _corrections(value["corrections"])
+    review_cycles = _review_cycles(value["review_cycles"], retry_budget)
+    unavailable_cycles = [
+        index
+        for index, review_cycle in enumerate(review_cycles)
+        if review_cycle["adjudication_status"] == "unavailable"
+    ]
     reason_value = value["reason"]
     failure = _session_failure(value["session_failure"])
+    if unavailable_cycles and (
+        status != "human-handoff"
+        or failure is None
+        or failure["role"] != "adjudicator"
+        or unavailable_cycles != [len(review_cycles) - 1]
+    ):
+        raise ReviewContractError(
+            "unadjudicated findings require the current adjudicator failure handoff"
+        )
     if status == "revalidate-and-rereview":
         if (
             cycle < 1
             or len(history) != cycle - 1
             or current_key in set(keys)
-            or not corrections
+            or len(review_cycles) != cycle
             or reason_value is not None
             or failure is not None
         ):
             raise ReviewContractError("continuation artifact is incomplete")
+        if review_cycles[-1]["candidate_identity"] != identity:
+            raise ReviewContractError("continuation candidate does not match its review outcome")
+        if [item["candidate_identity"] for item in review_cycles[:-1]] != history:
+            raise ReviewContractError("continuation history does not match prior review outcomes")
+        if not has_actionable_findings(review_cycles[-1]):
+            raise ReviewContractError("continuation has no current actionable disposition")
         reason = None
     elif status == "complete":
         if (
             len(history) != cycle
             or current_key in set(keys)
-            or corrections
+            or len(review_cycles) != cycle + 1
             or reason_value is not None
             or failure is not None
         ):
             raise ReviewContractError("completed artifact is inconsistent")
+        if review_cycles[-1]["candidate_identity"] != identity:
+            raise ReviewContractError("completed candidate does not match its review outcome")
+        if [item["candidate_identity"] for item in review_cycles[:-1]] != history:
+            raise ReviewContractError("completed history does not match prior review outcomes")
+        if has_actionable_findings(review_cycles[-1]):
+            raise ReviewContractError("completed artifact has a current actionable disposition")
         reason = None
     else:
-        if len(history) != cycle or corrections:
+        if len(history) != cycle or len(review_cycles) not in {cycle, cycle + 1}:
             raise ReviewContractError("human handoff artifact is inconsistent")
         reason = _reason(reason_value)
+        if [item["candidate_identity"] for item in review_cycles[:cycle]] != history:
+            raise ReviewContractError("handoff history does not match prior review outcomes")
+        if len(review_cycles) == cycle + 1 and review_cycles[-1]["candidate_identity"] != identity:
+            raise ReviewContractError("handoff candidate does not match its review outcome")
+        failure_role = None if failure is None else failure["role"]
+        if failure_role == "reviewer" and len(review_cycles) != cycle:
+            raise ReviewContractError("reviewer failure cannot include an unvalidated review")
+        if failure_role == "adjudicator" and (
+            len(review_cycles) != cycle + 1
+            or review_cycles[-1]["adjudication_status"] != "unavailable"
+        ):
+            raise ReviewContractError(
+                "adjudicator failure must preserve its validated reviewer findings"
+            )
+        if failure is None and review_cycles and (
+            review_cycles[-1]["adjudication_status"] == "unavailable"
+        ):
+            raise ReviewContractError(
+                "unadjudicated reviewer findings require an adjudicator failure"
+            )
     return {
         "schema": LIFECYCLE_ARTIFACT_SCHEMA,
         "status": status,
@@ -237,7 +359,7 @@ def validate_lifecycle_artifact(value: object) -> dict[str, object]:
         "cycle": cycle,
         "candidate_identity": identity,
         "prior_candidate_identities": history,
-        "corrections": corrections,
+        "review_cycles": review_cycles,
         "reason": reason,
         "session_failure": failure,
     }
@@ -251,7 +373,7 @@ def lifecycle_artifact(
     cycle: int,
     candidate_identity: Mapping[str, object],
     prior_candidate_identities: Sequence[Mapping[str, object]] = (),
-    corrections: Sequence[Mapping[str, object]] = (),
+    review_cycles: Sequence[Mapping[str, object]] = (),
     reason: str | None = None,
     session_failure: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
@@ -267,7 +389,7 @@ def lifecycle_artifact(
             "prior_candidate_identities": [
                 dict(item) for item in prior_candidate_identities
             ],
-            "corrections": [dict(item) for item in corrections],
+            "review_cycles": [dict(item) for item in review_cycles],
             "reason": reason,
             "session_failure": (
                 None if session_failure is None else dict(session_failure)
@@ -313,15 +435,10 @@ def continuation_reason(
     return None
 
 
-def accepted_corrections(adjudication: Mapping[str, object]) -> list[dict[str, object]]:
-    """Project only validated, accepted remediation into the canonical artifact."""
-    return [
-        {
-            "finding_id": item["finding_id"],
-            "disposition": item["disposition"],
-            "basis": item["basis"],
-            "correction": item["correction"],
-        }
-        for item in adjudication["dispositions"]
-        if item["correction_accepted"]
-    ]
+def has_actionable_findings(review_cycle: Mapping[str, object]) -> bool:
+    """Only current-cycle blocker and patch-now findings require a new candidate."""
+    findings = review_cycle.get("findings", [])
+    return any(
+        isinstance(item, Mapping) and item.get("disposition") in {"blocker", "patch-now"}
+        for item in findings
+    )

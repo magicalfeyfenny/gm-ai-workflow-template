@@ -33,8 +33,16 @@ For an interpretive governance correction, include the applicable
 
 ## Adversarial review
 
-For a completed governed change, record the candidate identity, disposition
-summary, and any actionable handoff. Use the
+Read the saved lifecycle artifact's `review_cycles`. Record each finding's ID,
+summary, disposition, and basis, explicitly report a `not-needed` cycle as a
+successful zero-finding review, and preserve prior-cycle follow-ups. If
+adjudication is `unavailable`, report the validated findings as unadjudicated
+observations with the session failure. Only current-cycle `blocker` and
+`patch-now` dispositions require a corrected candidate; `follow-up` and `reject`
+are reportable outcomes, not implementation instructions.
+
+For a completed governed change, record the candidate identity and resulting
+review status. Use the
 [adversarial review and adjudication route](../GOVERNANCE.md#adversarial-review-and-adjudication).
 
 ## Human gate

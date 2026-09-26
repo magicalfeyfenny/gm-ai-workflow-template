@@ -95,14 +95,20 @@ before Stage 2.
    for review policy and lifecycle decisions. The packet's actual risk tier
    selects the configured retry budget: low gets one correction retry, while
    medium and high get two; a handoff artifact never authorizes an autonomous
-   reset.
+   reset. Read the saved result's `review_cycles`: report each finding's ID,
+   summary, disposition, and basis, and explicitly report a `not-needed` cycle
+   as a successful zero-finding review. Preserve prior-cycle follow-ups in the
+   final report. If adjudication is `unavailable`, surface the validated
+   findings as unadjudicated observations and include the session failure;
+   do not present them as implementation instructions. Only current-cycle
+   `blocker` and `patch-now` dispositions require a corrected candidate.
 6. When the review lifecycle reports completion, re-fetch and reconcile the
    issue immediately before the completion transition, then continue with
    fresh Stage 3 and the final live-state comparison. Use the
    [attestation procedure](../../../docs/CI.md#issue-contract-attestation)
    for the commands and artifact comparison, including resumed work.
-7. Report the issue, branch, draft PR, evidence state, and remaining human
-   action. For a high-risk/manual-path handoff, describe human review,
+7. Report the issue, branch, draft PR, evidence state, persisted review
+   outcomes, and remaining human action. For a high-risk/manual-path handoff, describe human review,
    readiness, and merge as authority actions only; mention manual, visual,
    live, or experiential validation only when the accepted issue contract
    explicitly requires it. Leave readiness and merge to a human.
