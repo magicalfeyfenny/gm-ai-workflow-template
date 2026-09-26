@@ -555,6 +555,13 @@ A wording, formatting, ordering, or representation change that preserves the
 intended contract should not require unrelated test changes merely to satisfy
 stale textual expectations.
 
+A correction requested during review or implementation does not by itself
+require a regression test. Add or change tests only to establish behavior
+required by the accepted issue contract or standing Governance when that
+behavior is mechanically observable. Do not test Governance prose or wording
+merely to preserve the form of a prior correction; such tests add maintenance
+burden and brittleness without establishing behavior.
+
 ## Validation coverage allocation
 
 Prefer automated validation whenever the required property is
