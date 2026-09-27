@@ -36,6 +36,5 @@ class AdjudicatorInstructionTests(unittest.TestCase):
             with self.subTest(surface=surface):
                 self.assertIn(GOVERNANCE_ROUTE, text)
 
-
 if __name__ == "__main__":
     unittest.main()

@@ -135,10 +135,6 @@ def review_result(review_packet: dict, findings: list[dict]) -> dict:
     }
 
 
-def correction() -> dict:
-    return {"summary": "Apply the supported current-pass correction."}
-
-
 def adjudication_result(
     adjudication_packet: dict,
     decisions: list[dict],
@@ -155,13 +151,11 @@ def adjudication_result(
     }
 
 
-def decision(finding_id: str, disposition: str, value: dict | None = None) -> dict:
+def decision(finding_id: str, disposition: str) -> dict:
     return {
         "finding_id": finding_id,
         "disposition": disposition,
         "basis": f"supported basis for {finding_id}",
-        "correction": value,
-        "correction_accepted": value is not None,
     }
 
 
@@ -416,8 +410,8 @@ class FindingAndDispositionTests(unittest.TestCase):
         result = adjudication_result(
             adjudication_packet,
             [
-                decision("F-blocker", "blocker", correction()),
-                decision("F-patch", "patch-now", correction()),
+                decision("F-blocker", "blocker"),
+                decision("F-patch", "patch-now"),
                 decision("F-follow", "follow-up"),
                 decision("F-reject", "reject"),
             ],
@@ -433,25 +427,24 @@ class FindingAndDispositionTests(unittest.TestCase):
         with self.assertRaises(ReviewContractError):
             validate_adjudication_result(missing, adjudication_packet)
 
-    def test_correction_remedy_has_no_path_authority(self):
+    def test_legacy_correction_fields_are_rejected(self):
         review_packet = packet()
         findings = [finding("F1", "supported defect")]
         adjudication_packet = build_adjudication_packet(review_packet, findings)
-        no_path_limit = adjudication_result(
-            adjudication_packet,
-            [decision("F1", "patch-now", correction())],
+        legacy = adjudication_result(
+            adjudication_packet, [decision("F1", "patch-now")]
         )
-        validated = validate_adjudication_result(no_path_limit, adjudication_packet)
-        self.assertEqual(
-            validated["dispositions"][0]["correction"], correction()
-        )
-
-        forbidden_for_reject = adjudication_result(
-            adjudication_packet,
-            [decision("F1", "reject", correction())],
-        )
+        legacy["schema"] = "adversarial-adjudication-result:v4"
         with self.assertRaises(ReviewContractError):
-            validate_adjudication_result(forbidden_for_reject, adjudication_packet)
+            validate_adjudication_result(legacy, adjudication_packet)
+
+        legacy["schema"] = ADJUDICATION_RESULT_SCHEMA
+        legacy["dispositions"][0]["correction"] = {
+            "summary": "obsolete implementation instruction"
+        }
+        legacy["dispositions"][0]["correction_accepted"] = True
+        with self.assertRaises(ReviewContractError):
+            validate_adjudication_result(legacy, adjudication_packet)
 
     def test_unresolved_blocker_requires_human_handoff(self):
         review_packet = packet()
@@ -556,17 +549,13 @@ class EvidenceTransportTests(unittest.TestCase):
                 evidence_ids = set(item["supporting_evidence"])
                 if "candidate" in evidence_ids:
                     disposition = "blocker"
-                    value = correction()
                 elif "governance.0" in evidence_ids:
                     disposition = "follow-up"
-                    value = None
                 elif "scope" in evidence_ids:
                     disposition = "follow-up"
-                    value = None
                 else:
                     disposition = "reject"
-                    value = None
-                decisions.append(decision(item["finding_id"], disposition, value))
+                decisions.append(decision(item["finding_id"], disposition))
             return adjudication_result(payload, decisions)
 
         result = run_adversarial_review(review_packet, session_runner=evidence_runner)

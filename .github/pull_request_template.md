@@ -33,9 +33,9 @@ For an interpretive governance correction, include the applicable
 
 ## Adversarial review
 
-For a completed governed change, record the candidate identity, disposition
-summary, and any actionable handoff. Use the
-[adversarial review and adjudication route](../GOVERNANCE.md#adversarial-review-and-adjudication).
+Summarize the final lifecycle outcome under the
+[Governance review route](../GOVERNANCE.md#adversarial-review-and-adjudication)
+and its [persisted outcome reporting rule](../GOVERNANCE.md#persisted-outcome-reporting).
 
 ## Human gate
 

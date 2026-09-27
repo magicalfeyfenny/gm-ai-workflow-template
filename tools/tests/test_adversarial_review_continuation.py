@@ -7,7 +7,6 @@ from tools.tests.test_adversarial_review_lifecycle import (
     DIFF,
     REVISION,
     candidate,
-    correction,
     decision,
     finding,
     make_packet,
@@ -40,7 +39,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             make_packet(),
             initial=True,
             session_runner=self.runner(
-                [finding()], [decision("F-correction", "patch-now", correction())]
+                [finding()], [decision("F-correction", "patch-now")]
             ),
         )
 
@@ -69,7 +68,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=first,
             session_runner=self.runner(
                 [finding("F-second")],
-                [decision("F-second", "blocker", correction())],
+                [decision("F-second", "blocker")],
             ),
         )
         self.assertEqual(second["status"], "revalidate-and-rereview")
@@ -86,19 +85,23 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=second,
             session_runner=self.runner(
                 [finding("F-third")],
-                [decision("F-third", "patch-now", correction())],
+                [decision("F-third", "patch-now")],
             ),
         )
         self.assertEqual(capped["status"], "human-handoff")
         self.assertIn("retry budget", capped["reason"])
-        self.assertEqual(capped["corrections"], [])
+        self.assertEqual(len(capped["review_cycles"]), 3)
+        self.assertEqual(
+            capped["review_cycles"][-1]["findings"][0]["disposition"],
+            "patch-now",
+        )
 
     def test_low_risk_has_one_retry_and_then_hands_off(self):
         first = run_review_lifecycle(
             make_packet(risk="low"),
             initial=True,
             session_runner=self.runner(
-                [finding()], [decision("F-correction", "patch-now", correction())]
+                [finding()], [decision("F-correction", "patch-now")]
             ),
         )
         self.assertEqual(first["status"], "revalidate-and-rereview")
@@ -114,7 +117,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=first,
             session_runner=self.runner(
                 [finding("F-second")],
-                [decision("F-second", "patch-now", correction())],
+                [decision("F-second", "patch-now")],
             ),
         )
         self.assertEqual(capped["status"], "human-handoff")
@@ -126,7 +129,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             make_packet(risk="medium"),
             initial=True,
             session_runner=self.runner(
-                [finding()], [decision("F-correction", "patch-now", correction())]
+                [finding()], [decision("F-correction", "patch-now")]
             ),
         )
         second_candidate = candidate(
@@ -139,7 +142,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=first,
             session_runner=self.runner(
                 [finding("F-second")],
-                [decision("F-second", "patch-now", correction())],
+                [decision("F-second", "patch-now")],
             ),
         )
         self.assertEqual(second["status"], "revalidate-and-rereview")
@@ -168,7 +171,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=second,
             session_runner=self.runner(
                 [finding("F-third")],
-                [decision("F-third", "patch-now", correction())],
+                [decision("F-third", "patch-now")],
             ),
         )
         self.assertEqual(capped["status"], "human-handoff")
@@ -186,7 +189,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=first,
             session_runner=self.runner(
                 [finding("F-second")],
-                [decision("F-second", "blocker", correction())],
+                [decision("F-second", "blocker")],
             ),
         )
         third_candidate = candidate(
@@ -199,7 +202,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=second,
             session_runner=self.runner(
                 [finding("F-third")],
-                [decision("F-third", "patch-now", correction())],
+                [decision("F-third", "patch-now")],
             ),
         )
         self.assertEqual(capped["status"], "human-handoff")
@@ -218,7 +221,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             make_packet(risk="low"),
             initial=True,
             session_runner=self.runner(
-                [finding()], [decision("F-correction", "patch-now", correction())]
+                [finding()], [decision("F-correction", "patch-now")]
             ),
         )
         corrected = candidate(
@@ -231,7 +234,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=first,
             session_runner=self.runner(
                 [finding("F-second")],
-                [decision("F-second", "patch-now", correction())],
+                [decision("F-second", "patch-now")],
             ),
         )
         self.assertEqual(handoff["status"], "human-handoff")
@@ -279,7 +282,7 @@ class LifecycleContinuationTests(unittest.TestCase):
             state=first,
             session_runner=self.runner(
                 [finding("F-second")],
-                [decision("F-second", "patch-now", correction())],
+                [decision("F-second", "patch-now")],
             ),
         )
         returned_to_first = candidate(head_sha="j" * 40)
