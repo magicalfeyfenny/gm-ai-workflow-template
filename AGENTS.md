@@ -80,8 +80,9 @@ they must be visible before mutation:
 - Before completion metadata, complete the bounded
   [adversarial review and adjudication](GOVERNANCE.md#adversarial-review-and-adjudication)
   stage. Use its validated lifecycle outcome as the implementation and handoff
-  input; the actual risk tier provides one correction retry for low and two for
-  medium or high, with no autonomous reset after handoff.
+  input; select retries from `PROJECT_POLICY.toml`
+  `[risk].correction_retries`. The initial pass is not a retry, exhaustion
+  requires handoff, and a handoff cannot autonomously reset the lifecycle.
 - High-risk and `manual-merge` work waits for human review, readiness, and
   merge after valid [Stage 3 evidence](GOVERNANCE.md#stage-3-hosted-pr-evidence).
 - Do not merge into `main` or create release builds, tags, releases, or
