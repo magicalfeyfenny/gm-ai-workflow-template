@@ -777,9 +777,11 @@ accidental or obsolete behavior.
 
 The reviewer and adjudicator act in fresh, independent, read-only contexts.
 Adjudication receives supporting source evidence to assess reviewer claims;
-those claims are not authority or implementation instructions. The
-implementation route may act only on validated adjudication and accepted
-remediation.
+those claims are not authority or implementation instructions. Current-cycle
+`blocker` and `patch-now` dispositions determine whether a correction candidate
+is required. The implementation route may act only on validated adjudication;
+the implementer chooses a remedy under the accepted issue and standing
+Governance.
 
 `blocker` is a supported accepted-issue or Governance violation that must be
 corrected before completion. `patch-now` is a supported violation within the
@@ -795,12 +797,12 @@ Governance, then obtain fresh review against those obligations. Do not carry a
 prior correction forward as a new requirement.
 
 The actual PR risk tier is bound into the review packet and lifecycle artifact.
-The executable correction retry budgets are low: one retry, medium: two
-retries, and high: two retries. The initial review pass is not a retry. An
-exhausted budget produces human handoff; high risk does not receive a larger
-budget merely because the work is more consequential. A human-authorized new
-candidate after handoff starts a fresh lifecycle and fresh tier budget, while a
-handoff artifact cannot be used as an autonomous continuation.
+The configured correction retry budget for that tier is in
+`PROJECT_POLICY.toml` at `[risk].correction_retries`. The initial review pass is
+not a retry. An exhausted budget produces human handoff; consequence does not
+authorize retries beyond the configured budget. A human-authorized new
+candidate after handoff starts a fresh lifecycle with the configured tier
+budget, while a handoff artifact cannot be used as an autonomous continuation.
 
 Use a supported disposition whenever possible. Human handoff is for unresolved
 issue or authority ambiguity, or when required review or adjudication evidence
