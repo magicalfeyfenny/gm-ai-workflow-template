@@ -166,8 +166,10 @@ class CodexModelConfigTests(unittest.TestCase):
         for role in ("reviewer", "adjudicator"):
             with self.subTest(role=role):
                 prompt = _session_prompt(role, {"evidence": malicious})
-                boundary = prompt.index("BOUNDARY-PACKET (JSON)")
-                self.assertGreater(prompt.index(malicious), boundary)
+                trust_boundary = prompt.index("PACKET TRUST BOUNDARY:")
+                packet_boundary = prompt.index("BOUNDARY-PACKET (JSON)")
+                self.assertLess(trust_boundary, packet_boundary)
+                self.assertGreater(prompt.index(malicious), packet_boundary)
 
     def test_codex_home_is_preserved_without_forwarding_ambient_secrets(self):
         with tempfile.TemporaryDirectory() as directory:
